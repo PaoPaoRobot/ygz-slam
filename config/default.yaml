@@ -1,0 +1,15 @@
+#YAML: 1.0
+
+# System config 
+# sensor type 
+system.sensor: monocular
+# visual odometry type 
+system.vo: sparse_direct 
+# map type 
+system.map: sparse
+
+# tweak the performance 
+# enable local mapping? 
+system.localmapping: yes 
+# enable loop closing? 
+system.loopclosing: yes
