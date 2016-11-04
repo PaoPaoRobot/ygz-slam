@@ -3,7 +3,7 @@
 #include "ygz/visual_odometry.h"
 #include "ygz/local_mapping.h"
 #include "ygz/loop_closing.h"
-
+#include "ygz/frame.h"
 
 namespace ygz
 {
@@ -64,6 +64,11 @@ bool System::Initialize( const string& config_file )
     }
         
     // initialize the system 
+    if ( _sensor_type == MONOCULAR ) {
+        PinholeCamera::Ptr camera (new PinholeCamera());
+        Frame::SetCamera( camera );
+    }
+    
     _visual_odometry = new VisualOdometry();
     
     if ( Config::get<string>("system.localmapping") == "yes" ) {
