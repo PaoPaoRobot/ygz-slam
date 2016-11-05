@@ -9,6 +9,14 @@ set( CMAKE_CXX_COMPILER "g++" )
 set( CMAKE_BUILD_TYPE "Release" )
 set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3 " )
 
+# Set build flags, set ARM_ARCHITECTURE environment variable on Odroid
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -D_LINUX -D_REENTRANT -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unknown-pragmas")
+IF(DEFINED ENV{ARM_ARCHITECTURE})
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon -march=armv7-a")
+ELSE()
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmmx -msse -msse -msse2 -msse3 -mssse3")
+ENDIF()
+
 # Debug config 
 # set( CMAKE_BUILD_TYPE "Debug" )
 # set( CMAKE_CXX_FLAGS "-std=c++11 -march=native" )
@@ -33,6 +41,10 @@ include_directories( ${GLOG_INCLUDE_DIRS} )
 # boost
 find_package( Boost COMPONENTS filesystem REQUIRED )
 include_directories( ${Boost_INCLUDE_DIRS} )
+# fast 
+find_package( fast REQUIRED )
+include_directories( ${fast_INCLUDE_DIRS} )
+
 
 # TODO: add gtsam and other libs you will use
 
@@ -41,6 +53,7 @@ set( THIRD_PARTY_LIBS
     ${Sophus_LIBRARIES}
     ${GLOG_LIBRARY}
     ${Boost_LIBRARIES}
+    ${fast_LIBRARIES}
 )
 
 ############### executable ######################

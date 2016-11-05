@@ -8,8 +8,21 @@ system.vo: sparse_direct
 # map type 
 system.map: sparse
 
+# data 
+image.width: 640
+image.height: 480
+
 # tweak the performance 
 # enable local mapping? 
 system.localmapping: yes 
 # enable loop closing? 
 system.loopclosing: yes
+
+
+# detailed parameters, if you are an expert, adjust them
+frame.pyramid: 3
+
+init.min_features: 100
+
+feature.cell: 20
+feature.detection_threshold: 20.0

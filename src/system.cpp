@@ -62,6 +62,9 @@ bool System::Initialize( const string& config_file )
         LOG(ERROR) << "Dense map is only runnable in RGBD mode, system intialization failed! " << endl; 
         return false;
     }
+    
+    // initialize frame parameters 
+    Frame::_pyramid_level = Config::get<int>("frame.pyramid");
         
     // initialize the system 
     if ( _sensor_type == MONOCULAR ) {
@@ -69,7 +72,7 @@ bool System::Initialize( const string& config_file )
         Frame::SetCamera( camera );
     }
     
-    _visual_odometry = new VisualOdometry();
+    _visual_odometry = new VisualOdometry( this );
     
     if ( Config::get<string>("system.localmapping") == "yes" ) {
         _local_mapping = new LocalMapping();

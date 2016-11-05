@@ -6,6 +6,7 @@
 namespace ygz {
 
 class Frame;
+class System;
     
 class VisualOdometry {
 public:
@@ -17,7 +18,14 @@ public:
         VO_ERROR,
     };
     
+    VisualOdometry( System* system ) { 
+        _system = system; 
+    }
+    
     void addFrame( const Frame::Ptr& frame );
+    
+protected:
+    void MonocularInitialization();
     
 protected:
     Status _status =VO_NOT_READY; 
@@ -26,6 +34,7 @@ protected:
     Frame::Ptr  _curr_frame=nullptr;    // current 
     Frame::Ptr  _ref_frame=nullptr;     // reference 
 
+    System* _system; 
 };
 }
 

@@ -10,10 +10,27 @@ void Memory::clean()
 
 Frame::Ptr Memory::CreateNewFrame()
 {
-    
+    Frame::Ptr pf ( new Frame );
+    pf->_id = _id_frame; 
+    _frames[pf->_id] = pf;
+    _id_frame++;
 }
 
+Frame::Ptr Memory::CreateNewFrame(
+    const double& timestamp, const SE3& T_c_w, const bool is_keyframe, 
+    const Mat& color, const Mat& depth )
+{
+    Frame::Ptr pf ( new Frame(
+        timestamp, T_c_w, is_keyframe, color, depth
+    ) );
+    pf->_id = _id_frame; 
+    pf->InitFrame(); 
+    _frames[pf->_id] = pf;
+    _id_frame++;
+}
 
-shared_ptr<Memory> Memory::_mem = nullptr;
+shared_ptr<Memory> Memory::_mem(new Memory) ;
+unsigned long Memory::_id_frame =0;
+unsigned long Memory::_id_points =0; 
 
 }

@@ -66,6 +66,11 @@ public:
     // load outputs 
     void LoadMap( const string& filename, const MapType& map_type );
     
+    // accessors 
+    SensorType GetSensorType() const { return  _sensor_type; }
+    MapType GetMapType() const { return  _map_type; }
+    VOType GetVOType() const { return  _vo_type; }
+    
 protected:
     SensorType  _sensor_type=MONOCULAR;
     MapType     _map_type=SPARSE;

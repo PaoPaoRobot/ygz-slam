@@ -9,9 +9,12 @@ void VisualOdometry::addFrame(const Frame::Ptr& frame)
         _status = VO_INITING;
     }
     
+    _curr_frame = frame; 
     _last_status = _status; 
+    
     if ( _status == VO_INITING ) {
         // TODO initialization 
+        MonocularInitialization();
         if ( _status != VO_GOOD )
             return; 
     } else {
@@ -26,5 +29,10 @@ void VisualOdometry::addFrame(const Frame::Ptr& frame)
     
     // store the result or other things 
 }
+
+void VisualOdometry::MonocularInitialization()
+{
+}
+
 
 }

@@ -13,26 +13,30 @@ public:
             _mem->clean();
     }
     
-    inline void InitMemory() { 
-        if ( _mem == nullptr )
-            _mem = make_shared<Memory>( );
-    }
-        
     static Frame::Ptr CreateNewFrame(); 
+    
+    static Frame::Ptr CreateNewFrame(
+        const double& timestamp, 
+        const SE3& T_c_w, 
+        const bool is_keyframe, 
+        const Mat& color, 
+        const Mat& depth = Mat()
+    ); 
+    
     static MapPoint::Ptr CreateMapPoint(); 
     
-    static inline Frame::Ptr Frame( const unsigned long& id ) {
+    static inline Frame::Ptr GetFrame( const unsigned long& id ) {
         auto iter = _frames.find( id );
         if ( iter == _frames.end() )
             return nullptr;
-        return *iter;
+        return iter->second;
     }
     
-    static inline MapPoint::Ptr MapPoint( const unsigned long& id ) {
+    static inline MapPoint::Ptr GetMapPoint( const unsigned long& id ) {
         auto iter = _points.find( id );
         if ( iter == _points.end() )
             return nullptr;
-        return *iter;
+        return iter->second;
     }
     
     void optimizeMemory(); 
@@ -45,7 +49,7 @@ private:
 protected:
     static unordered_map<unsigned long, Frame::Ptr> _frames; 
     static unordered_map<unsigned long, MapPoint::Ptr> _points;
-    static unsigned long _id_frame=0, _id_points=0; 
+    static unsigned long _id_frame, _id_points; 
     
     static shared_ptr<Memory> _mem;
 };
