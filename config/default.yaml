@@ -18,6 +18,13 @@ system.localmapping: yes
 # enable loop closing? 
 system.loopclosing: yes
 
+# Camera Intrinsics 
+## TUM fr1
+camera.fx: 517.3
+camera.fy: 516.5
+camera.cx: 318.6
+camera.cy: 255.3
+
 
 # detailed parameters, if you are an expert, adjust them
 frame.pyramid: 3

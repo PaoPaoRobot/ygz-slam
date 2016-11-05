@@ -6,8 +6,6 @@
 
 namespace ygz {
     
-typedef shared_ptr<Frame> FramePtr;
-    
 struct Frame {
 public:
     typedef shared_ptr<Frame> Ptr;
@@ -37,7 +35,9 @@ public:
     double  _timestamp  =0; 
     SE3     _T_c_w      =SE3(); 
     bool    _is_keyframe    =false; 
+    // NOTE: 正式的map point是要放到memory里的，而特征提取过程中的那些只能是candidate
     list<unsigned long> _map_point; // associated map point 
+    vector<MapPoint>    _map_point_candidates;  // candidates 
     
     // images 
     Mat     _color;     // if we have 

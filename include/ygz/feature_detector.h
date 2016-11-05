@@ -39,6 +39,7 @@ struct Corner
     x(x), y(y), level(level), score(score), angle(angle)
   {}
 };
+
 typedef vector<Corner> Corners;
 
 class FeatureDetector

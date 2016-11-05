@@ -2,15 +2,17 @@
 #define TRACKER_H_
 
 #include "ygz/frame.h"
+#include "ygz/feature_detector.h"
 
 namespace ygz {
     
+
 class Tracker {
 public:
     enum TrackerStatusType {
-        NOT_READY,
-        GOOD,
-        LOST
+        TRACK_NOT_READY,
+        TRACK_GOOD,
+        TRACK_LOST
     };
     
     Tracker();
@@ -21,17 +23,18 @@ public:
     
     TrackerStatusType Status() const { return _status; }
     
-    void DetectFeatures( 
-        Frame::Ptr frame,
-        vector<Vector2d>& pts
-    );
+protected:
+    void TrackKLT( );
     
 protected:
     Frame::Ptr _ref =nullptr;            // reference 
     Frame::Ptr _curr =nullptr;           // current  
-    vector<Vector2d> _px_ref;           // pixels in ref 
-    vector<Vector2d> _px_curr;           // pixels in ref 
-    TrackerStatusType _status =NOT_READY;
+    
+    vector<cv::Point2f> _px_ref;           // pixels in ref 
+    vector<cv::Point2f> _px_curr;           // pixels in curr 
+    TrackerStatusType _status =TRACK_NOT_READY;
+    
+    shared_ptr<FeatureDetector> _detector; 
     
     // parameters 
     int _min_features_initializing; 

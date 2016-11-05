@@ -14,6 +14,7 @@ Frame::Ptr Memory::CreateNewFrame()
     pf->_id = _id_frame; 
     _frames[pf->_id] = pf;
     _id_frame++;
+    return pf;
 }
 
 Frame::Ptr Memory::CreateNewFrame(
@@ -27,6 +28,7 @@ Frame::Ptr Memory::CreateNewFrame(
     pf->InitFrame(); 
     _frames[pf->_id] = pf;
     _id_frame++;
+    return pf;
 }
 
 shared_ptr<Memory> Memory::_mem(new Memory) ;

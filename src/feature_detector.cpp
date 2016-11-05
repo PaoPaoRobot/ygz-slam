@@ -87,11 +87,12 @@ void FeatureDetector::Detect(Frame::Ptr frame)
 
     for ( Corner& c: corners ) {
         
-        MapPoint::Ptr point = Memory::CreateMapPoint();
-        point->_pos_tracked = Vector2d( c.x, c.y );
-        point->_pyramid_level = c.level; 
+        // MapPoint::Ptr point = Memory::CreateMapPoint();
+        MapPoint point; 
+        point._pos_tracked = Vector2d( c.x, c.y );
+        point._pyramid_level = c.level; 
         
-        frame->_map_point.push_back( point->_id );
+        frame->_map_point_candidates.push_back( point );
     }
 
 }
