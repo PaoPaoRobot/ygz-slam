@@ -2,8 +2,7 @@
 #include <string>
 #include <iostream>
 
-#include "ygz/tracker.h"
-
+#include "ygz/visual_odometry.h"
 
 using namespace std;
 using namespace ygz;
@@ -34,22 +33,15 @@ int main( int argc, char** argv )
     Config::setParameterFile("./config/default.yaml");
     PinholeCamera::Ptr cam( new PinholeCamera ); 
     Frame::SetCamera( cam );
+    VisualOdometry vo(nullptr); 
     
-    Tracker tracker; 
     for ( size_t i=0; i<50; i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         Frame::Ptr pf( new Frame );
         pf->_color = color; 
         pf->InitFrame();
-        if ( i==0 ) {
-            tracker.SetReference( pf );
-            continue; 
-        }
-        
-        tracker.Track( pf );
-        tracker.PlotTrackedPoints();
-        if ( tracker.Status() == Tracker::TRACK_LOST )
-            break; 
+        vo.addFrame( pf );
+        vo.plotFrame();
     }
     
     return 0;

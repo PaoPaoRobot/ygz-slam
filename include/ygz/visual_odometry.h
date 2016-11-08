@@ -2,6 +2,8 @@
 #define VISUAL_ODOMETRY_H_
 
 #include "ygz/frame.h"
+#include "ygz/tracker.h"
+#include "ygz/initializer.h"
 
 namespace ygz {
 
@@ -18,11 +20,16 @@ public:
         VO_ERROR,
     };
     
-    VisualOdometry( System* system ) { 
+    VisualOdometry( System* system ) : _tracker(new Tracker)
+    { 
         _system = system; 
     }
     
     void addFrame( const Frame::Ptr& frame );
+    
+    void plotFrame() const {
+        _tracker->PlotTrackedPoints();
+    }
     
 protected:
     void MonocularInitialization();
@@ -35,6 +42,9 @@ protected:
     Frame::Ptr  _ref_frame=nullptr;     // reference 
 
     System* _system; 
+    unique_ptr<Tracker>  _tracker;      // tracker, most LK flow
+    
+    Initializer _init;                  // initializer  
 };
 }
 

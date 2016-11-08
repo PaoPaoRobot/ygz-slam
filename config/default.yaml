@@ -1,4 +1,4 @@
-#YAML: 1.0
+%YAML:1.0
 
 # System config 
 # sensor type 
@@ -30,6 +30,8 @@ camera.cy: 255.3
 frame.pyramid: 3
 
 init.min_features: 100
+init.min_disparity: 40
+init.min_inliers: 40
 
 feature.cell: 20
 feature.detection_threshold: 20.0

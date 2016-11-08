@@ -6,4 +6,5 @@ add_library( ygz-slam memory.cpp
     system.cpp
     visual_odometry.cpp
     feature_detector.cpp
+    initializer.cpp
 )

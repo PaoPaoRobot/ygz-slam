@@ -4,10 +4,14 @@ project ( ygz )
 # compiler
 set( CMAKE_CXX_COMPILER "g++" )
 #set( CMAKE_CXX_COMPILER "clang++" )
+# debug 
+set( CMAKE_BUILD_TYPE "Debug" )
+set( CMAKE_CXX_FLAGS "-std=c++11 -march=native" )
+add_definitions( "-DDEBUG_VIZ" )
 
 # Release config
-set( CMAKE_BUILD_TYPE "Release" )
-set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3 " )
+# set( CMAKE_BUILD_TYPE "Release" )
+# set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3 " )
 
 # Set build flags, set ARM_ARCHITECTURE environment variable on Odroid
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -D_LINUX -D_REENTRANT -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unknown-pragmas")

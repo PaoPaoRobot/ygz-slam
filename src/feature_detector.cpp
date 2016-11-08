@@ -49,7 +49,7 @@ void FeatureDetector::Detect(Frame::Ptr frame)
     frame->_grid.clear();
     frame->_grid.resize( _grid_rows*_grid_cols );
 
-    Corners corners(_grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
+    Corners corners( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
     for(int L=0; L<frame->_pyramid_level; ++L)
     {
         const int scale = (1<<L);
@@ -75,8 +75,14 @@ void FeatureDetector::Detect(Frame::Ptr frame)
         for(auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it)
         {
             fast::fast_xy& xy = fast_corners.at(*it);
-            const int k = static_cast<int>((xy.y*scale)/_cell_size)*_grid_cols
-                          + static_cast<int>((xy.x*scale)/_cell_size);
+            const int gy = static_cast<int>((xy.y*scale)/_cell_size);
+            const int gx = static_cast<int>((xy.x*scale)/_cell_size);
+            const int k = gy*_grid_cols+gx;
+            if ( k > frame->_grid.size() ) {
+                LOG(ERROR) << k <<" is larger than grid size "<<frame->_grid.size()<<endl;
+                continue;
+            }
+                
             if( !frame->_grid[k].empty() )  // already have features here
                 continue;
             const float score = this->ShiTomasiScore( frame->_pyramid[L], xy.x, xy.y );
