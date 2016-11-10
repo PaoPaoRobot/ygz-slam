@@ -23,6 +23,8 @@ public:
         const Mat& depth = Mat()
     ); 
     
+    static Frame::Ptr RegisterFrame( Frame::Ptr frame );
+    
     static MapPoint::Ptr CreateMapPoint(); 
     
     static inline Frame::Ptr GetFrame( const unsigned long& id ) {

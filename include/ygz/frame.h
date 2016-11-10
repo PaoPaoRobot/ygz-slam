@@ -31,6 +31,19 @@ public:
     // create the image pyramid, etc 
     void InitFrame();
     
+    // return the camera position in the world 
+    inline Vector3d Pos() const { return _T_c_w.inverse().translation(); }
+    
+    // check whether a point is in frame 
+    inline bool InFrame( const Vector2d& pixel, const int& boarder = 10 ) const {
+        return pixel[0] >= boarder && pixel[0] < _color.cols - boarder 
+            && pixel[1] >= boarder && pixel[1] < _color.rows - boarder;
+    }
+    
+    inline void AddMapPoint( const unsigned long& id ) { _map_point.push_back(id); }
+    
+public:
+    // data 
     unsigned long _id   =0; 
     double  _timestamp  =0; 
     SE3     _T_c_w      =SE3(); 

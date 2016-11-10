@@ -77,7 +77,7 @@ void FeatureDetector::Detect(Frame::Ptr frame)
             fast::fast_xy& xy = fast_corners.at(*it);
             const int gy = static_cast<int>((xy.y*scale)/_cell_size);
             const int gx = static_cast<int>((xy.x*scale)/_cell_size);
-            const int k = gy*_grid_cols+gx;
+            const size_t k = gy*_grid_cols+gx;
             if ( k > frame->_grid.size() ) {
                 LOG(ERROR) << k <<" is larger than grid size "<<frame->_grid.size()<<endl;
                 continue;
@@ -95,7 +95,7 @@ void FeatureDetector::Detect(Frame::Ptr frame)
         
         // MapPoint::Ptr point = Memory::CreateMapPoint();
         MapPoint point; 
-        point._pos_tracked = Vector2d( c.x, c.y );
+        point._pos_pixel = Vector2d( c.x, c.y );
         point._pyramid_level = c.level; 
         
         frame->_map_point_candidates.push_back( point );

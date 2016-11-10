@@ -55,7 +55,7 @@ void VisualOdometry::MonocularInitialization()
 
         // _tracker->GetTrackedPointsNormalPlane( pt1, pt2 );
         _tracker->GetTrackedPixel( pt1, pt2 );
-        bool init_success = _init.TryInitialize( pt1, pt2, _curr_frame, T12, pts_triangulated );
+        bool init_success = _init.TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
             _status = VO_GOOD;

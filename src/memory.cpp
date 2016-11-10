@@ -31,8 +31,29 @@ Frame::Ptr Memory::CreateNewFrame(
     return pf;
 }
 
+Frame::Ptr Memory::RegisterFrame(Frame::Ptr frame)
+{
+    frame->_id = _id_frame; 
+    _id_frame++;
+    _frames[ frame->_id ] = frame; 
+    return frame; 
+}
+
+
+MapPoint::Ptr Memory::CreateMapPoint()
+{
+    MapPoint::Ptr pm ( new MapPoint );
+    pm->_id = _id_points;
+    _id_points++;
+    _points[ pm->_id ] = pm;
+    return pm;
+}
+
 shared_ptr<Memory> Memory::_mem(new Memory) ;
 unsigned long Memory::_id_frame =0;
 unsigned long Memory::_id_points =0; 
+
+unordered_map<unsigned long, Frame::Ptr> Memory::_frames; 
+unordered_map<unsigned long, MapPoint::Ptr> Memory::_points;
 
 }

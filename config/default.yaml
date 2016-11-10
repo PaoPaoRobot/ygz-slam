@@ -30,7 +30,7 @@ camera.cy: 255.3
 frame.pyramid: 3
 
 init.min_features: 100
-init.min_disparity: 40
+init.min_disparity: 60
 init.min_inliers: 40
 
 feature.cell: 20

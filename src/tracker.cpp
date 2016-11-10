@@ -28,7 +28,7 @@ void Tracker::SetReference(Frame::Ptr ref)
     
     // set the tracked pts in ref 
     for ( MapPoint p: _ref->_map_point_candidates ) {
-        _px_ref.push_back( cv::Point2f(p._pos_tracked[0], p._pos_tracked[1]) );
+        _px_ref.push_back( cv::Point2f(p._pos_pixel[0], p._pos_pixel[1]) );
     }
     
     _px_curr = _px_ref;

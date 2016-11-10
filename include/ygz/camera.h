@@ -21,7 +21,7 @@ public:
         _p2 = Config::get<float>("camera.p2");
         
         _f = (_fx+_fy)/2;
-        _mat = ( cv::Mat_<float>(3,3) <<  _fx, 0, _cx, 0, _fy, _cy, 0, 0, 1 );
+        _mat = ( cv::Mat_<double>(3,3) <<  _fx, 0, _cx, 0, _fy, _cy, 0, 0, 1 );
     }
 
     inline Eigen::Matrix3f GetCameraMatrix() const {
