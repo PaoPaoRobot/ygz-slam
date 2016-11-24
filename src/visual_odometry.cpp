@@ -1,11 +1,11 @@
-#include "ygz/visual_odometry.h"
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include "ygz/visual_odometry.h"
+#include "ygz/optimizer.h"
+#include "ygz/memory.h"
+
 namespace ygz {
-
-
-
 void VisualOdometry::addFrame(const Frame::Ptr& frame)
 {
     if ( _status == VO_NOT_READY ) {
@@ -58,9 +58,13 @@ void VisualOdometry::MonocularInitialization()
         bool init_success = _init.TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
+            setKeyframe( _ref_frame );
+            setKeyframe( _curr_frame );
+            
             // two view BA to minimize the reprojection error 
+            opti::TwoViewBA( _ref_frame->_id, _curr_frame->_id );
             _status = VO_GOOD;
-
+            
 #ifdef DEBUG_VIZ
             // plot the inliers
             Mat img_show;
@@ -101,6 +105,12 @@ void VisualOdometry::MonocularInitialization()
     }
 
     // check if we can do initialization
+}
+
+void VisualOdometry::setKeyframe ( Frame::Ptr frame )
+{
+    frame->_is_keyframe = true; 
+    Memory::RegisterFrame( frame );
 }
 
 

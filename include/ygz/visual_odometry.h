@@ -7,7 +7,6 @@
 
 namespace ygz {
 
-class Frame;
 class System;
     
 class VisualOdometry {
@@ -30,6 +29,8 @@ public:
     void plotFrame() const {
         _tracker->PlotTrackedPoints();
     }
+    
+    void setKeyframe( Frame::Ptr frame ); 
     
 protected:
     void MonocularInitialization();

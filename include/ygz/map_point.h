@@ -16,7 +16,7 @@ public:
     int             _pyramid_level =0; 
     unsigned long   _first_observed =0; 
     Vector3d        _pos_world =Vector3d(0,0,0); 
-    map<unsigned long, size_t> _obs;   // observations, first=the frame, second=feature index
+    map<unsigned long, Vector2d> _obs;   // observations, first=frame ID, second=pixel coordinate 
     bool            _bad =false; 
 }; 
 }

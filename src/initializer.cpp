@@ -86,6 +86,7 @@ bool Initializer::TryInitialize(
         
         // add feature into both ref and curr frame 
         SE3 T_w_c = _frame->_T_c_w.inverse(); 
+        
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i], 10) && features3d_curr[i][2]>0 ) {
@@ -99,10 +100,10 @@ bool Initializer::TryInitialize(
                 map_point->_first_observed = ref->_id;
                 
                 ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = ref->_map_point.size()-1;
+                map_point->_obs[ ref->_id ] = _px1[i];
                 
                 curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = curr->_map_point.size()-1;
+                map_point->_obs[ curr->_id ] = _px2[i];
             }
         }
         return true; 
@@ -129,10 +130,10 @@ bool Initializer::TryInitialize(
                 map_point->_first_observed = ref->_id;
                 
                 ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = ref->_map_point.size()-1;
+                map_point->_obs[ ref->_id ] = _px1[i];
                 
                 curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = curr->_map_point.size()-1;
+                map_point->_obs[ curr->_id ] = _px2[i];
             }
         }
         return true; 
