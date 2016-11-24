@@ -48,6 +48,13 @@ include_directories( ${Boost_INCLUDE_DIRS} )
 # fast 
 find_package( fast REQUIRED )
 include_directories( ${fast_INCLUDE_DIRS} )
+# g2o 
+find_package( G2O REQUIRED )
+include_directories( ${G2O_INCLUDE_DIRS} )
+# csparse, needed in g2o 
+find_package( CSparse REQUIRED )
+include_directories( ${CSPARSE_INCLUDE_DIR} )
+
 
 
 # TODO: add gtsam and other libs you will use
@@ -58,6 +65,9 @@ set( THIRD_PARTY_LIBS
     ${GLOG_LIBRARY}
     ${Boost_LIBRARIES}
     ${fast_LIBRARIES}
+    
+    # g2o has a group of mess things 
+    g2o_core g2o_stuff g2o_csparse_extension
 )
 
 ############### executable ######################

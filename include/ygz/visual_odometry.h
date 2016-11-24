@@ -35,15 +35,14 @@ protected:
     void MonocularInitialization();
     
 protected:
-    Status _status =VO_NOT_READY; 
-    Status _last_status;
+    Status _status =VO_NOT_READY;       // current status 
+    Status _last_status;                // last status 
     
     Frame::Ptr  _curr_frame=nullptr;    // current 
     Frame::Ptr  _ref_frame=nullptr;     // reference 
 
-    System* _system; 
+    System* _system;                    // point to full system 
     unique_ptr<Tracker>  _tracker;      // tracker, most LK flow
-    
     Initializer _init;                  // initializer  
 };
 }

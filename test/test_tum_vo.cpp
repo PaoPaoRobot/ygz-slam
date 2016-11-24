@@ -8,6 +8,11 @@ using namespace std;
 using namespace ygz;
 using namespace cv;
 
+
+/*****************************************
+ * 测试tum上的VO程序 
+ *****************************************/
+
 int main( int argc, char** argv ) 
 {
     if ( argc!= 2 ) {

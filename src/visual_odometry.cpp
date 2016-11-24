@@ -58,6 +58,7 @@ void VisualOdometry::MonocularInitialization()
         bool init_success = _init.TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
+            // two view BA to minimize the reprojection error 
             _status = VO_GOOD;
 
 #ifdef DEBUG_VIZ

@@ -7,6 +7,8 @@
 #include <Eigen/Geometry>
 using Eigen::Vector2d;
 using Eigen::Vector3d;
+// other things I need in optimiztion 
+typedef Eigen::Matrix<double, 6, 1> Vector6d; 
 
 // for Sophus
 #include <sophus/se3.h>
@@ -37,4 +39,9 @@ using cv::Mat;
 #include <thread>
 
 using namespace std; 
+
+// g2o 
+#include <g2o/core/base_edge.h>
+#include <g2o/core/base_vertex.h>
+
 #endif

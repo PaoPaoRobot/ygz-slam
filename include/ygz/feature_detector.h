@@ -27,17 +27,19 @@
 #ifndef FEATUREDETECTOR_H_
 #define FEATUREDETECTOR_H_
 
-namespace ygz {
-struct Corner
+namespace ygz
 {
-  int x;        //!< x-coordinate of corner in the image.
-  int y;        //!< y-coordinate of corner in the image.
-  int level;    //!< pyramid level of the corner.
-  float score;  //!< shi-tomasi score of the corner.
-  float angle;  //!< for gradient-features: dominant gradient angle.
-  Corner(int x, int y, float score, int level, float angle) :
-    x(x), y(y), level(level), score(score), angle(angle)
-  {}
+    
+// 角点，在提取FAST中用到
+struct Corner {
+    int x;        //!< x-coordinate of corner in the image.
+    int y;        //!< y-coordinate of corner in the image.
+    int level;    //!< pyramid level of the corner.
+    float score;  //!< shi-tomasi score of the corner.
+    float angle;  //!< for gradient-features: dominant gradient angle.
+    Corner ( int x, int y, float score, int level, float angle ) :
+        x ( x ), y ( y ), level ( level ), score ( score ), angle ( angle )
+    {}
 };
 
 typedef vector<Corner> Corners;
@@ -46,19 +48,19 @@ class FeatureDetector
 {
 public:
     FeatureDetector();
-    
-    void Detect( Frame::Ptr frame );
-    
+
+    void Detect ( Frame::Ptr frame );
+
 protected:
-    float ShiTomasiScore(const Mat& img, int u, int v);
-    
+    float ShiTomasiScore ( const Mat& img, int u, int v );
+
 protected:
-    // params 
+    // params
     int _image_width=640, _image_height=480;
     int _cell_size;
     int _grid_rows=0, _grid_cols=0;
     double _detection_threshold =20.0;
-    
+
 };
 }
 
