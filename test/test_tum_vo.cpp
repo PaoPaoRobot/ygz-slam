@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "ygz/visual_odometry.h"
+#include "ygz/viewer.h"
 
 using namespace std;
 using namespace ygz;
@@ -39,14 +40,16 @@ int main( int argc, char** argv )
     PinholeCamera::Ptr cam( new PinholeCamera ); 
     Frame::SetCamera( cam );
     VisualOdometry vo(nullptr); 
+    Viewer viewer;
     
     for ( size_t i=0; i<50; i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         Frame::Ptr pf( new Frame );
         pf->_color = color; 
         pf->InitFrame();
-        vo.addFrame( pf );
-        vo.plotFrame();
+        vo.AddFrame( pf );
+        vo.PlotFrame();
+        viewer.Draw();
     }
     
     return 0;

@@ -6,9 +6,10 @@
 #include "ygz/memory.h"
 
 namespace ygz {
-void VisualOdometry::addFrame(const Frame::Ptr& frame)
+void VisualOdometry::AddFrame(const Frame::Ptr& frame)
 {
     if ( _status == VO_NOT_READY ) {
+        _ref_frame = frame;
         _status = VO_INITING;
     }
 
@@ -24,6 +25,9 @@ void VisualOdometry::addFrame(const Frame::Ptr& frame)
         // initialized, do tracking
         if ( _status == VO_GOOD ) {
             // track ref or velocity
+            TrackRefFrame();
+            
+            
         } else {
             // not good, relocalize
             // TODO: relocalization
@@ -58,12 +62,23 @@ void VisualOdometry::MonocularInitialization()
         bool init_success = _init.TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
-            setKeyframe( _ref_frame );
-            setKeyframe( _curr_frame );
+            SetKeyframe( _ref_frame );
+            SetKeyframe( _curr_frame );
+            
+            /** * debug only 
+            // check the covisibility 
+            for ( unsigned long map_point_id : _ref_frame->_map_point ) {
+                MapPoint::Ptr p = Memory::GetMapPoint( map_point_id );
+                p->PrintInfo();
+            }
+            */ 
             
             // two view BA to minimize the reprojection error 
-            opti::TwoViewBA( _ref_frame->_id, _curr_frame->_id );
+            // use g2o or ceres or what you want 
+            // opti::TwoViewBAG2O( _ref_frame->_id, _curr_frame->_id );
+            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id );
             _status = VO_GOOD;
+            _ref_frame = _curr_frame;
             
 #ifdef DEBUG_VIZ
             // plot the inliers
@@ -97,20 +112,23 @@ void VisualOdometry::MonocularInitialization()
         } else {
             // init failed, still tracking
         }
-
     } else {
         // lost, reset the tracker
         LOG(WARNING) << "Tracker has lost, resetting it to initialize " << endl;
         _tracker->SetReference( _curr_frame );
     }
-
-    // check if we can do initialization
 }
 
-void VisualOdometry::setKeyframe ( Frame::Ptr frame )
+void VisualOdometry::SetKeyframe ( Frame::Ptr frame )
 {
     frame->_is_keyframe = true; 
-    Memory::RegisterFrame( frame );
+    Memory::RegisterFrame( frame, true );
+}
+
+void VisualOdometry::TrackRefFrame()
+{
+    opti::SparseImgAlign align;
+    align.SparseImageAlignmentCeres( _ref_frame, _curr_frame, 0 );
 }
 
 

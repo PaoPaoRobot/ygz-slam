@@ -28,7 +28,9 @@ void Tracker::SetReference(Frame::Ptr ref)
     
     // set the tracked pts in ref 
     for ( MapPoint p: _ref->_map_point_candidates ) {
-        _px_ref.push_back( cv::Point2f(p._pos_pixel[0], p._pos_pixel[1]) );
+        // _px_ref.push_back( cv::Point2f(p._pos_pixel[0], p._pos_pixel[1]) );
+        Vector2d px = p._obs.begin()->second;
+        _px_ref.push_back( cv::Point2f(px[0], px[1]) );
     }
     
     _px_curr = _px_ref;
@@ -123,7 +125,7 @@ void Tracker::PlotTrackedPoints() const
         cv::circle( img_show, p, 5, cv::Scalar(0,250,0), 2 );
     }
     cv::imshow( "tracked points", img_show );
-    cv::waitKey(0);
+    cv::waitKey(1);
 }
 
 float Tracker::MeanDisparity() const

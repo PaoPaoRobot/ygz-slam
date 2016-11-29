@@ -6,7 +6,10 @@
 
 namespace ygz {
     
+class Viewer;
+    
 class Memory {
+    friend Viewer;
 public:
     ~Memory() { 
         if ( _mem != nullptr )
@@ -23,7 +26,9 @@ public:
         const Mat& depth = Mat()
     ); 
     
-    static Frame::Ptr RegisterFrame( Frame::Ptr frame );
+    // register a frame into memory, assign an ID with it
+    // if already registered, you can choose whether to overwrite the exist one 
+    static Frame::Ptr RegisterFrame( Frame::Ptr& frame, bool overwrite=false );
     
     static MapPoint::Ptr CreateMapPoint(); 
     

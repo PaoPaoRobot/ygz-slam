@@ -31,12 +31,27 @@ Frame::Ptr Memory::CreateNewFrame(
     return pf;
 }
 
-Frame::Ptr Memory::RegisterFrame(Frame::Ptr frame)
+Frame::Ptr Memory::RegisterFrame(Frame::Ptr& frame, bool overwrite)
 {
-    frame->_id = _id_frame; 
-    _id_frame++;
-    _frames[ frame->_id ] = frame; 
-    return frame; 
+    // check if this frame has already registered 
+    if ( _frames.find(frame->_id) != _frames.end() ) {
+        // already registered 
+        if ( overwrite ) {
+            _frames[ frame->_id ] = frame; 
+            return frame; 
+        } else {
+            frame->_id = _id_frame; 
+            _frames[ frame->_id ] = frame; 
+            _id_frame++;
+            return frame; 
+        }
+    } else {
+        // set its id 
+        frame->_id = _id_frame; 
+        _frames[ frame->_id ] = frame; 
+        _id_frame++;
+        return frame; 
+    }
 }
 
 

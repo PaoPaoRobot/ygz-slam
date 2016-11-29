@@ -3,6 +3,7 @@
 #include "ygz/initializer.h"
 #include "ygz/config.h"
 #include "ygz/memory.h"
+#include "ygz/utils.h"
 
 namespace ygz {
 
@@ -16,7 +17,7 @@ Initializer::Initializer()
 bool Initializer::TryInitialize(
     const vector< Vector2d >& px1,
     const vector< Vector2d >& px2,
-    const Frame::Ptr& ref,
+    Frame::Ptr& ref,
     Frame::Ptr curr
 )
 {
@@ -53,7 +54,7 @@ bool Initializer::TryInitialize(
                     Vector3d( t.at<double>(0,0), t.at<double>(1,0), t.at<double>(2,0) )
                 );
 
-        LOG(INFO) << "T21 from E = \n" << _T21.matrix() << endl;
+        LOG(INFO) << "T21 from E = \n" << T21_E.matrix() << endl;
     }
     
     if (retH == true ) {
@@ -63,7 +64,7 @@ bool Initializer::TryInitialize(
             // doesnot degenerate
             FindBestDecomposition( decompose );
             T21_H = decompose[0].T;
-            LOG(INFO) << "T21 from H = \n" << _T21.matrix() << endl;
+            LOG(INFO) << "T21 from H = \n" << T21_H.matrix() << endl;
         } else {
             retH = false;
         }
@@ -87,23 +88,28 @@ bool Initializer::TryInitialize(
         // add feature into both ref and curr frame 
         SE3 T_w_c = _frame->_T_c_w.inverse(); 
         
+        // register both the ref and curr 
+        Memory::RegisterFrame( ref );
+        Memory::RegisterFrame( curr );
+        
+        LOG(INFO)<<"ref id " << ref->_id << ", "<< "curr id " << curr->_id << endl;
+        
+        
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i], 10) && features3d_curr[i][2]>0 ) {
                 Vector3d pos = T_w_c * ( features3d_curr[i]*1.0/scale );
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
-                map_point->_pos_pixel = px2[i];
                 map_point->_pos_world = pos;
                 map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
-                map_point->_first_observed = ref->_id;
                 
                 ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = _px1[i];
+                map_point->_obs[ ref->_id ] = utils::Cv2Eigen( _px1[i] );
                 
                 curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = _px2[i];
+                map_point->_obs[ curr->_id ] = utils::Cv2Eigen( _px2[i] );
             }
         }
         return true; 
@@ -123,17 +129,15 @@ bool Initializer::TryInitialize(
                 Vector3d pos = T_w_c * ( features3d_curr[i]*1.0/scale );
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
-                map_point->_pos_pixel = px2[i];
                 map_point->_pos_world = pos;
                 map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
-                map_point->_first_observed = ref->_id;
                 
                 ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = _px1[i];
+                map_point->_obs[ ref->_id ] = utils::Cv2Eigen(_px1[i]);
                 
                 curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = _px2[i];
+                map_point->_obs[ curr->_id ] = utils::Cv2Eigen(_px2[i]);
             }
         }
         return true; 

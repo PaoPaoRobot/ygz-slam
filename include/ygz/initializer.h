@@ -33,7 +33,7 @@ public:
     bool TryInitialize(
         const vector<Vector2d>& px1,
         const vector<Vector2d>& px2,
-        const Frame::Ptr& ref,
+        Frame::Ptr& ref,
         Frame::Ptr curr
     );
 

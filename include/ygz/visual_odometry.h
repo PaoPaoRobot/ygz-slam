@@ -24,15 +24,22 @@ public:
         _system = system; 
     }
     
-    void addFrame( const Frame::Ptr& frame );
+    // 新增一个帧
+    void AddFrame( const Frame::Ptr& frame );
     
-    void plotFrame() const {
+    // 画出跟踪的地图点
+    void PlotFrame() const {
         _tracker->PlotTrackedPoints();
     }
     
-    void setKeyframe( Frame::Ptr frame ); 
+    // set the input frame as a key-frame 
+    void SetKeyframe( Frame::Ptr frame ); 
+    
+    // 跟踪最近的关键帧
+    void TrackRefFrame();
     
 protected:
+    // 单目初始化
     void MonocularInitialization();
     
 protected:

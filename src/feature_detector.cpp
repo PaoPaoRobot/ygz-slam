@@ -95,7 +95,7 @@ void FeatureDetector::Detect(Frame::Ptr frame)
         
         // MapPoint::Ptr point = Memory::CreateMapPoint();
         MapPoint point; 
-        point._pos_pixel = Vector2d( c.x, c.y );
+        point._obs[frame->_id] = Vector2d( c.x, c.y );
         point._pyramid_level = c.level; 
         
         frame->_map_point_candidates.push_back( point );

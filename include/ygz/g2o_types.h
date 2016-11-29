@@ -9,21 +9,22 @@ namespace ygz {
     
 // SE3 pose defined by Sophus::SE3, easy to use 
 // pose is define as T_c_w, use left multiply 
-class VertexSE3Sophus : public g2o::BaseVertex<6, SE3> {
+class VertexSE3Sophus : public g2o::BaseVertex<6, Vector6d> {
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     VertexSE3Sophus() {} 
     virtual bool read( std::istream& is ) override { return false; }
     virtual bool write( std::ostream& os ) const override { return false; }
     virtual void setToOriginImpl() override {
-        _estimate = SE3();
+        for ( int i=0; i<6; i++ ) 
+            _estimate[i] = 0;
     }
     
     // left multiply
     virtual void oplusImpl( const double* update ) {
-        Eigen::Map<const Vector6d> up(update);
-        _estimate = SE3::exp(up) * _estimate;
+        Vector6d v;
+        v << update[0], update[1], update[2], update[3], update[4], update[5]; 
+        _estimate = (SE3::exp(v) * SE3::exp(_estimate)).log();
     }
 };
 
@@ -33,7 +34,7 @@ class EdgeSophusSE3ProjectXYZ
 : public g2o::BaseBinaryEdge <2, Vector2d, 
     g2o::VertexSBAPointXYZ, VertexSE3Sophus> {
 public: 
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     virtual bool read( std::istream& is ) override { return false; }
     virtual bool write( std::ostream& os ) const override { return false; }
     
@@ -41,7 +42,7 @@ public:
     void computeError() override {
         const VertexSE3Sophus* v1 = static_cast<const VertexSE3Sophus*>(_vertices[1]);
         const g2o::VertexSBAPointXYZ* v2 = static_cast<const g2o::VertexSBAPointXYZ*>(_vertices[0]);
-        Vector3d pt = v1->estimate()*v2->estimate();
+        Vector3d pt = SE3::exp(v1->estimate())*v2->estimate();
         Vector2d ptn( pt[0]/pt[2], pt[1]/pt[2] );
         _error = _measurement - ptn;
     }
@@ -49,7 +50,7 @@ public:
     virtual void linearizeOplus() override {
         const VertexSE3Sophus* v1 = static_cast<const VertexSE3Sophus*>(_vertices[1]);
         const g2o::VertexSBAPointXYZ* v2 = static_cast<const g2o::VertexSBAPointXYZ*>(_vertices[0]);
-        Vector3d pt = v1->estimate()*v2->estimate();
+        Vector3d pt = SE3::exp(v1->estimate())*v2->estimate();
         
         double x = pt[0];
         double y = pt[1];
@@ -66,7 +67,7 @@ public:
         tmp(1,1) = z_inv;
         tmp(1,2) = -y*z_inv_2;
         
-        _jacobianOplusXi = - tmp*v1->estimate().rotation_matrix();
+        _jacobianOplusXi = - tmp * SE3::exp(v1->estimate()).rotation_matrix();
         
         _jacobianOplusXj(0,0) = -z_inv;              // -1/z
         _jacobianOplusXj(0,1) = 0.0;                 // 0

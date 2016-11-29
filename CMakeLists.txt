@@ -6,7 +6,7 @@ set( CMAKE_CXX_COMPILER "g++" )
 #set( CMAKE_CXX_COMPILER "clang++" )
 # debug 
 set( CMAKE_BUILD_TYPE "Debug" )
-set( CMAKE_CXX_FLAGS "-std=c++11 -march=native" )
+set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -Wno-reorder" )
 add_definitions( "-DDEBUG_VIZ" )
 
 # Release config
@@ -54,6 +54,12 @@ include_directories( ${G2O_INCLUDE_DIRS} )
 # csparse, needed in g2o 
 find_package( CSparse REQUIRED )
 include_directories( ${CSPARSE_INCLUDE_DIR} )
+# ceres 
+find_package( Ceres REQUIRED )
+include_directories( ${CERES_INCLUDE_DIRS} )
+# pangolin 
+find_package( Pangolin REQUIRED )
+include_directories( ${Pangolin_INCLUDE_DIRS} )
 
 
 
@@ -67,7 +73,10 @@ set( THIRD_PARTY_LIBS
     ${fast_LIBRARIES}
     
     # g2o has a group of mess things 
-    g2o_core g2o_stuff g2o_csparse_extension
+    g2o_core g2o_stuff g2o_csparse_extension g2o_types_sba g2o_solver_csparse 
+    ${CSPARSE_LIBRARY}
+    ${CERES_LIBRARIES}
+    ${Pangolin_LIBRARIES}
 )
 
 ############### executable ######################

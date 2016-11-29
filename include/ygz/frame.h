@@ -58,7 +58,7 @@ public:
     Mat     _depth;     // if we have 
     
     // pyramid 
-    static int _pyramid_level; 
+    static int _pyramid_level;  // pyramid 越大，图像越粗糙，
     vector<Mat>  _pyramid;      // gray image pyramid, it must be CV_8U
     
     // camera 
@@ -69,6 +69,7 @@ public:
     
 protected:
     // inner functions 
+    // build pyramid 是从fine到coarse的过程 
     void CreateImagePyramid();
     
 };

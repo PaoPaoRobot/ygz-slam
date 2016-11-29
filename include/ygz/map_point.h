@@ -11,13 +11,21 @@ public:
     typedef shared_ptr<MapPoint> Ptr; 
     MapPoint()  {}
     unsigned long   _id =0; 
-    Vector2d        _pos_pixel = Vector2d(0,0);
     Vector3d        _norm = Vector3d(0,0,0);  // normal 
     int             _pyramid_level =0; 
-    unsigned long   _first_observed =0; 
     Vector3d        _pos_world =Vector3d(0,0,0); 
     map<unsigned long, Vector2d> _obs;   // observations, first=frame ID, second=pixel coordinate 
     bool            _bad =false; 
+    
+public:
+    // for debug use
+    void PrintInfo() {
+        LOG(INFO) << "map point " << _id << "\nworld pos = " << _pos_world.transpose()<<endl;
+        LOG(INFO) << "observations: "<<endl;
+        for ( auto obs: _obs ) {
+            LOG(INFO) << "from frame "<<obs.first << ", pixel pos = " << obs.second.transpose() << endl;
+        }
+    }
 }; 
 }
 

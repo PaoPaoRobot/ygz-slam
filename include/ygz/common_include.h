@@ -44,4 +44,7 @@ using namespace std;
 #include <g2o/core/base_edge.h>
 #include <g2o/core/base_vertex.h>
 
+// ceres
+#include <ceres/ceres.h>
+
 #endif

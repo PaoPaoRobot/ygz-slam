@@ -1,4 +1,4 @@
-add_library( ygz-slam memory.cpp 
+add_library( ygz-slam 
     frame.cpp
     memory.cpp
     tracker.cpp
@@ -8,4 +8,5 @@ add_library( ygz-slam memory.cpp
     feature_detector.cpp
     initializer.cpp
     optimizer.cpp
+    viewer.cpp
 )
