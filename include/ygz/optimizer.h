@@ -40,6 +40,8 @@ public:
         const int& pyramid_level
     );
     
+    SE3 GetEstimatedT21() const {return _TCR;}
+    
 protected:
     void precomputeReferencePatches(); 
     

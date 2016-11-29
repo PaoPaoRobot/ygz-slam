@@ -228,7 +228,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
                     _frame2->_pyramid[_pyramid_level], 
                     _patterns_ref[index],
                     xyz_ref,
-                    _frame1->_camera
+                    _frame1->_camera,
+                    _scale
             ),
             // new ceres::HuberLoss(1), // TODO do I need Loss Function?
             nullptr, 

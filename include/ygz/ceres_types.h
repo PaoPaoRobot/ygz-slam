@@ -52,10 +52,10 @@ public:
         cv::Mat& curr_img, 
         PixelPattern& ref_pattern,
         Vector3d& pt_ref, 
-        PinholeCamera::Ptr cam
-    ) : _curr_img(curr_img), _pt_ref(pt_ref), _cam(cam), _ref_pattern(ref_pattern) {
-    }
-    
+        PinholeCamera::Ptr cam,
+        double scale
+    ) : _curr_img(curr_img), _pt_ref(pt_ref), _cam(cam), _ref_pattern(ref_pattern),_scale(scale) { }
+        
     // evaluate the residual and jacobian 
     // Eq: I_C ( T_CR*P_R ) - I_R ( P_R )
     virtual bool Evaluate( 
@@ -138,6 +138,7 @@ protected:
     PixelPattern& _ref_pattern;
     Vector3d _pt_ref;
     PinholeCamera::Ptr _cam =nullptr;
+    double _scale;
 };
 
 }
