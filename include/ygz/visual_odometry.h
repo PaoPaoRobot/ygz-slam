@@ -4,6 +4,7 @@
 #include "ygz/frame.h"
 #include "ygz/tracker.h"
 #include "ygz/initializer.h"
+#include "ygz/optimizer.h"
 
 namespace ygz {
 
@@ -21,7 +22,9 @@ public:
     
     VisualOdometry( System* system ) : _tracker(new Tracker)
     { 
+        int pyramid = Config::get<int>("frame.pyramid");
         _system = system; 
+        _align.resize( pyramid );
     }
     
     // 新增一个帧
@@ -35,8 +38,11 @@ public:
     // set the input frame as a key-frame 
     void SetKeyframe( Frame::Ptr frame ); 
     
-    // 跟踪最近的关键帧
-    void TrackRefFrame();
+    // 跟踪最近的帧
+    bool TrackRefFrame();
+    
+    // 跟踪局部地图
+    bool TrackLocalMap();
     
 protected:
     // 单目初始化
@@ -52,6 +58,9 @@ protected:
     System* _system;                    // point to full system 
     unique_ptr<Tracker>  _tracker;      // tracker, most LK flow
     Initializer _init;                  // initializer  
+    vector<opti::SparseImgAlign> _align;// sparse image alignment for each pyramid level 
+    
+    SE3 _TCR_estimated;                 // estimated transform from ref to current 
 };
 }
 

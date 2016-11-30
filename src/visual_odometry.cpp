@@ -22,10 +22,20 @@ void VisualOdometry::AddFrame(const Frame::Ptr& frame)
         if ( _status != VO_GOOD )
             return;
     } else {
+        bool OK = false;
         // initialized, do tracking
         if ( _status == VO_GOOD ) {
-            // track ref or velocity
-            TrackRefFrame();
+            // 跟踪参考帧，也就是上一个帧
+            OK = TrackRefFrame();
+            if ( OK ) {
+                OK = TrackLocalMap();  // compare the current frame with local map 
+            }
+            
+            if ( OK ) {
+                _status = VO_GOOD;      // 跟踪成功
+            } else {
+                _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
+            }
             
             
         } else {
@@ -123,13 +133,28 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame )
 {
     frame->_is_keyframe = true; 
     Memory::RegisterFrame( frame, true );
+    // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
+    
 }
 
-void VisualOdometry::TrackRefFrame()
+bool VisualOdometry::TrackRefFrame()
 {
-    opti::SparseImgAlign align;
-    align.SparseImageAlignmentCeres( _ref_frame, _curr_frame, 0 );
+    SE3 TCR = _TCR_estimated; 
+    for ( int level = _curr_frame->_pyramid.size()-1; level>=0; level -- ) {
+        _align[level].SetTCR(TCR);
+        _align[level].SparseImageAlignmentCeres( _ref_frame, _curr_frame, level );
+        TCR = _align[level].GetEstimatedT21();
+    }
+    
+    // TODO validate the result obtained by sparse image alignment 
+    
+    return true; 
 }
 
+bool VisualOdometry::TrackLocalMap() 
+{
+    return true;
+}
+    
 
 }

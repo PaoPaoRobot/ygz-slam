@@ -43,6 +43,11 @@ inline float GetBilateralInterp(
     )/255.0;
 }
 
+inline bool IsInside( const Vector2d& pixel, cv::Mat& img, int boarder=10 ) {
+    return pixel[0] >= boarder && pixel[0] < img.cols - boarder 
+        && pixel[1] >= boarder && pixel[1] < img.rows - boarder;
+}
+
 // 一些固定的雅可比
 // xyz 到 相机坐标 的雅可比，平移在前
 // 这里已经取了负号，不要再取一遍！

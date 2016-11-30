@@ -46,8 +46,8 @@ public:
     // data 
     unsigned long _id   =0; 
     double  _timestamp  =0; 
-    SE3     _T_c_w      =SE3();       // pose 
-    bool    _is_keyframe    =false; 
+    SE3     _T_c_w      =SE3();         // pose 
+    bool    _is_keyframe    =false;     // 标识是否是关键帧
     
     // NOTE: 正式的map point是要放到memory里的，而特征提取过程中的那些只能是candidate
     list<unsigned long> _map_point; // associated map point 

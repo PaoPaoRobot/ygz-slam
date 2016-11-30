@@ -54,7 +54,10 @@ public:
         Vector3d& pt_ref, 
         PinholeCamera::Ptr cam,
         double scale
-    ) : _curr_img(curr_img), _pt_ref(pt_ref), _cam(cam), _ref_pattern(ref_pattern),_scale(scale) { }
+    ) : _curr_img(curr_img), _pt_ref(pt_ref), _cam(cam), _ref_pattern(ref_pattern),_scale(scale)
+    { 
+        
+    }
         
     // evaluate the residual and jacobian 
     // Eq: I_C ( T_CR*P_R ) - I_R ( P_R )
@@ -66,41 +69,53 @@ public:
             Vector6d pose; 
             for ( size_t i=0; i<6; i++ )
                 pose[i] = parameters[0][i];
-            SE3 TCR = SE3::exp(pose);
+            
+            // 前三维是平移，后三维是李代数 so(3)，这样可以少算一个 J
+            SE3 TCR = SE3 (
+                SO3::exp( pose.tail<3>() ), 
+                pose.head<3>()
+            );
+            
             // LOG(INFO) << "TCR = "<<endl<<TCR.matrix()<<endl;
             Vector3d pt_curr = TCR*_pt_ref;
-            Vector2d px_curr = _cam->Camera2Pixel( pt_curr );
+            Vector2d px_curr = _cam->Camera2Pixel( pt_curr ) / _scale; // consider the pyramid 
             
             bool setJacobian = false;
             if ( jacobians && jacobians[0] ) 
                 setJacobian = true; 
+            bool visible = IsInside( px_curr, _curr_img );
             
             for ( int i=0; i<PATTERN_SIZE; i++ ) {
                 double u = px_curr[0] + PATTERN_DX[i];
                 double v = px_curr[1] + PATTERN_DY[i];
-                if ( u>0 && v>0 && u<_curr_img.cols && v<_curr_img.rows )
-                {
+                if ( visible ) {
                     residuals[i] = _ref_pattern.pattern[i] - utils::GetBilateralInterp(u,v,_curr_img);
-                    
-                    // LOG(INFO) << "ref pixel = "<<_ref_pattern.pattern[i] << ", curr pixel = "<< utils::GetBilateralInterp(u,v,_curr_img) << endl;
-                    
                     if ( setJacobian ) {
                         double du = (GetBilateralInterp(u+1, v, _curr_img) - GetBilateralInterp(u-1,v,_curr_img))/2;
                         double dv = (GetBilateralInterp(u, v+1, _curr_img) - GetBilateralInterp(u,v-1,_curr_img))/2;
-                        
                         Eigen::Vector2d duv(du,dv);
                         Eigen::Matrix<double,2,6> J_uv_xyz = utils::JacobXYZ2Pixel(pt_curr, _cam);
                         Vector6d J = duv.transpose()*J_uv_xyz;
-                        // LOG(INFO) << "J=" << J.transpose() << endl;
-                      
+                        // 这个雅可比形状很难说清，参见 http://ceres-solver.org/nnls_modeling.html#costfunction
+                        // 总之我是调了一阵才发现这个形状是对的
                         for ( int k=0; k<6; k++ )
-                            jacobians[0][k*PATTERN_SIZE+i] = J[k];
+                        {
+                            jacobians[0][i*6+k] = J[k]*_scale;
+                        }
                     }
+                } else { // 点在图像外面，不考虑它带来的误差
+                    residuals[i] = 0;
+                    if ( setJacobian ) {
+                        for ( int k=0; k<6; k++ )
+                        {
+                            jacobians[0][i*6+k] = 0;
+                        }
+                    }
+                    
                 }
             }
             return true;
         }
-    
     /*
     template<typename T>
     bool operator() (

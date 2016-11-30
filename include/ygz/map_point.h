@@ -16,6 +16,7 @@ public:
     Vector3d        _pos_world =Vector3d(0,0,0); 
     map<unsigned long, Vector2d> _obs;   // observations, first=frame ID, second=pixel coordinate 
     bool            _bad =false; 
+    cv::Mat         _descriptor;        // 描述子
     
 public:
     // for debug use

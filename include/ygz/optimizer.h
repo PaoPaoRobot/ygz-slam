@@ -28,10 +28,12 @@ void TwoViewBACeres (
 );
 
 // sparse image alignment, using ceres 
+// 这里模仿 DSO 的做法，不是计算4x4的patch，而是算一个8维的pattern
+// TODO 能否用SSE加速？
 class SparseImgAlign {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW ;
-    SparseImgAlign( SE3& TCR=SE3()) : _TCR(TCR) {}
+    SparseImgAlign( const SE3& TCR=SE3()) : _TCR(TCR) {}
     
     // 用稀疏直接法计算两个图像的运动，结果是T_21
     // 输入两个帧的指针以及金字塔的层数
@@ -40,9 +42,14 @@ public:
         const int& pyramid_level
     );
     
+    // 获得T21，即TCR的值
     SE3 GetEstimatedT21() const {return _TCR;}
     
+    // 预设一个TCR值
+    void SetTCR( const SE3& TCR ) { _TCR = TCR; }
+    
 protected:
+    // 计算参考帧中的块
     void precomputeReferencePatches(); 
     
 protected:
@@ -52,7 +59,7 @@ protected:
     int _pyramid_level;
     double _scale;
     vector<bool> _visible_pts;
-    Frame::Ptr _frame1, _frame2;
+    Frame::Ptr _frame1 =nullptr, _frame2=nullptr;
     SE3 _TCR;   // estimated pose 
 };
 

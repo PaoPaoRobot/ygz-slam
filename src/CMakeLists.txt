@@ -9,4 +9,5 @@ add_library( ygz-slam
     initializer.cpp
     optimizer.cpp
     viewer.cpp
+    ORB/ORBextractor.cpp 
 )

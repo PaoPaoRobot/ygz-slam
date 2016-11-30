@@ -8,6 +8,8 @@
 #include <g2o/solvers/eigen/linear_solver_eigen.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
+#include <opencv2/imgproc/imgproc.hpp>
+
 #include "ygz/common_include.h"
 #include "ygz/optimizer.h"
 #include "ygz/g2o_types.h"
@@ -188,6 +190,11 @@ void SparseImgAlign::SparseImageAlignmentCeres (
 {
     _pyramid_level = pyramid_level;      
     _scale = 1<<pyramid_level;
+    if ( frame1 == _frame1 ) {
+        // 没必要重新算 ref 的 patch
+        _have_ref_patch = true;
+    }
+    
     _frame1 = frame1;
     _frame2 = frame2;
     
@@ -245,7 +252,42 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     ceres::Solve( options, &problem, &summary );
     cout<< summary.FullReport() << endl;
     
+    
+    // show the estimated pose 
+    _TCR = SE3 (
+        SO3::exp( pose2.tail<3>() ), 
+        pose2.head<3>()
+    );
+    
+    cv::Mat ref_show, curr_show; 
+    cv::cvtColor( _frame1->_pyramid[pyramid_level], ref_show, CV_GRAY2BGR );
+    cv::cvtColor( _frame2->_pyramid[pyramid_level], curr_show, CV_GRAY2BGR );
+    
+#ifdef DEBUG_VIZ 
+    LOG(INFO) << "TCR = " << _TCR.matrix() << endl;
+    index=0;
+    for ( auto it=_frame1->_map_point.begin(); it!=_frame1->_map_point.end(); it++,index++ ) {
+        if (_visible_pts[index] == false) 
+            continue;
+        MapPoint::Ptr mappoint = Memory::GetMapPoint( *it );
+        // camera coordinates in ref 
+        Vector3d xyz_ref = _frame1->_camera->World2Camera( mappoint->_pos_world, _frame1->_T_c_w);
+        Vector2d px_ref = _frame1->_camera->Camera2Pixel( xyz_ref ) / _scale;
+        // in current 
+        Vector3d xyz_curr = _TCR * xyz_ref; 
+        Vector2d px_curr = _frame2->_camera->Camera2Pixel( xyz_curr ) / _scale;
+        
+        cv::circle( ref_show, cv::Point2d(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0));
+        cv::circle( curr_show, cv::Point2d(px_curr[0], px_curr[1]), 3, cv::Scalar(0,250,0));
+    }
+    
+    cv::imshow("ref", ref_show );
+    cv::imshow("curr", curr_show );
+    cv::waitKey();
+#endif 
+    
 }
+
 
 void SparseImgAlign::precomputeReferencePatches()
 {
@@ -261,7 +303,7 @@ void SparseImgAlign::precomputeReferencePatches()
         MapPoint::Ptr mappoint = Memory::GetMapPoint( *it );
         // camera coordinates in ref 
         Vector3d xyz_ref = _frame1->_camera->World2Camera( mappoint->_pos_world, _frame1->_T_c_w);
-        Vector2d pixel_ref = _frame1->_camera->Camera2Pixel(xyz_ref);
+        Vector2d pixel_ref = _frame1->_camera->Camera2Pixel(xyz_ref)/_scale;
         
         if ( !_frame1->InFrame( pixel_ref, 10) )  // 不在图像范围中
             continue;
