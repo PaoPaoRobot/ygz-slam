@@ -23,7 +23,26 @@ struct HomographyDecomposition
     int score;
 };
 
+// 初始化
+// 根据特征点跟踪的结果，分解E或H获得初始化结果
 class Initializer {
+    
+private:
+    // params
+    int _max_iterations;
+    float _min_disparity;
+    int _min_inliers;
+    float _pose_init_thresh;
+
+    // data
+    Frame::Ptr _frame;
+    vector<cv::Point2f> _px1, _px2;
+    vector<cv::Point2f> _pt1, _pt2;
+    Mat _H_estimated, _E_estimated;
+    SE3 _T21;
+
+    vector<bool> _inliers;
+    
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Initializer();
@@ -34,14 +53,16 @@ public:
         const vector<Vector2d>& px1,
         const vector<Vector2d>& px2,
         Frame::Ptr& ref,
-        Frame::Ptr curr
+        Frame::Ptr& curr
     );
 
+    // 测试是否可以初始化，期望平均视差大于阈值
     inline bool Ready( const float& mean_disparity ) {
         LOG(INFO) << "checking disparity "<<mean_disparity<<endl;
         return mean_disparity > _min_disparity;
     }
 
+    // 获得初始化的内点
     vector<bool> GetInliers() const {
         return _inliers;
     }
@@ -72,21 +93,6 @@ protected:
     double RescaleMap( vector<Vector3d>&pts );
     
 
-protected:
-    // params
-    int _max_iterations;
-    float _min_disparity;
-    int _min_inliers;
-    float _pose_init_thresh;
-
-    // data
-    Frame::Ptr _frame;
-    vector<cv::Point2f> _px1, _px2;
-    vector<cv::Point2f> _pt1, _pt2;
-    Mat _H_estimated, _E_estimated;
-    SE3 _T21;
-
-    vector<bool> _inliers;
 };
 
 // useful tools 

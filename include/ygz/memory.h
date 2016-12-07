@@ -7,9 +7,12 @@
 namespace ygz {
     
 class Viewer;
+class VisualOdometry;
     
 class Memory {
     friend Viewer;
+    friend VisualOdometry;
+    
 public:
     ~Memory() { 
         if ( _mem != nullptr )

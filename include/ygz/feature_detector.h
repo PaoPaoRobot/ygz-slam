@@ -27,6 +27,8 @@
 #ifndef FEATUREDETECTOR_H_
 #define FEATUREDETECTOR_H_
 
+#include "ygz/common_include.h"
+
 namespace ygz
 {
     
@@ -44,22 +46,28 @@ struct Corner {
 
 typedef vector<Corner> Corners;
 
+// 特征提取算法
+// 默认提取网格化的FAST特征
+// 在Tracker中使用
 class FeatureDetector
 {
+private:
+    // params
+    int _image_width=640, _image_height=480;    // 图像长宽，用以计算网格
+    int _cell_size;                             // 网格大小
+    int _grid_rows=0, _grid_cols=0;             // 网格矩阵的行和列
+    double _detection_threshold =20.0;          // 特征响应阈值
+    
 public:
     FeatureDetector();
-
+    
+    // 提取一个帧中的特征点，记录于frame::_map_point_candidates
     void Detect ( Frame::Ptr frame );
 
-protected:
-    float ShiTomasiScore ( const Mat& img, int u, int v );
+private:
+    // Shi-Tomasi 分数，这个分数越高则特征越优先
+    float ShiTomasiScore ( const Mat& img, const int& u, const int& v ) const ;
 
-protected:
-    // params
-    int _image_width=640, _image_height=480;
-    int _cell_size;
-    int _grid_rows=0, _grid_cols=0;
-    double _detection_threshold =20.0;
 
 };
 }

@@ -33,6 +33,8 @@
 
 
 namespace ygz {
+    
+// 构造：从Config中读取相关信息
 FeatureDetector::FeatureDetector()
 {
     _image_width = Config::get<int>("image.width");
@@ -43,11 +45,11 @@ FeatureDetector::FeatureDetector()
     _detection_threshold = Config::get<double>("feature.detection_threshold");
 }
 
+// 提取算法
 void FeatureDetector::Detect(Frame::Ptr frame)
 {
     // reset the feature grid
-    frame->_grid.clear();
-    frame->_grid.resize( _grid_rows*_grid_cols );
+    frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
 
     Corners corners( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
     for(int L=0; L<frame->_pyramid_level; ++L)
@@ -82,28 +84,27 @@ void FeatureDetector::Detect(Frame::Ptr frame)
                 LOG(ERROR) << k <<" is larger than grid size "<<frame->_grid.size()<<endl;
                 continue;
             }
-                
-            if( !frame->_grid[k].empty() )  // already have features here
+            
+            if( frame->_grid[k] == 1 )  // already have features here
                 continue;
             const float score = this->ShiTomasiScore( frame->_pyramid[L], xy.x, xy.y );
-            if(score > corners.at(k).score)
+            if(score > corners.at(k).score) {
                 corners[k] = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);
+                frame->_grid[k] = 1;
+            }
         }
     }
 
     for ( Corner& c: corners ) {
-        
-        // MapPoint::Ptr point = Memory::CreateMapPoint();
         MapPoint point; 
-        point._obs[frame->_id] = Vector2d( c.x, c.y );
+        point._obs[frame->_id] = Vector3d( c.x, c.y, 1 );
         point._pyramid_level = c.level; 
-        
         frame->_map_point_candidates.push_back( point );
     }
 
 }
 
-float FeatureDetector::ShiTomasiScore(const cv::Mat& img, int u, int v)
+float FeatureDetector::ShiTomasiScore(const cv::Mat& img, const int& u, const int& v) const
 {
     assert(img.type() == CV_8UC1);
 

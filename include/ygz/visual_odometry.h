@@ -5,12 +5,16 @@
 #include "ygz/tracker.h"
 #include "ygz/initializer.h"
 #include "ygz/optimizer.h"
+#include "ygz/ORB/ORBextractor.h"
+#include "ygz/local_mapping.h"
 
 namespace ygz {
 
 class System;
+class Memory;
     
 class VisualOdometry {
+    friend class Memory;
 public:
     enum Status { 
         VO_NOT_READY,
@@ -48,6 +52,9 @@ protected:
     // 单目初始化
     void MonocularInitialization();
     
+    // 根据优化后的位姿和地图点，对初始化的地图点计算投影位置
+    void ReprojectMapPointsInInitializaion(); 
+    
 protected:
     Status _status =VO_NOT_READY;       // current status 
     Status _last_status;                // last status 
@@ -59,6 +66,7 @@ protected:
     unique_ptr<Tracker>  _tracker;      // tracker, most LK flow
     Initializer _init;                  // initializer  
     vector<opti::SparseImgAlign> _align;// sparse image alignment for each pyramid level 
+    LocalMapping        _local_mapping; // 局部地图
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
 };

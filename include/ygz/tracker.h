@@ -6,17 +6,36 @@
 
 namespace ygz {
     
-
+// Tracker
+// 用来跟踪特征点
+// Tracker 一般只计算两个帧的匹配关系，它默认使用光流跟踪
+// 如果使用特征点的活，也可以匹配特征点的描述 
+    
 class Tracker {
 public:
+    // Tracker 的状态，只有一个帧时为 NOT READY，顺利跟踪则为 GOOD，否则为 LOST
     enum TrackerStatusType {
         TRACK_NOT_READY,
         TRACK_GOOD,
         TRACK_LOST
     };
     
+private:
+    Frame::Ptr _ref =nullptr;            // reference 
+    Frame::Ptr _curr =nullptr;           // current  
+    
+    list<cv::Point2f> _px_ref;            // pixels in ref, lost features will be deleted 
+    list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted 
+    
+    TrackerStatusType _status =TRACK_NOT_READY;
+    shared_ptr<FeatureDetector> _detector =nullptr; 
+    
+    // parameters 
+    int _min_features_initializing; 
+    
+public:
+    
     Tracker();
-    ~Tracker(); 
     
     // set the reference to track 
     void SetReference( Frame::Ptr ref );
@@ -49,18 +68,6 @@ public:
 protected:
     void TrackKLT( );
     
-protected:
-    Frame::Ptr _ref =nullptr;            // reference 
-    Frame::Ptr _curr =nullptr;           // current  
-    
-    list<cv::Point2f> _px_ref;            // pixels in ref 
-    list<cv::Point2f> _px_curr;           // pixels in curr 
-    TrackerStatusType _status =TRACK_NOT_READY;
-    
-    shared_ptr<FeatureDetector> _detector; 
-    
-    // parameters 
-    int _min_features_initializing; 
 };
 
 }

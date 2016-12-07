@@ -6,14 +6,20 @@
 
 namespace ygz {
     
+// Frame，帧
+// 帧是一种数据对象，所以本身使用Struct，成员都使用public
 struct Frame {
 public:
-    typedef shared_ptr<Frame> Ptr;
+    typedef shared_ptr<Frame> Ptr; // 通常传递Frame的指针来访问对象 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     
+    Frame() {}
+    
     // Frames should be created by memeory, otherwise their ID may not be valid 
-    Frame() {} 
-    Frame( const Frame& frame ) =delete;
+    Frame( const Frame& frame ) =delete; // Frame 由Memory管理，不允许复制
+    
+    // 构造函数，通常由Memroy建立，如果是临时对象，也可以由其他地方建立 
+    // 如果是由其他地方建立的，通过Memroy::RegisterFrame添加到Memory中，这样它的id会合法化
     Frame( 
         const double& timestamp, 
         const SE3& T_c_w, 
@@ -22,6 +28,8 @@ public:
         const Mat& depth = Mat()
     ) : _timestamp(timestamp), _T_c_w(T_c_w), _is_keyframe(is_keyframe), _color(color), 
     _depth( depth ) {} 
+    
+    Frame operator = ( const Frame& f2 ) =delete; // 不允许赋值
 
     // called by system when reading parameters 
     static void SetCamera( PinholeCamera::Ptr camera ) {
@@ -40,36 +48,46 @@ public:
             && pixel[1] >= boarder && pixel[1] < _color.rows - boarder;
     }
     
-    inline void AddMapPoint( const unsigned long& id ) { _map_point.push_back(id); }
-    
 public:
     // data 
+    // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧
     unsigned long _id   =0; 
+    // 时间戳，暂时不用，在加入与速度相关的计算之后才会用到
     double  _timestamp  =0; 
+    // 位姿，以T_C_W表示，C指Camera,W指World
     SE3     _T_c_w      =SE3();         // pose 
+    // 关键帧标志
     bool    _is_keyframe    =false;     // 标识是否是关键帧
     
-    // NOTE: 正式的map point是要放到memory里的，而特征提取过程中的那些只能是candidate
+    // 关联的地图点，以id标识。只有向系统注册后的地图点才会有 id 
     list<unsigned long> _map_point; // associated map point 
-    vector<MapPoint>    _map_point_candidates;  // candidates 
+    // 候选地图点，由特征提取算法给出
+    vector<MapPoint>    _map_point_candidates; 
     
-    // images 
+    // observed features
+    // NOTE observations 与_map_point对应，即每个 map point 在这个帧上的投影位置
+    // 对于关键帧，可以访问map point的_obs变量获取该位置，但对于非关键帧，由于memory中并没有记录非关键帧的信息，所以必须在这里访问
+    // 在做 sparse alignment 的时候，也必须在这里访问像素位置
+    // 这里的Vector3d，前两维为像素坐标，第三维是深度值
+    vector<Vector3d>    _observations;
+    
+    // 图像，原始的彩色图和深度图
     Mat     _color;     // if we have 
     Mat     _depth;     // if we have 
     
-    // pyramid 
-    static int _pyramid_level;  // pyramid 越大，图像越粗糙，
+    // 金字塔，越往上越小，默认缩放倍数是2，因为2可以用SSE优化...虽然目前还没有用SSE
+    int _pyramid_level;  // 层数，由config读取
     vector<Mat>  _pyramid;      // gray image pyramid, it must be CV_8U
     
-    // camera 
+    // camera, 静态对象，所有Frame共用一个 
     static PinholeCamera::Ptr   _camera;
     
-    // Grid 
-    vector< vector<int> > _grid;        // grid occupancy 
+    // 格子，可以用来提取关键点，有很多用途
+    vector<int> _grid;        // grid occupancy 
     
-protected:
+public:
     // inner functions 
-    // build pyramid 是从fine到coarse的过程 
+    // 建立金字塔
     void CreateImagePyramid();
     
 };

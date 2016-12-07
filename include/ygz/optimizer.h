@@ -50,7 +50,7 @@ public:
     
 protected:
     // 计算参考帧中的块
-    void precomputeReferencePatches(); 
+    void PrecomputeReferencePatches(); 
     
 protected:
     // data and parameters 
@@ -62,6 +62,10 @@ protected:
     Frame::Ptr _frame1 =nullptr, _frame2=nullptr;
     SE3 _TCR;   // estimated pose 
 };
+
+// pose estimation 
+// 给定当前帧与匹配到的地图点，优化它的位姿
+void FrameToMapBAPoseOnly( Frame::Ptr current, list<MatchPointCandidate>& candidates );
 
 }
 }

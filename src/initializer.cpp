@@ -18,11 +18,12 @@ bool Initializer::TryInitialize(
     const vector< Vector2d >& px1,
     const vector< Vector2d >& px2,
     Frame::Ptr& ref,
-    Frame::Ptr curr
+    Frame::Ptr& curr
 )
 {
     _frame = curr;
     // try essential and homography
+    // 计算 两个相机坐标系下的点
     for ( const Vector2d&v: px1 ) {
         _px1.push_back( cv::Point2f(v[0], v[1]) );
         Vector3d pt = ref->_camera->Pixel2Camera( v );
@@ -92,24 +93,23 @@ bool Initializer::TryInitialize(
         Memory::RegisterFrame( ref );
         Memory::RegisterFrame( curr );
         
-        LOG(INFO)<<"ref id " << ref->_id << ", "<< "curr id " << curr->_id << endl;
-        
-        
+        // set the map points 
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i], 10) && features3d_curr[i][2]>0 ) {
-                Vector3d pos = T_w_c * ( features3d_curr[i]*1.0/scale );
+                Vector3d pos = T_w_c * ( features3d_curr[i]/scale );
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
                 map_point->_pos_world = pos;
                 map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
                 
-                ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = utils::Cv2Eigen( _px1[i] );
+                // add the observations into frame 
+                ref->_map_point.push_back( map_point->_id );
+                map_point->_obs[ ref->_id ] = Vector3d( _px1[i].x, _px1[i].y, 1 );
                 
-                curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = utils::Cv2Eigen( _px2[i] );
+                curr->_map_point.push_back( map_point->_id );
+                map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
         return true; 
@@ -133,11 +133,12 @@ bool Initializer::TryInitialize(
                 map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
                 
-                ref->AddMapPoint( map_point->_id );
-                map_point->_obs[ ref->_id ] = utils::Cv2Eigen(_px1[i]);
+                // add the observations into frame 
+                ref->_map_point.push_back( map_point->_id );
+                map_point->_obs[ ref->_id ] = Vector3d( _px1[i].x, _px1[i].y, 1 );
                 
-                curr->AddMapPoint( map_point->_id );
-                map_point->_obs[ curr->_id ] = utils::Cv2Eigen(_px2[i]);
+                curr->_map_point.push_back( map_point->_id );
+                map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
         return true; 

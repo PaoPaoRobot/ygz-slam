@@ -10,7 +10,7 @@ void Memory::clean()
 
 Frame::Ptr Memory::CreateNewFrame()
 {
-    Frame::Ptr pf ( new Frame );
+    Frame::Ptr pf ( new Frame() );
     pf->_id = _id_frame; 
     _frames[pf->_id] = pf;
     _id_frame++;

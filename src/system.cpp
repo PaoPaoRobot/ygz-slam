@@ -63,9 +63,6 @@ bool System::Initialize( const string& config_file )
         return false;
     }
     
-    // initialize frame parameters 
-    Frame::_pyramid_level = Config::get<int>("frame.pyramid");
-        
     // initialize the system 
     if ( _sensor_type == MONOCULAR ) {
         PinholeCamera::Ptr camera (new PinholeCamera());

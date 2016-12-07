@@ -90,7 +90,7 @@ void TwoViewBAG2O (
         edge1->setVertex( 0, pt_xyz );
         edge1->setVertex( 1, v1 );
         
-        edge1->setMeasurement( frame1->_camera->Pixel2Camera2D( map_point->_obs[frameID1] ) );
+        edge1->setMeasurement( frame1->_camera->Pixel2Camera2D( map_point->_obs[frameID1].head<2>() ) );
         edge1->setInformation( Eigen::Matrix2d::Identity() );
         // robust kernel ? 
         optimizer.addEdge( edge1 );
@@ -99,7 +99,7 @@ void TwoViewBAG2O (
         EdgeSophusSE3ProjectXYZ* edge2 = new EdgeSophusSE3ProjectXYZ();
         edge2->setVertex( 0, pt_xyz );
         edge2->setVertex( 1, v2 );
-        edge2->setMeasurement( frame2->_camera->Pixel2Camera2D( map_point->_obs[frameID2] ) );
+        edge2->setMeasurement( frame2->_camera->Pixel2Camera2D( map_point->_obs[frameID2].head<2>() ) );
         edge2->setInformation( Eigen::Matrix2d::Identity() );
         // robust kernel ? 
         optimizer.addEdge( edge2 );
@@ -151,8 +151,7 @@ void TwoViewBACeres (
     for ( auto iter = frame1->_map_point.begin(); iter!= frame1->_map_point.end(); iter++ ) {
         MapPoint::Ptr map_point = Memory::GetMapPoint( *iter );
         for ( auto obs:map_point->_obs ) {
-            Vector2d px = frame1->_camera->Pixel2Camera2D( obs.second ); 
-            
+            Vector2d px = frame1->_camera->Pixel2Camera2D( obs.second.head<2>() ); 
             problem.AddResidualBlock(
                 new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
                     new CeresReprojectionError(px)
@@ -200,7 +199,7 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     
     cv::Mat& curr_img = _frame2->_pyramid[pyramid_level];
     if ( _have_ref_patch==false ) {
-        precomputeReferencePatches();
+        PrecomputeReferencePatches();
         LOG(INFO)<<"ref patterns: "<<_patterns_ref.size()<<endl;
     }
     
@@ -283,13 +282,13 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     
     cv::imshow("ref", ref_show );
     cv::imshow("curr", curr_show );
-    cv::waitKey();
+    cv::waitKey(1);
 #endif 
     
 }
 
 
-void SparseImgAlign::precomputeReferencePatches()
+void SparseImgAlign::PrecomputeReferencePatches()
 {
     LOG(INFO) << "frame 1 map points: "<<_frame1->_map_point.size()<<endl;
     _patterns_ref.clear();
@@ -319,6 +318,13 @@ void SparseImgAlign::precomputeReferencePatches()
     }
     _have_ref_patch = true; 
 }
+
+void FrameToMapBAPoseOnly ( Frame::Ptr current, list< MatchPointCandidate >& candidates )
+{
+
+}
+
+
 
 }
 }

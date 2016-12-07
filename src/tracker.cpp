@@ -8,33 +8,31 @@ _detector( new FeatureDetector )
 {
     // read the params from config 
     _min_features_initializing = Config::get<int>("init.min_features");
-    
 }
 
 void Tracker::SetReference(Frame::Ptr ref)
 {
     // detect the features in reference 
     _detector->Detect( ref );
+    LOG(INFO) << "Keypoints detected: "<< ref->_map_point_candidates.size() <<endl;
+    
     if ( ref->_map_point_candidates.size() < _min_features_initializing ) {
         LOG(WARNING) << "Init frame has few features, try moving in more textured environment. " << endl;
         _status = TRACK_NOT_READY;
         return; 
     }
-    // good, set this frame to track 
     
+    // good, set this frame to track 
     _ref = ref; 
     _curr = _ref;
     _status = TRACK_GOOD;
     
     // set the tracked pts in ref 
     for ( MapPoint p: _ref->_map_point_candidates ) {
-        // _px_ref.push_back( cv::Point2f(p._pos_pixel[0], p._pos_pixel[1]) );
-        Vector2d px = p._obs.begin()->second;
+        Vector2d px = p._obs.begin()->second.head<2>();
         _px_ref.push_back( cv::Point2f(px[0], px[1]) );
     }
-    
     _px_curr = _px_ref;
-    LOG(INFO) << "Keypoints detected: "<<_px_ref.size()<<endl;
 }
 
 void Tracker::Track(Frame::Ptr curr)
@@ -106,11 +104,6 @@ void Tracker::TrackKLT()
     LOG(INFO) << "pts tracked in LK: " << _px_curr.size() << endl;
 }
 
-
-Tracker::~Tracker()
-{
-
-}
 
 void Tracker::PlotTrackedPoints() const
 {

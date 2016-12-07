@@ -35,3 +35,5 @@ init.min_inliers: 40
 
 feature.cell: 20
 feature.detection_threshold: 20.0
+
+LocalMapping.local_keyframes: 3
