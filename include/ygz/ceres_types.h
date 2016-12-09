@@ -19,7 +19,7 @@ public:
     CeresReprojectionError( const Vector2d& pt_cam ): _pt_cam(pt_cam) { }
     
     // cost = z - (Rp+t), note the first three components in the pose are translation 
-    template< typename T=double > 
+    template< typename T> 
     bool operator() ( 
         const T* const pose_TCW, 
         const T* const point_world, 
@@ -41,6 +41,42 @@ public:
     }
 protected:
     Vector2d _pt_cam; // observation: normalized camera coordinate 
+};
+
+class CeresReprojectionErrorPoseOnly
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW 
+    CeresReprojectionErrorPoseOnly( 
+        const Vector2d& pt_cam, const Vector3d& pt_world
+    ): _pt_cam(pt_cam), _pt_world(pt_world) { }
+    
+    // cost = z - (Rp+t), note the first three components in the pose are translation 
+    template< typename T > 
+    bool operator() ( 
+        const T* const pose_TCW, 
+        T* residuals
+    ) const {
+        T p[3];
+        T pw[3];
+        T rot[3];
+        for ( size_t i=0; i<3; i++ )
+            rot[i] = pose_TCW[i+3];
+        for ( size_t i=0; i<3; i++ )
+            pw[i] = T(_pt_world[i]);
+        ceres::AngleAxisRotatePoint<T>( rot, pw, p );
+        
+        p[0] += pose_TCW[0]; 
+        p[1] += pose_TCW[1]; 
+        p[2] += pose_TCW[2]; 
+        
+        residuals[0] = _pt_cam[0] - p[0]/p[2];
+        residuals[1] = _pt_cam[1] - p[1]/p[2];
+        return true; 
+    }
+protected:
+    Vector2d _pt_cam; // observation: normalized camera coordinate 
+    Vector3d _pt_world; // 3D point in world frame 
 };
 
 // used in sparse direct method 

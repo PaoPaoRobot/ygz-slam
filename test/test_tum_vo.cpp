@@ -47,8 +47,12 @@ int main( int argc, char** argv )
         Frame::Ptr pf( new Frame );
         pf->_color = color; 
         pf->InitFrame();
-        vo.AddFrame( pf );
+        bool ret = vo.AddFrame( pf );
         vo.PlotFrame();
+        
+        if ( ret ) {
+            viewer.AddTempPose( pf->_T_c_w );
+        }
         viewer.Draw();
     }
     

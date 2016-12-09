@@ -63,6 +63,9 @@ public:
     
     // 提取一个帧中的特征点，记录于frame::_map_point_candidates
     void Detect ( Frame::Ptr frame );
+    
+    // 设置已经存在的特征点
+    void SetExistingFeatures( Frame::Ptr frame );
 
 private:
     // Shi-Tomasi 分数，这个分数越高则特征越优先

@@ -1,13 +1,27 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include "ygz/system.h"
 #include "ygz/visual_odometry.h"
 #include "ygz/optimizer.h"
 #include "ygz/memory.h"
 #include "ygz/ORB/ORBextractor.h"
 
 namespace ygz {
-void VisualOdometry::AddFrame(const Frame::Ptr& frame)
+    
+VisualOdometry::VisualOdometry ( System* system )
+    : _tracker(new Tracker), _system(system)
+{
+    int pyramid = Config::get<int>("frame.pyramid");
+    _align.resize( pyramid );
+    
+    _min_keyframe_rot = Config::get<double>("vo.keyframe.min_rot");
+    _min_keyframe_trans = Config::get<double>("vo.keyframe.min_trans");
+    _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
+}
+    
+// 整体接口，逻辑有点复杂，参照orb-slam2设计
+bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
 {
     if ( _status == VO_NOT_READY ) {
         _ref_frame = frame;
@@ -18,10 +32,10 @@ void VisualOdometry::AddFrame(const Frame::Ptr& frame)
     _last_status = _status;
 
     if ( _status == VO_INITING ) {
-        // TODO initialization
+        // TODO add stereo and RGBD initialization
         MonocularInitialization();
         if ( _status != VO_GOOD )
-            return;
+            return false;
     } else {
         bool OK = false;
         // initialized, do tracking
@@ -35,11 +49,22 @@ void VisualOdometry::AddFrame(const Frame::Ptr& frame)
             
             if ( OK ) {
                 _status = VO_GOOD;      // 跟踪成功
+                
+                // 检查此帧是否可以作为关键帧
+                if ( NeedNewKeyFrame() ) {
+                    // create new key-frame 
+                    LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
+                    cv::waitKey(0);
+                }
+                    
+                
+                // 把参考帧设为当前帧
+                _ref_frame = _curr_frame;
+                
             } else {
                 _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
+                return false;
             }
-            
-            
         } else {
             // not good, relocalize
             // TODO: relocalization
@@ -47,6 +72,7 @@ void VisualOdometry::AddFrame(const Frame::Ptr& frame)
     }
 
     // store the result or other things
+    return true;
 }
 
 void VisualOdometry::MonocularInitialization()
@@ -136,10 +162,15 @@ void VisualOdometry::MonocularInitialization()
     }
 }
 
-void VisualOdometry::SetKeyframe ( Frame::Ptr frame )
+void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
 {
     frame->_is_keyframe = true; 
     Memory::RegisterFrame( frame, true );
+    
+    if ( initializing == false ) {
+        // 在新的关键帧中，提取新的特征点
+        FeatureDetector detector;
+    }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
     ORBExtractor orb;
@@ -152,6 +183,8 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame )
     }
     
     _local_mapping.AddKeyFrame( frame );
+    _last_key_frame = frame; 
+    
 }
 
 bool VisualOdometry::TrackRefFrame()
@@ -201,10 +234,19 @@ bool VisualOdometry::TrackLocalMap()
 {
     // Track Local Map 还是有点微妙的
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
-    // Step 1. 在局部地图中寻找投影点并匹配之
-    list<MatchPointCandidate> candidate = _local_mapping.FindMatchedCandidate( _curr_frame );
+    bool success = _local_mapping.TrackLocalMap( _curr_frame );
     
-    // Step 2. 根据这些匹配点优化当前帧的位姿 
+    // plot the currernt image 
+#ifdef DEBUG_VIZ 
+    Mat img_show = _curr_frame->_color.clone();
+    for ( Vector3d& obs: _curr_frame->_observations ) {
+        cv::rectangle( img_show, cv::Point2f( obs[0]-5, obs[1]-5), cv::Point2f( obs[0]+5, obs[1]+5), cv::Scalar(0,250,0), 2 );
+        cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
+    }
+    cv::imshow("current", img_show);
+    cv::waitKey(0);
+#endif
+    
     return true;
 }
 
@@ -220,6 +262,26 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
             observation.second = Vector3d( px[0], px[1], pt[2]); // set the observed posiiton 
         }
     }
+}
+
+bool VisualOdometry::NeedNewKeyFrame()
+{
+    // 天哪orb的keyframe选择策略是怎么想出来的，莫非用机器学习去学的？
+    // 话说这事还真能用机器学习学吧...
+    // 先简单点，根据上个key-frame和当前的位姿差，以及tracked points做决定
+    SE3 deltaT = _last_key_frame->_T_c_w.inverse()*_curr_frame->_T_c_w;
+    // 度量旋转李代数和平移向量的范数
+    double dRotNorm = deltaT.so3().log().norm();
+    double dTransNorm = deltaT.translation().norm();
+    
+    LOG(INFO) << "rot = "<<dRotNorm << ", t = "<< dTransNorm<<endl;
+    bool condition1 = dRotNorm > _min_keyframe_rot || dTransNorm > _min_keyframe_trans;
+    
+    // 计算正确跟踪的特征数量
+    // 如果这个数量太少，很可能前面计算结果也是不对的
+    bool condition2 = _curr_frame->_map_point.size() > _min_keyframe_features;
+    
+    return condition1 && condition2;
 }
 
     

@@ -48,6 +48,12 @@ public:
             && pixel[1] >= boarder && pixel[1] < _color.rows - boarder;
     }
     
+    // 带level的查询
+    inline bool InFrame( const Vector2d& pixel, const int& boarder, const int& level ) const {
+        return pixel[0]/(1<<level) >= boarder && pixel[0]/(1<<level) < _color.cols - boarder 
+            && pixel[1]/(1<<level) >= boarder && pixel[1]/(1<<level) < _color.rows - boarder;
+    }
+    
 public:
     // data 
     // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧
@@ -69,7 +75,8 @@ public:
     // 对于关键帧，可以访问map point的_obs变量获取该位置，但对于非关键帧，由于memory中并没有记录非关键帧的信息，所以必须在这里访问
     // 在做 sparse alignment 的时候，也必须在这里访问像素位置
     // 这里的Vector3d，前两维为像素坐标，第三维是深度值
-    vector<Vector3d>    _observations;
+    // 如果深度值小于零，表示该观测是一个outlier
+    list<Vector3d>    _observations;
     
     // 图像，原始的彩色图和深度图
     Mat     _color;     // if we have 

@@ -24,38 +24,38 @@ public:
         VO_ERROR,
     };
     
-    VisualOdometry( System* system ) : _tracker(new Tracker)
-    { 
-        int pyramid = Config::get<int>("frame.pyramid");
-        _system = system; 
-        _align.resize( pyramid );
-    }
+    VisualOdometry( System* system );
     
-    // 新增一个帧
-    void AddFrame( const Frame::Ptr& frame );
+    // 新增一个帧，如果该帧可以顺利跟踪，返回真
+    bool AddFrame( const Frame::Ptr& frame );
     
     // 画出跟踪的地图点
     void PlotFrame() const {
         _tracker->PlotTrackedPoints();
     }
     
+protected:
     // set the input frame as a key-frame 
-    void SetKeyframe( Frame::Ptr frame ); 
+    // 第二个参数表示是否在初始化中使用
+    void SetKeyframe( Frame::Ptr frame, bool initializing = false ); 
     
     // 跟踪最近的帧
     bool TrackRefFrame();
     
     // 跟踪局部地图
     bool TrackLocalMap();
-    
-protected:
     // 单目初始化
     void MonocularInitialization();
     
     // 根据优化后的位姿和地图点，对初始化的地图点计算投影位置
     void ReprojectMapPointsInInitializaion(); 
     
-protected:
+    // 检查当前帧是否可以成为新的关键帧
+    bool NeedNewKeyFrame(); 
+    
+    // 
+    
+private:
     Status _status =VO_NOT_READY;       // current status 
     Status _last_status;                // last status 
     
@@ -69,6 +69,14 @@ protected:
     LocalMapping        _local_mapping; // 局部地图
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
+    
+    // 上一个关键帧，这在判断是否产生新关键帧时有用
+    Frame::Ptr _last_key_frame = nullptr;
+    
+    // 关键帧选择策略中的最小旋转和最小平移量
+    double _min_keyframe_rot;
+    double _min_keyframe_trans;
+    int _min_keyframe_features;
 };
 }
 

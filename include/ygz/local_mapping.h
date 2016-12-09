@@ -47,8 +47,8 @@ public:
     // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
     void AddKeyFrame( Frame::Ptr keyframe );
     
-    // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计
-    list<MatchPointCandidate> FindMatchedCandidate( Frame::Ptr current );
+    // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计，如果匹配顺利，进一步优化当前帧的 pose
+    bool TrackLocalMap( Frame::Ptr current );
 
 };
 }

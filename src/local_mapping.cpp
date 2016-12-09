@@ -4,6 +4,7 @@
 #include "ygz/local_mapping.h"
 #include "ygz/memory.h"
 #include "ygz/utils.h"
+#include "ygz/optimizer.h"
 
 using namespace ygz::utils;
 
@@ -37,7 +38,8 @@ void LocalMapping::AddKeyFrame ( Frame::Ptr keyframe )
 // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计
 // 这一步有点像光流
 // 希望得到的匹配点能在图像中均匀分布，而不要扎堆在一起，所以使用网格进行区分
-list< MatchPointCandidate > LocalMapping::FindMatchedCandidate ( Frame::Ptr current )
+// 如果匹配数量足够，调用一次仅有pose的优化
+bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
 {
     // Step 1
     // 建立匹配点的网格
@@ -90,14 +92,81 @@ list< MatchPointCandidate > LocalMapping::FindMatchedCandidate ( Frame::Ptr curr
         for ( size_t j=0; j<_grid[i].size(); j++ ) {
             // 类似于光流的匹配 
             Vector2d matched_px(0,0); 
-            bool success = TestDirectMatch( current, _grid[i][j], matched_px );
+            MatchPointCandidate candidate = _grid[i][j];
+            bool success = TestDirectMatch( current, candidate, matched_px );
             if ( !success )  // 没有匹配到
                 continue;
             // 在current frame里增加一个对该地图点的观测，以便将来使用
+            current->_map_point.push_back( candidate._map_point );
+            // 匹配到的点作为观测值，深度值未知，置1
+            current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
+            break; 
+        }
+    } 
+    
+    LOG(INFO) << "matched pixels in current frame: " << current->_map_point.size()<< endl;
+    
+    if ( current->_map_point.size() < 10 ) { // TODO magic number, adjust it!
+        // 匹配不够
+        LOG(WARNING) << "insufficient matched pixels, abort this frame ... "<< endl;
+        return false;
+    }
+        
+    // Step 3
+    // 优化当前帧的pose，类似pnp的做法
+    opti::OptimizePoseCeres( current );
+    // remove the outliers by reprojection 
+    auto iter_obs = current->_observations.begin();
+    auto iter_pt = current->_map_point.begin();
+    
+    int cnt_outlier = 0;
+    for ( ; iter_obs!=current->_observations.end();  ) {
+        MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
+        Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
+        Vector2d obs = iter_obs->head<2>();
+        double error = (px-obs).norm();
+        LOG(INFO) << "reprojection error = "<< error << endl;
+        
+        if ( error > 5 ) { // magic number again! 
+            // 重投影误差太大，认为这是个外点
+            // TODO 想清楚这里是直接去掉呢，还是按照重投影来计算？
+            // 如果计算重投影，那么由于该点被遮挡，它的纹理可能和map point处的纹理非常不同，这会使得local mapping在匹配模板时失败
+            // 但是，直接去掉的话，又可能导致当前帧观测的数量太少，后一帧跟不上？
+            
+            // reset 也有点问题，可能把本该看不见的东西变成可见了？
+            // 由于被遮挡，该点的深度就会发生改变，导致和其他特征点出现不一致
+            
+            // iter_obs = current->_observations.erase( iter_obs );
+            // iter_pt = current->_map_point.erase( iter_pt );
+            (*iter_obs) [2] = -1;
+            iter_obs++;
+            iter_pt++;
+            
+            cnt_outlier++;
+            continue; 
+        } else {
+            iter_obs++;
+            iter_pt++;
         }
     }
     
-    // Step 3
+    LOG(INFO) << "outliers = " << cnt_outlier << endl;
+    // 现在当前帧应该全是内点了吧，再优化一次以求更精确
+    opti::OptimizePoseCeres( current );
+    
+    // 把地图点按照重投影位置设置一下
+    iter_obs = current->_observations.begin();
+    iter_pt = current->_map_point.begin();
+    
+    for ( ; iter_obs!=current->_observations.end(); iter_obs++, iter_pt++ ) {
+        if ( (*iter_obs)[2] > 0 ) // inlier
+            continue;
+        // reset the outlier's pose 
+        MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
+        Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
+        iter_obs->head<2>() = px;
+        (*iter_obs)[2] = 1;
+    }
 }
 
 bool LocalMapping::TestDirectMatch ( 
@@ -108,6 +177,7 @@ bool LocalMapping::TestDirectMatch (
     Frame::Ptr ref = Memory::GetFrame(candidate._observed_keyframe);
     MapPoint::Ptr map_point = Memory::GetMapPoint( candidate._map_point );
     
+    /*
 #ifdef DEBUG_VIZ
     // show the reference and current 
     cv::Mat ref_img = ref->_color.clone();
@@ -124,6 +194,7 @@ bool LocalMapping::TestDirectMatch (
     cv::imshow( "curr img", curr_img );
     cv::waitKey(0);
 #endif
+    */
     
     // affine warp 
     Eigen::Matrix2d A_c_r;
@@ -138,11 +209,11 @@ bool LocalMapping::TestDirectMatch (
         A_c_r
     );
     
-    LOG(INFO) << "A_c_r = "<< A_c_r << endl;
+    // LOG(INFO) << "A_c_r = "<< A_c_r << endl;
     
     // 应用affine warp 
     int search_level = utils::GetBestSearchLevel( A_c_r, _pyramid_level );
-    LOG(INFO) << "search level= "<<search_level<<endl;
+    // LOG(INFO) << "search level= "<<search_level<<endl;
     
     WarpAffine( 
         A_c_r, 
@@ -154,6 +225,7 @@ bool LocalMapping::TestDirectMatch (
         _patch_with_border
     );
     
+    /*
 #ifdef DEBUG_VIZ
     // show the original and warpped patch 
     cv::Rect2d rect( 
@@ -182,6 +254,7 @@ bool LocalMapping::TestDirectMatch (
     
     cv::waitKey(0);
 #endif
+    */
     
     // 去掉边界
     uint8_t* ref_patch_ptr = _patch;
@@ -195,6 +268,7 @@ bool LocalMapping::TestDirectMatch (
     Vector2d px_scaled ( candidate._projected_pixel/(1<<search_level));
     
     bool success = false;
+    
     // align the current pixel 
     success = utils::Align2D(
         current->_pyramid[search_level], 
@@ -205,6 +279,19 @@ bool LocalMapping::TestDirectMatch (
     );
     
     px_curr = px_scaled*(1<<search_level);
+    
+    /*
+#ifdef DEBUG_VIZ
+    curr_img = current->_color.clone();
+    px_curr_tmp = cv::Point2f( px_curr[0], px_curr[1] );
+    cv::rectangle( curr_img, px_curr_tmp+cv::Point2f(-6,-6), px_curr_tmp+cv::Point2f(6,6), cv::Scalar(0,250,0),3 );
+    cv::imshow( "curr img", curr_img );
+    cv::waitKey(0);
+#endif
+    */
+    
+    // LOG(INFO) << "px curr change from "<<candidate._projected_pixel.transpose()<<" to "<< px_curr.transpose()<<endl;
+    
     return success;
 }
 

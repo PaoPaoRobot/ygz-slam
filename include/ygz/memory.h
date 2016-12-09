@@ -9,6 +9,8 @@ namespace ygz {
 class Viewer;
 class VisualOdometry;
     
+// 内存管理类
+// 它存储了所有的关键帧和关键帧带着的地图点，也只有这些帧的id是合法的，可以从memory中拿出来
 class Memory {
     friend Viewer;
     friend VisualOdometry;

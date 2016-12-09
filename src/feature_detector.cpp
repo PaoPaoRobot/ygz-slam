@@ -104,6 +104,21 @@ void FeatureDetector::Detect(Frame::Ptr frame)
 
 }
 
+void FeatureDetector::SetExistingFeatures ( Frame::Ptr frame )
+{
+    frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
+    for ( Vector3d& obs : frame->_observations ) {
+        if ( obs[3] > 0 ) {
+            // inlier observations 
+            const int gy = static_cast<int>( obs[0]/_cell_size);
+            const int gx = static_cast<int>( obs[1]/_cell_size);
+            const size_t k = gy*_grid_cols+gx;
+            frame->_grid[k] = 1;
+        }
+    }
+}
+
+
 float FeatureDetector::ShiTomasiScore(const cv::Mat& img, const int& u, const int& v) const
 {
     assert(img.type() == CV_8UC1);

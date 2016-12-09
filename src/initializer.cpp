@@ -96,7 +96,7 @@ bool Initializer::TryInitialize(
         // set the map points 
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
-            if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i], 10) && features3d_curr[i][2]>0 ) {
+            if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i]) && features3d_curr[i][2]>0 ) {
                 Vector3d pos = T_w_c * ( features3d_curr[i]/scale );
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
