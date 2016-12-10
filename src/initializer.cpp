@@ -101,7 +101,6 @@ bool Initializer::TryInitialize(
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
                 map_point->_pos_world = pos;
-                map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
                 
                 // add the observations into frame 
@@ -130,7 +129,6 @@ bool Initializer::TryInitialize(
                 
                 MapPoint::Ptr map_point = Memory::CreateMapPoint();
                 map_point->_pos_world = pos;
-                map_point->_norm = Vector3d(_pt2[i].x, _pt2[i].y, 1);
                 map_point->_bad = false;
                 
                 // add the observations into frame 

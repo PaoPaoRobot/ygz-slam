@@ -10,7 +10,7 @@
 namespace ygz {
     
 VisualOdometry::VisualOdometry ( System* system )
-    : _tracker(new Tracker), _system(system)
+    : _tracker(new Tracker), _system(system), _depth_filter(new opti::DepthFilter() )
 {
     int pyramid = Config::get<int>("frame.pyramid");
     _align.resize( pyramid );
@@ -19,12 +19,20 @@ VisualOdometry::VisualOdometry ( System* system )
     _min_keyframe_trans = Config::get<double>("vo.keyframe.min_trans");
     _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
 }
+
+VisualOdometry::~VisualOdometry()
+{
+    if ( _depth_filter )
+        delete _depth_filter;
+}
+
     
 // 整体接口，逻辑有点复杂，参照orb-slam2设计
 bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
 {
     if ( _status == VO_NOT_READY ) {
         _ref_frame = frame;
+        SetKeyframe(_ref_frame, true);
         _status = VO_INITING;
     }
 
@@ -56,7 +64,6 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
                     LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
                     cv::waitKey(0);
                 }
-                    
                 
                 // 把参考帧设为当前帧
                 _ref_frame = _curr_frame;
@@ -112,45 +119,60 @@ void VisualOdometry::MonocularInitialization()
             // two view BA to minimize the reprojection error 
             // use g2o or ceres or what you want 
             // opti::TwoViewBAG2O( _ref_frame->_id, _curr_frame->_id );
+            
             opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id );
             // reproject the map points in these two views 
             ReprojectMapPointsInInitializaion();
             
-            // set two key-frames and their observed points 
-            SetKeyframe( _ref_frame );
+            // set current as key-frame and their observed points 
+            // SetKeyframe( _ref_frame );
             SetKeyframe( _curr_frame );
             
             _status = VO_GOOD;
             _ref_frame = _curr_frame;
             
 #ifdef DEBUG_VIZ
-            // plot the inliers
-            Mat img_show;
-            if ( _curr_frame != nullptr) {
-                img_show = _curr_frame->_color.clone();
-            } else {
-                return;
-            }
-
-            vector<bool> inliers = _init.GetInliers();
-            list<cv::Point2f> pts = _tracker->GetPxCurr();
-
-            // LOG(INFO) << "inlier size=" << inliers.size() <<endl;
-            // LOG(INFO) << "points size=" << pts.size() <<endl;
+            // 画出初始化点在两个图像中的投影
+            Mat img_ref=  _ref_frame->_color.clone();
+            Mat img_curr=  _curr_frame->_color.clone();
             
-            int i=0;
-            for ( const cv::Point2f& p: _tracker->GetPxCurr() ) {
-                if ( inliers[i] == true )
-                    cv::circle( img_show, p, 5, cv::Scalar(0,250,0), 2 );
-                else
-                    cv::circle( img_show, p, 5, cv::Scalar(0,0,250), 2 ); // red for outliers
-                i++;
+            for ( auto& map_point_pair : Memory::_points ) {
+                Vector2d px_ref = _ref_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _ref_frame->_T_c_w );
+                Vector2d px_curr = _curr_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _curr_frame->_T_c_w );
+                
+                Vector2d obs_ref = map_point_pair.second->_obs[_ref_frame->_id].head<2>();
+                Vector2d obs_curr = map_point_pair.second->_obs[_curr_frame->_id].head<2>();
+                
+                
+                if ( map_point_pair.second->_bad ) {
+                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),5, cv::Scalar(0,0,250) );
+                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),5, cv::Scalar(0,0,250) );
+                    
+                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),5, cv::Scalar(0,0,250) );
+                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),5, cv::Scalar(0,0,250) );
+                    
+                    cv::line( img_ref, cv::Point2f(px_ref[0], px_ref[1]), cv::Point2f(obs_ref[0], obs_ref[1]), cv::Scalar(0,0,250) );
+                    cv::line( img_curr, cv::Point2f(px_curr[0], px_curr[1]), cv::Point2f(obs_curr[0], obs_curr[1]), cv::Scalar(0,0,250) );
+                    
+                } else {
+                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),5, cv::Scalar(0,250,0) );
+                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),5, cv::Scalar(0,250,0) );
+                    
+                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),5, cv::Scalar(0,250,0) );
+                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),5, cv::Scalar(0,250,0) );
+                    
+                    cv::line( img_ref, cv::Point2f(px_ref[0], px_ref[1]), cv::Point2f(obs_ref[0], obs_ref[1]), cv::Scalar(0,250,0), 3);
+                    cv::line( img_curr, cv::Point2f(px_curr[0], px_curr[1]), cv::Point2f(obs_curr[0], obs_curr[1]), cv::Scalar(0,250,0), 3 );
+                }
+                
             }
-
-            // init inliers
-            cv::imshow( "inliers of H", img_show );
-            cv::waitKey(1);
+            
+            cv::imshow("ref", img_ref);
+            cv::imshow("curr", img_curr);
+            cv::waitKey(0);
 #endif 
+            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id ); // 去掉外点后再优化一次
+            
             return;
         } else {
             // init failed, still tracking
@@ -170,6 +192,8 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
     if ( initializing == false ) {
         // 在新的关键帧中，提取新的特征点
         FeatureDetector detector;
+        detector.SetExistingFeatures( frame );
+        detector.Detect( frame );
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
@@ -253,13 +277,26 @@ bool VisualOdometry::TrackLocalMap()
 void VisualOdometry::ReprojectMapPointsInInitializaion()
 {
     // 遍历地图中的3D点
-    for ( auto& map_points_pair: Memory::_points ) {
-        MapPoint::Ptr map_point = map_points_pair.second;
+    for ( auto iter = Memory::_points.begin(); iter!=Memory::_points.end(); iter++ ) {
+        MapPoint::Ptr map_point = iter->second;
+        bool badpoint = false;
         for ( auto& observation: map_point->_obs ) {
             Frame::Ptr frame = Memory::GetFrame(observation.first);
             Vector3d pt = frame->_camera->World2Camera( map_point->_pos_world, frame->_T_c_w );
             Vector2d px = frame->_camera->Camera2Pixel( pt );
-            observation.second = Vector3d( px[0], px[1], pt[2]); // set the observed posiiton 
+            double reproj_error = (px - observation.second.head<2>()).norm();
+            // LOG(INFO) << "init reprojection error = "<<reproj_error<<endl;
+            if ( reproj_error > _options.init_reproj_error_th ) // 重投影误差超过阈值
+            {
+                badpoint = true;
+                break;
+            }
+            // observation.second = Vector3d( px[0], px[1], pt[2]); // reset the observed posiiton 
+        }
+        
+        if ( badpoint == true ) {
+            // set this point as a bad one, require the memory to remove it 
+            map_point->_bad = true; 
         }
     }
 }

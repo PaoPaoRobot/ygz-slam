@@ -62,7 +62,8 @@ public:
     FeatureDetector();
     
     // 提取一个帧中的特征点，记录于frame::_map_point_candidates
-    void Detect ( Frame::Ptr frame );
+    // 参数可以指定是否覆盖之前的特征点
+    void Detect ( Frame::Ptr frame, bool overwrite_existing_features=true );
     
     // 设置已经存在的特征点
     void SetExistingFeatures( Frame::Ptr frame );

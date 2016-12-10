@@ -158,6 +158,7 @@ void TwoViewBACeres (
     for ( auto iter = frame1->_map_point.begin(); iter!= frame1->_map_point.end(); iter++ )
     {
         MapPoint::Ptr map_point = Memory::GetMapPoint ( *iter );
+        if ( map_point->_bad ) continue;
         for ( auto obs:map_point->_obs )
         {
             Vector2d px = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );

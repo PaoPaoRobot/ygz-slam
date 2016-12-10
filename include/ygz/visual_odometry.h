@@ -24,7 +24,12 @@ public:
         VO_ERROR,
     };
     
+    struct Option {
+        double init_reproj_error_th =5; // 初始化时判断内点的最大重投影误差
+    } _options;
+    
     VisualOdometry( System* system );
+    virtual ~VisualOdometry();
     
     // 新增一个帧，如果该帧可以顺利跟踪，返回真
     bool AddFrame( const Frame::Ptr& frame );
@@ -67,6 +72,7 @@ private:
     Initializer _init;                  // initializer  
     vector<opti::SparseImgAlign> _align;// sparse image alignment for each pyramid level 
     LocalMapping        _local_mapping; // 局部地图
+    opti::DepthFilter*  _depth_filter =nullptr;  // depth filter 
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
     

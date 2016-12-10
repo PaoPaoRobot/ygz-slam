@@ -46,10 +46,13 @@ FeatureDetector::FeatureDetector()
 }
 
 // 提取算法
-void FeatureDetector::Detect(Frame::Ptr frame)
+void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features )
 {
     // reset the feature grid
-    frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
+    if ( overwrite_existing_features ) {
+        frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
+        frame->_map_point_candidates.clear();
+    }
 
     Corners corners( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
     for(int L=0; L<frame->_pyramid_level; ++L)
@@ -97,6 +100,7 @@ void FeatureDetector::Detect(Frame::Ptr frame)
 
     for ( Corner& c: corners ) {
         MapPoint point; 
+        point._first_observed_frame = frame->_id;
         point._obs[frame->_id] = Vector3d( c.x, c.y, 1 );
         point._pyramid_level = c.level; 
         frame->_map_point_candidates.push_back( point );

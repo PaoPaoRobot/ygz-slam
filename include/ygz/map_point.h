@@ -17,11 +17,11 @@ public:
     typedef shared_ptr<MapPoint> Ptr; 
     MapPoint()  {}
     unsigned long   _id =0; 
-    Vector3d        _norm = Vector3d(0,0,0);  // normal 
     int             _pyramid_level =0;
     Vector3d        _pos_world =Vector3d(0,0,0); 
-    unsigned long   _first_observed_frame; // 第一次被观测到的帧
+    unsigned long   _first_observed_frame =0; // 第一次被观测到的帧
     map<unsigned long, Vector3d> _obs;   // observations, first=frame ID, second=(pixel coordinate, depth), depth by default is 1 
+    
     bool            _bad =false;        // bad 说的是这个点是不是很少被看到
     bool            _converged =false;  // 深度值是否收敛？
     
@@ -37,6 +37,7 @@ public:
     // for debug use
     void PrintInfo() {
         LOG(INFO) << "map point " << _id << "\nworld pos = " << _pos_world.transpose()<<endl;
+        LOG(INFO) << "first observed from " << _first_observed_frame << endl;
         LOG(INFO) << "observations: "<<endl;
         for ( auto obs: _obs ) {
             LOG(INFO) << "from frame "<<obs.first << ", pixel pos = " << obs.second.transpose() << endl;
