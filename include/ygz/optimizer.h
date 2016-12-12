@@ -92,6 +92,7 @@ struct Seed {
 };
 
 // 我究竟干了些什么。。。除了把下划线挪到前面之外。。。
+// 注意 depth filter 实际上是在用普通帧的信息去更新关键帧
 class DepthFilter 
 {
 public:

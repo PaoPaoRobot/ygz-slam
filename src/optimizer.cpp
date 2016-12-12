@@ -189,6 +189,20 @@ void TwoViewBACeres (
     frame2->_T_c_w = SE3 (
                          SO3::exp ( pose2.tail<3>() ), pose2.head<3>()
                      );
+    
+    // check the depth in the two views 
+    for ( auto iter = frame1->_map_point.begin(); iter!= frame1->_map_point.end(); iter++ )
+    {
+        MapPoint::Ptr map_point = Memory::GetMapPoint ( *iter );
+        if ( map_point->_bad ) continue;
+        
+        Vector3d pt1 = frame1->_camera->World2Camera( map_point->_pos_world, frame1->_T_c_w );
+        Vector3d pt2 = frame1->_camera->World2Camera( map_point->_pos_world, frame1->_T_c_w );
+        if ( pt1[2] < 0.05 || pt1[2]>15 || pt2[2] < 0.05 || pt2[2]>15 )  {
+            // invalid depth 
+            map_point->_bad = true; 
+        }
+    }
 
 }
 
@@ -231,6 +245,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
             continue;
         }
         MapPoint::Ptr mappoint = Memory::GetMapPoint ( *it );
+        if ( mappoint->_bad )
+            continue;
 
         // camera coordinates in ref
         Vector3d xyz_ref = _frame1->_camera->World2Camera ( mappoint->_pos_world, _frame1->_T_c_w );
@@ -411,14 +427,20 @@ void DepthFilter::AddKeyframe ( Frame::Ptr frame, double depth_mean, double dept
     _new_keyframe_set = true;
     _new_keyframe_min_depth = depth_min;
     _new_keyframe_mean_depth = depth_mean;
+    
+    _frame_queue.push_back( frame );
     InitializeSeeds( frame );
 }
 
 void DepthFilter::InitializeSeeds ( Frame::Ptr frame )
 {
+    // 需要清理之前的seeds吗?
+    _seeds.clear();
+    
     // 假设 frame 的 map point candidate 已经被提取了
     for ( MapPoint& map_point: frame->_map_point_candidates )
     {
+        map_point.PrintInfo();
         _seeds.push_back ( Seed ( &map_point, _new_keyframe_mean_depth, _new_keyframe_min_depth ) );
     }
 
@@ -456,13 +478,32 @@ void DepthFilter::ClearFrameQueue()
 
 void DepthFilter::AddFrame ( Frame::Ptr frame )
 {
+    /*
     _frame_queue.push_back ( frame );
     if ( _frame_queue.size() > 2 )
     {
         _frame_queue.pop_front();
     }
+    */
 
+    // 根据普通帧信息去更新关键帧的 seeds
     UpdateSeeds ( frame );
+    
+    // display the seeds 
+#ifdef DEBUG_VIZ 
+    boost::format fmt("%3.2f,%3.2f");
+    cv::Mat img_ref = _frame_queue.back()->_color.clone();
+    for ( Seed& seed:_seeds ) {
+        Vector2d px = seed.ftr->_obs[ _frame_queue.back()->_id ].head<2>();
+        cv::circle( img_ref, cv::Point2f(px[0], px[1]), 5, cv::Scalar(0,250*seed.mu/10,250*seed.mu/10) );
+        
+        // string str = (fmt%seed.mu%seed.sigma2).str();
+        // cv::putText( img_ref, str, cv::Point2f(px[0], px[1]-15), cv::HersheyFonts::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0,250,0), 1 );
+    }
+    
+    cv::imshow("depth filter", img_ref );
+    cv::waitKey(0);
+#endif
 }
 
 
@@ -498,12 +539,14 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         Vector3d pt_ref = frame->_camera->Pixel2Camera ( it->ftr->_obs[ it->ftr->_first_observed_frame ].head<2>() );
 
         // xyz in current
-        const Vector3d xyz_f ( T_ref_cur.inverse() * ( 1.0/it->mu * pt_ref ) );
+        Vector3d xyz_f ( T_ref_cur.inverse() * ( 1.0/it->mu * pt_ref ) );
         if ( xyz_f.z() < 0.0 )
         {
             ++it; // behind the camera
             continue;
         }
+        Vector2d x  = frame->_camera->Camera2Pixel ( xyz_f );
+        LOG(INFO) << "px in current should be: " << x.transpose()<< endl;
         if ( !frame->InFrame ( frame->_camera->Camera2Pixel ( xyz_f ) ) )
         {
             ++it; // point does not project in image

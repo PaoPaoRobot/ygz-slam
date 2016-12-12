@@ -34,21 +34,24 @@ namespace ygz
     
 // 角点，在提取FAST中用到
 struct Corner {
-    int x;        //!< x-coordinate of corner in the image.
-    int y;        //!< y-coordinate of corner in the image.
-    int level;    //!< pyramid level of the corner.
-    float score;  //!< shi-tomasi score of the corner.
-    float angle;  //!< for gradient-features: dominant gradient angle.
+    int x=0;        //!< x-coordinate of corner in the image.
+    int y=0;        //!< y-coordinate of corner in the image.
+    int level=0;    //!< pyramid level of the corner.
+    float score=0;  //!< shi-tomasi score of the corner.
+    float angle=0;  //!< for gradient-features: dominant gradient angle.
     Corner ( int x, int y, float score, int level, float angle ) :
         x ( x ), y ( y ), level ( level ), score ( score ), angle ( angle )
     {}
+    
+    Corner() {}
 };
 
 typedef vector<Corner> Corners;
 
 // 特征提取算法
-// 默认提取网格化的FAST特征
-// 在Tracker中使用
+// 默认提取网格化的FAST特征，提取完成后存储在frame->_map_point_candidates中，
+// 但是这些点没有深度，需要等到深度滤波器收敛才有有效的值
+// 在Tracker和visual odometry中均有使用
 class FeatureDetector
 {
 private:

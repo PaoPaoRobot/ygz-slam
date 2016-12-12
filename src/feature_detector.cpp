@@ -54,11 +54,19 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
         frame->_map_point_candidates.clear();
     }
 
-    Corners corners( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
+    Corners corners; 
+    corners.resize( _grid_cols*_grid_rows );
+    // ( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
+    
     for(int L=0; L<frame->_pyramid_level; ++L)
     {
         const int scale = (1<<L);
         vector<fast::fast_xy> fast_corners;
+        if ( frame->_pyramid[L].data == nullptr ) {
+            LOG(FATAL) << "strange. " <<endl;
+        }
+        
+        LOG(INFO) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<endl;
 #if __SSE2__
         fast::fast_corner_detect_10_sse2(
             (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,
@@ -77,6 +85,7 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
         fast::fast_corner_score_10((fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols, fast_corners, 20, scores);
         fast::fast_nonmax_3x3(fast_corners, scores, nm_corners);
 
+        LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
         for(auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it)
         {
             fast::fast_xy& xy = fast_corners.at(*it);
@@ -99,27 +108,34 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
     }
 
     for ( Corner& c: corners ) {
+        if ( c.x == 0 && c.y == 0 ) continue;
         MapPoint point; 
         point._first_observed_frame = frame->_id;
         point._obs[frame->_id] = Vector3d( c.x, c.y, 1 );
         point._pyramid_level = c.level; 
         frame->_map_point_candidates.push_back( point );
     }
+    LOG(INFO) << "add total "<<frame->_map_point_candidates.size()<<" new features. "<<endl;
 
 }
 
 void FeatureDetector::SetExistingFeatures ( Frame::Ptr frame )
 {
     frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
+    int cnt=0;
+    LOG(INFO) << "observations: " << frame->_observations.size() << endl;
     for ( Vector3d& obs : frame->_observations ) {
-        if ( obs[3] > 0 ) {
+        // if ( obs[3] > 0 ) {
             // inlier observations 
             const int gy = static_cast<int>( obs[0]/_cell_size);
             const int gx = static_cast<int>( obs[1]/_cell_size);
             const size_t k = gy*_grid_cols+gx;
             frame->_grid[k] = 1;
-        }
+        // }
+        cnt++;
     }
+    
+    LOG(INFO) << "set total " <<cnt<<" existing features."<<endl;
 }
 
 

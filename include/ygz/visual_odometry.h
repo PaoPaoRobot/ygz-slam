@@ -58,7 +58,8 @@ protected:
     // 检查当前帧是否可以成为新的关键帧
     bool NeedNewKeyFrame(); 
     
-    // 
+    // 重置当前帧中的观测信息
+    void ResetCurrentObservation(); 
     
 private:
     Status _status =VO_NOT_READY;       // current status 

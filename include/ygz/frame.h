@@ -54,6 +54,9 @@ public:
             && pixel[1]/(1<<level) >= boarder && pixel[1]/(1<<level) < _color.rows - boarder;
     }
     
+    // 计算观测到的地图点的平均深度和最小深度
+    bool GetMeanAndMinDepth( double& mean_depth, double& min_depth ); 
+    
 public:
     // data 
     // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧

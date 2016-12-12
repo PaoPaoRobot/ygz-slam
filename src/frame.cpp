@@ -1,6 +1,8 @@
-#include "ygz/frame.h"
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+
+#include "ygz/frame.h"
+#include "ygz/memory.h"
 
 namespace ygz {
     
@@ -23,5 +25,40 @@ void Frame::CreateImagePyramid()
     }
 }
 
+bool Frame::GetMeanAndMinDepth ( double& mean_depth, double& min_depth )
+{
+    mean_depth = 0; min_depth = 9999;
+    int cnt_valid_points = 0;
+    for ( unsigned long& map_point_id : _map_point ) {
+        MapPoint::Ptr map_point = Memory::GetMapPoint( map_point_id );
+        if ( map_point->_bad ) 
+            continue;
+        double depth = this->_camera->World2Camera( map_point->_pos_world, this->_T_c_w )[2];
+        if ( depth<0 ) 
+            continue; 
+        LOG(INFO) << "depth = "<<depth<<endl;
+        if ( depth>10 || depth < 0.05 ) {
+            // 明显不对啊
+            LOG(INFO) << map_point->_pos_world.transpose() << endl;
+        }
+        
+        cnt_valid_points ++ ;
+        mean_depth += depth;
+        if ( depth < min_depth ) 
+            min_depth = depth;
+    }
+    
+    if ( cnt_valid_points == 0 ) {
+        mean_depth = 0; 
+        min_depth = 0;
+        return false; 
+    }
+    
+    mean_depth /= cnt_valid_points;
+    return true; 
+}
+
+
 PinholeCamera::Ptr Frame::_camera = nullptr;
+
 }

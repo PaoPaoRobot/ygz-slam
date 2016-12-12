@@ -89,8 +89,8 @@ bool Initializer::TryInitialize(
         // add feature into both ref and curr frame 
         SE3 T_w_c = _frame->_T_c_w.inverse(); 
         
-        // register both the ref and curr 
-        Memory::RegisterFrame( ref );
+        // register both the current 
+        // Memory::RegisterFrame( ref );
         Memory::RegisterFrame( curr );
         
         // set the map points 
