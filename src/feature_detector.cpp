@@ -66,7 +66,7 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
             LOG(FATAL) << "strange. " <<endl;
         }
         
-        LOG(INFO) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<endl;
+        LOG(INFO) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<", w,h="<< frame->_pyramid[L].rows << frame->_pyramid[L].cols <<endl;
 #if __SSE2__
         fast::fast_corner_detect_10_sse2(
             (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,

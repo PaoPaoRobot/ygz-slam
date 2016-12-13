@@ -10,7 +10,7 @@
 namespace ygz {
     
 VisualOdometry::VisualOdometry ( System* system )
-    : _tracker(new Tracker), _system(system), _depth_filter(new opti::DepthFilter() )
+    : _tracker(new Tracker), _system(system)
 {
     int pyramid = Config::get<int>("frame.pyramid");
     _align.resize( pyramid );
@@ -18,6 +18,8 @@ VisualOdometry::VisualOdometry ( System* system )
     _min_keyframe_rot = Config::get<double>("vo.keyframe.min_rot");
     _min_keyframe_trans = Config::get<double>("vo.keyframe.min_trans");
     _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
+    
+    _depth_filter = new opti::DepthFilter( &_local_mapping );
 }
 
 VisualOdometry::~VisualOdometry()
@@ -57,19 +59,30 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
             
             if ( OK ) {
                 _status = VO_GOOD;      // 跟踪成功
+                LOG(INFO) << "Track success, current TCW = \n" << _curr_frame->_T_c_w.matrix() << endl;
                 
                 // 检查此帧是否可以作为关键帧
-                if ( NeedNewKeyFrame() ) {
+                // if ( NeedNewKeyFrame() ) {
                     // create new key-frame 
-                    LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
-                    cv::waitKey(0);
-                } else {
+                    // LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
+                    // cv::waitKey(0);
+                // } else {
                     // 该帧是普通帧，加到 depth filter 中去
                     _depth_filter->AddFrame( frame );
-                }
+                // }
                 
                 // 把参考帧设为当前帧
                 _ref_frame = _curr_frame;
+                
+                // plot the currernt image 
+                Mat img_show = _curr_frame->_color.clone();
+                for ( Vector3d& obs: _curr_frame->_observations ) {
+                    cv::rectangle( img_show, cv::Point2f( obs[0]-5, obs[1]-5), cv::Point2f( obs[0]+5, obs[1]+5), cv::Scalar(0,250,0), 2 );
+                    cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
+                }
+                cv::imshow("current", img_show);
+                cv::waitKey(0);
+                
                 
             } else {
                 _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
@@ -138,6 +151,7 @@ void VisualOdometry::MonocularInitialization()
             _status = VO_GOOD;
             _ref_frame = _curr_frame;
             
+            /*
 #ifdef DEBUG_VIZ
             // 画出初始化点在两个图像中的投影
             Mat img_ref=  _ref_frame->_color.clone();
@@ -178,6 +192,7 @@ void VisualOdometry::MonocularInitialization()
             cv::imshow("curr", img_curr);
             cv::waitKey(0);
 #endif 
+*/
             
             return;
         } else {
@@ -258,29 +273,20 @@ bool VisualOdometry::TrackRefFrame()
     
     // 我有点怀疑这里的结果对不对，让我们测试一下
     // 所有地图点在帧0和当前帧的投影
-    /*
-    Frame::Ptr ref = Memory::GetFrame(0);
-    Mat ref_img = Memory::GetFrame(0)->_color.clone();
+    
+    Mat ref_img = _ref_frame->_color.clone();
     Mat curr_img = _curr_frame->_color.clone();
-    Mat cr_img = _curr_frame->_color.clone();
-    for ( auto map_point_pair : Memory::_points ) {
-        MapPoint::Ptr point = map_point_pair.second;
-        
-        // Vector3d pt_ref = ref->_camera->World2Pixel( point->_pos_world, ref->_T_c_w );
-        // Vector3d pt_tcr = _TCR_estimated * pt_ref;
-        
-        Vector2d px_ref = ref->_camera->World2Pixel( point->_pos_world, ref->_T_c_w);
+    for ( unsigned long& map_point_id: _ref_frame->_map_point ) {
+        MapPoint::Ptr point = Memory::GetMapPoint( map_point_id );
+        Vector2d px_ref = _ref_frame->_camera->World2Pixel( point->_pos_world, _ref_frame->_T_c_w);
         Vector2d px_curr = _curr_frame->_camera->World2Pixel( point->_pos_world, _curr_frame->_T_c_w );
-        // Vector2d px_tcr = _curr_frame->_camera->Camera2Pixel( pt_tcr );
         
         cv::circle( ref_img, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0));
         cv::circle( curr_img, cv::Point2f(px_curr[0], px_curr[1]), 5, cv::Scalar(0,250,0));
-        // cv::circle( cr_img, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0));
     }
     cv::imshow("ref frame", ref_img);
     cv::imshow("current frame", curr_img);
     cv::waitKey(0);
-    */
     return true; 
 }
 
@@ -290,16 +296,6 @@ bool VisualOdometry::TrackLocalMap()
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
     bool success = _local_mapping.TrackLocalMap( _curr_frame );
     
-    // plot the currernt image 
-#ifdef DEBUG_VIZ 
-    Mat img_show = _curr_frame->_color.clone();
-    for ( Vector3d& obs: _curr_frame->_observations ) {
-        cv::rectangle( img_show, cv::Point2f( obs[0]-5, obs[1]-5), cv::Point2f( obs[0]+5, obs[1]+5), cv::Scalar(0,250,0), 2 );
-        cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
-    }
-    cv::imshow("current", img_show);
-    cv::waitKey(0);
-#endif
     
     return true;
 }

@@ -141,7 +141,7 @@ inline Eigen::Matrix<double,2,6> JacobXYZ2Pixel ( const Vector3d& xyz,  PinholeC
 
 // warp functions
 static const int WarpHalfPatchSize = 4;      // half patch size
-static const int WarpPatchSize = 8;      // half patch size
+static const int WarpPatchSize = 8;      // patch size
 
 // 计算 ref 与 current 之间的一个 affine warp
 void GetWarpAffineMatrix (
@@ -182,6 +182,8 @@ inline int GetBestSearchLevel (
 
 // 寻找一个像素在图像中的匹配关系，类似于光流
 // copy from SVO feature_alignment
+// 注解：这个Align2D实现的有点问题，用g-n迭代，但是H矩阵是固定在ref的梯度上的，不会随着每次迭代更新
+// 如果离正确匹配的距离较远，很可能有非凸性问题
 bool Align2D (
     const cv::Mat& cur_img,
     uint8_t* ref_patch_with_border,

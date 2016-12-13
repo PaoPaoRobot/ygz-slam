@@ -12,6 +12,7 @@ using namespace ygz::utils;
 namespace ygz
 {
 
+class LocalMapping;
 namespace opti
 {
 
@@ -79,7 +80,9 @@ struct Seed {
 
     static int batch_counter;
     static int seed_counter;
+    
     int batch_id;                //!< Batch id is the id of the keyframe for which the seed was created.
+    unsigned long frame_id;      // 最先提取这个seed的frame
     int id;                      //!< Seed ID, only used for visualization.
     MapPoint* ftr;                //!< Feature in the keyframe for which the depth should be computed.
     float a;                     //!< a of Beta distribution: When high, probability of inlier is large.
@@ -88,7 +91,11 @@ struct Seed {
     float z_range;               //!< Max range of the possible depth.
     float sigma2;                //!< Variance of normal distribution.
     Eigen::Matrix2d patch_cov;          //!< Patch covariance in reference image.
-    Seed ( MapPoint* ftr, float depth_mean, float depth_min );
+    Seed ( const unsigned long& frame, MapPoint* ftr, float depth_mean, float depth_min );
+    
+    inline void PrintInfo() {
+        LOG(INFO) << " mu = " << mu << ", sigma2 = "<< sigma2 << sigma2 << ", a = "<<a<<", b = "<<b <<endl;
+    }
 };
 
 // 我究竟干了些什么。。。除了把下划线挪到前面之外。。。
@@ -98,7 +105,8 @@ class DepthFilter
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     
-    DepthFilter() {}
+    DepthFilter( LocalMapping* local_mapping ):
+        _local_mapping(local_mapping) {}
     
     // 这东西就别拷来拷去了
     DepthFilter( const DepthFilter& ) =delete;  
@@ -171,8 +179,8 @@ protected:
     double _new_keyframe_mean_depth=0.0;      //!< Maximum depth in the new keyframe. Used for range in new seeds.
     bool _new_keyframe_set =false;
     deque<Frame::Ptr>   _frame_queue;    // 帧队列，在多线程中有用
+    LocalMapping* _local_mapping =nullptr;
     
-
     /// Initialize new seeds from a frame.
     void InitializeSeeds ( Frame::Ptr frame );
 

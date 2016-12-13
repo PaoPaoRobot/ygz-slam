@@ -1,5 +1,8 @@
 #include "ygz/utils.h"
 
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
 namespace ygz
 {
 
@@ -130,11 +133,13 @@ bool Align2D (
     // termination condition
     float min_update_squared = 0.001;
     const int cur_step = cur_img.step.p[0];
-//  float chi2 = 0;
     Eigen::Vector3f update;
     update.setZero();
-    for ( int iter = 0; iter<n_iter; ++iter )
+    int iter = 0;
+    vector<float> chi2_vec; 
+    for ( ; iter<n_iter; ++iter )
     {
+        float chi2 = 0;
         int u_r = floor ( u );
         int v_r = floor ( v );
         if ( u_r < halfpatch_size_ || v_r < halfpatch_size_ || u_r >= cur_img.cols-halfpatch_size_ || v_r >= cur_img.rows-halfpatch_size_ )
@@ -172,34 +177,49 @@ bool Align2D (
                 Jres[0] -= res* ( *it_ref_dx );
                 Jres[1] -= res* ( *it_ref_dy );
                 Jres[2] -= res;
-//        new_chi2 += res*res;
+                
+                chi2 += res*res;
             }
         }
-
+        
         update = Hinv * Jres;
         u += update[0];
         v += update[1];
         mean_diff += update[2];
-
-#if SUBPIX_VERBOSE
-        cout << "Iter " << iter << ":"
-             << "\t u=" << u << ", v=" << v
-             << "\t update = " << update[0] << ", " << update[1]
-//         << "\t new chi2 = " << new_chi2 << endl;
-#endif
-
-             if ( update[0]*update[0]+update[1]*update[1] < min_update_squared )
+        
+        if ( iter>0 && chi2 > chi2_vec.back() ) // error increased 
         {
-#if SUBPIX_VERBOSE
-            cout << "converged." << endl;
-#endif
+            break;
+        }
+        
+        chi2_vec.push_back( chi2 );
+        
+        if ( update[0]*update[0]+update[1]*update[1] < min_update_squared )
+        {
             converged=true;
             break;
         }
     }
 
     cur_px_estimate << u, v;
-    return converged;
+    if ( converged == true ) return true;
+    if ( converged == false ) {
+        // LOG(INFO) << "iter = "<<iter<<", update = " << update.transpose()<<endl;
+        // for ( float& c: chi2_vec )
+            // LOG(INFO) << c ;
+        
+        // 没有收敛，可能出现误差上升，或者达到最大迭代次数
+        // 我们认为迭代后误差小于一开始的误差的一半，就认为配准是对的？—— TODO check G-N的收敛判定
+        if ( chi2_vec.back()/chi2_vec.front() < 0.55 )
+            return true;
+    }
+    
+    /*
+    for ( float& c: chi2_vec )
+        LOG(INFO) << "chi2 = "<< c ;
+    LOG(INFO)<<chi2_vec.back()/chi2_vec.front()<<endl;
+    */
+    return false;
 
 }
 
@@ -298,6 +318,7 @@ bool FindEpipolarMatchDirect (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
+                LOG(INFO) << "epipolar line is short! " << endl;
                 return true;
             }
         }
@@ -364,6 +385,8 @@ bool FindEpipolarMatchDirect (
                       cur_frame.img_pyr_[search_level_], ( px_A-px_B ).cast<float>().normalized(),
                       patch_with_border_, patch_, options_.align_max_iter, px_scaled, h_inv_ );
         */
+        
+        // 居然又align一遍
         res = Align2D (
                   cur_frame->_pyramid[search_level], patch_with_border, patch,
                   10, px_scaled );
@@ -374,6 +397,17 @@ bool FindEpipolarMatchDirect (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
+                /*
+                LOG(INFO) << "epipolar search succeed"<<endl;
+                cv::Mat ref_show = ref_frame->_color.clone();        
+                cv::Mat curr_show = cur_frame->_color.clone();        
+                cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2 );
+                cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
+                cv::imshow("depth filter ref", ref_show );
+                cv::imshow("depth filter curr", curr_show );
+                cv::waitKey(1);
+                */
+        
                 return true;
             }
         }

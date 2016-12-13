@@ -18,6 +18,7 @@
 #include "ygz/g2o_types.h"
 #include "ygz/ceres_types.h"
 #include "ygz/memory.h"
+#include "ygz/local_mapping.h"
 
 using namespace g2o;
 
@@ -244,6 +245,7 @@ void SparseImgAlign::SparseImageAlignmentCeres (
         {
             continue;
         }
+        
         MapPoint::Ptr mappoint = Memory::GetMapPoint ( *it );
         if ( mappoint->_bad )
             continue;
@@ -407,7 +409,7 @@ void OptimizePoseCeres ( const Frame::Ptr& current )
  * Depth filter
  * *************************************************/
 
-Seed::Seed ( MapPoint* ftr, float depth_mean, float depth_min ) :
+Seed::Seed ( const unsigned long& frame, MapPoint* ftr, float depth_mean, float depth_min ) :
     batch_id ( batch_counter ),
     id ( seed_counter++ ),
     ftr ( ftr ),
@@ -415,8 +417,10 @@ Seed::Seed ( MapPoint* ftr, float depth_mean, float depth_min ) :
     b ( 10 ),
     mu ( 1.0/depth_mean ),
     z_range ( 1.0/depth_min ),
-    sigma2 ( z_range*z_range/36 )
+    sigma2 ( z_range*z_range/36 ),
+    frame_id(frame)
 {
+    
 }
 
 int Seed::batch_counter =0;
@@ -434,14 +438,12 @@ void DepthFilter::AddKeyframe ( Frame::Ptr frame, double depth_mean, double dept
 
 void DepthFilter::InitializeSeeds ( Frame::Ptr frame )
 {
-    // 需要清理之前的seeds吗?
-    _seeds.clear();
-    
-    // 假设 frame 的 map point candidate 已经被提取了
+    // frame 的 map point candidate 已经被特征提取算法提取了
     for ( MapPoint& map_point: frame->_map_point_candidates )
     {
-        map_point.PrintInfo();
-        _seeds.push_back ( Seed ( &map_point, _new_keyframe_mean_depth, _new_keyframe_min_depth ) );
+        _seeds.push_back ( 
+            Seed ( frame->_id ,&map_point, _new_keyframe_mean_depth, _new_keyframe_min_depth ) 
+        );
     }
 
     if ( _options.verbose )
@@ -489,6 +491,7 @@ void DepthFilter::AddFrame ( Frame::Ptr frame )
     // 根据普通帧信息去更新关键帧的 seeds
     UpdateSeeds ( frame );
     
+    /*
     // display the seeds 
 #ifdef DEBUG_VIZ 
     boost::format fmt("%3.2f,%3.2f");
@@ -504,6 +507,7 @@ void DepthFilter::AddFrame ( Frame::Ptr frame )
     cv::imshow("depth filter", img_ref );
     cv::waitKey(0);
 #endif
+    */
 }
 
 
@@ -523,6 +527,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
     double px_noise = 1.0;
     double px_error_angle = atan ( px_noise/ ( 2.0*focal_length ) ) *2.0; // law of chord (sehnensatz)
 
+    int cntSucceed = 0, cntFailed = 0;
     while ( it!=_seeds.end() )
     {
         // check if seed is not already too old
@@ -533,10 +538,12 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         }
 
         // check if point is visible in the current image
-        Frame::Ptr first_frame = Memory::GetFrame ( it->ftr->_first_observed_frame );
+        Frame::Ptr first_frame = Memory::GetFrame ( it->frame_id );
         SE3 T_ref_cur = first_frame->_T_c_w * frame->_T_c_w.inverse();
+        // Vector2d px_ref = it->ftr->_obs[ it->frame_id ].head<2>();
+        // LOG(INFO) << "px in ref is "<<px_ref.transpose()<<endl;
 
-        Vector3d pt_ref = frame->_camera->Pixel2Camera ( it->ftr->_obs[ it->ftr->_first_observed_frame ].head<2>() );
+        Vector3d pt_ref = frame->_camera->Pixel2Camera ( it->ftr->_obs[it->frame_id].head<2>() );
 
         // xyz in current
         Vector3d xyz_f ( T_ref_cur.inverse() * ( 1.0/it->mu * pt_ref ) );
@@ -545,8 +552,8 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             ++it; // behind the camera
             continue;
         }
-        Vector2d x  = frame->_camera->Camera2Pixel ( xyz_f );
-        LOG(INFO) << "px in current should be: " << x.transpose()<< endl;
+        // Vector2d x  = frame->_camera->Camera2Pixel ( xyz_f );
+        // LOG(INFO) << "px in current should be: " << x.transpose()<< endl;
         if ( !frame->InFrame ( frame->_camera->Camera2Pixel ( xyz_f ) ) )
         {
             ++it; // point does not project in image
@@ -564,8 +571,10 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             ++it;
             ++n_failed_matches;
             continue;
+            cntFailed++;
         }
 
+        cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
         double tau_inverse = 0.5 * ( 1.0/max ( 0.0000001, z-tau ) - 1.0/ ( z+tau ) );
@@ -577,8 +586,21 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         // if the seed has converged, we initialize a new candidate point and remove the seed
         if ( sqrt ( it->sigma2 ) < it->z_range/_options.seed_convergence_sigma2_thresh )
         {
+            LOG(INFO) << "seed has converged! "<<endl;
+            // 向 Memory 注册一个新的 Map Point，并且添加到 Local Map 中
+            MapPoint::Ptr mp = Memory::CreateMapPoint();
             Vector3d xyz_world ( frame->_T_c_w.inverse() * ( pt_ref * ( 1.0/it->mu ) ) );
-            it->ftr->_pos_world = xyz_world;
+            mp->_pos_world = xyz_world; 
+            mp->_pyramid_level = it->ftr->_pyramid_level;
+            mp->_first_observed_frame = it->ftr->_first_observed_frame;
+            mp->_obs = it->ftr->_obs;
+            Vector2d px_ref = it->ftr->_obs.begin()->second.head<2>();
+            mp->_converged = true;
+            frame->_map_point.push_back( mp->_id );
+            frame->_observations.push_back( Vector3d(px_ref[0], px_ref[1], 1) );
+            
+            _local_mapping->AddMapPoint( mp->_id );
+            
             it = _seeds.erase ( it );
         }
         else if ( isnan ( z_inv_min ) )
@@ -590,6 +612,8 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             ++it;
         }
     }
+    
+    LOG(INFO) << "seed succeed = "<< cntSucceed <<", failed = "<<cntFailed << endl;
 
 }
 
@@ -602,6 +626,7 @@ void DepthFilter::UpdateSeed (
     {
         return;
     }
+    // seed->PrintInfo();
     boost::math::normal_distribution<float> nd ( seed->mu, norm_scale );
     float s2 = 1./ ( 1./seed->sigma2 + 1./tau2 );
     float m = s2* ( seed->mu/seed->sigma2 + x/tau2 );
@@ -620,6 +645,9 @@ void DepthFilter::UpdateSeed (
     seed->mu = mu_new;
     seed->a = ( e-f ) / ( f-e/f );
     seed->b = seed->a* ( 1.0f-f ) /f;
+    // LOG(INFO) << "updated: "; 
+    // seed->PrintInfo();
+    // LOG(INFO)<<endl;
 }
 
 

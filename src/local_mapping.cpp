@@ -29,11 +29,20 @@ void LocalMapping::AddKeyFrame ( Frame::Ptr keyframe )
     
     // TODO 考虑把新增的keyframe中的地图点存储起来，并去掉视野外的点
     for ( unsigned long& point_id: keyframe->_map_point ) {
+        MapPoint::Ptr map_point = Memory::GetMapPoint( point_id );
+        if ( map_point->_bad ) continue;
         _local_map_points.insert( point_id );
     }
     
     // 删除太远的地图点和 key frame
 }
+
+void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
+{
+    assert( Memory::GetMapPoint(map_point_id) != nullptr );
+    _local_map_points.insert( map_point_id );
+}
+
 
 // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计
 // 这一步有点像光流
@@ -43,6 +52,10 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
 {
     // Step 1
     // 建立匹配点的网格
+    
+    LOG(INFO) << "frames in local map: "<< this->_local_keyframes.size()<< endl;
+    LOG(INFO) << "map points in local map: "<< this->_local_map_points.size() << endl;
+    
     _grid.clear();
     _grid.resize( _grid_rows*_grid_cols );
     
@@ -55,55 +68,75 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
         if ( pt_curr[2] < 0 ) // 在相机后面
             continue; 
         Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
-        if ( !current->InFrame(px_curr, 15) )  // 不在图像中
+        if ( !current->InFrame(px_curr) )  // 不在图像中
             continue; 
+        
         // 检测该顶点的 observation 里，有没有在相邻关键帧的
         MatchPointCandidate candidate;
         
-        bool exist = false; 
         for ( auto& obs_pair: map_point->_obs ) {
             unsigned long keyframe_id = obs_pair.first;
             for ( auto it=_local_keyframes.begin(); it!=_local_keyframes.end(); it++ ) {
                 if ( *it == keyframe_id ) {
-                    exist = true; 
                     candidate._observed_keyframe = *it;
-                    candidate._map_point =map_point->_id;
+                    candidate._map_point = map_point->_id;
                     candidate._keyframe_pixel = obs_pair.second.head<2>();
                     candidate._projected_pixel = px_curr;
-                    break;
+                    // break;
+                    
+                    int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
+                                + static_cast<int> ( px_curr[0]/_cell_size );
+                    cntCandidate ++;
+                    _grid[k].push_back( candidate );
                 }
             }
         }
-        
-        if ( exist == false ) 
-            continue; 
-        int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
-                      + static_cast<int> ( px_curr[0]/_cell_size );
-        cntCandidate ++;
-        // check if this candidate exist 
-        _grid[k].push_back( candidate );
     }
     
     LOG(INFO) << "Find total "<<cntCandidate <<" candidates."<<endl;
     
     // Step 2 
     // 寻找每个网格中，和当前帧的匹配
+    
+    int cntSuccess = 0;
+    int cntFailed = 0;
+    
+    set<unsigned long> matched_points; 
     for ( size_t i=0; i<_grid.size(); i++ ) {
         for ( size_t j=0; j<_grid[i].size(); j++ ) {
             // 类似于光流的匹配 
             Vector2d matched_px(0,0); 
             MatchPointCandidate candidate = _grid[i][j];
             bool success = TestDirectMatch( current, candidate, matched_px );
-            if ( !success )  // 没有匹配到
+            if ( !success ) {  // 没有匹配到
+                /*
+                // 我要看一下怎么样的匹配才算失败
+                Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
+                Mat img_curr = current->_color.clone();
+                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,0,250), 2);
+                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,0,250), 2);
+                cv::imshow("wrong match ref", img_ref );
+                cv::imshow("wrong match curr", img_curr );
+                cv::waitKey(0);
+                
+                */
+                cntFailed++;
                 continue;
-            // 在current frame里增加一个对该地图点的观测，以便将来使用
-            current->_map_point.push_back( candidate._map_point );
-            // 匹配到的点作为观测值，深度值未知，置1
-            current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
-            break; 
+            }
+            
+            if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
+                // 在current frame里增加一个对该地图点的观测，以便将来使用
+                current->_map_point.push_back( candidate._map_point );
+                // 匹配到的点作为观测值，深度值未知，置1
+                current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
+                matched_points.insert( candidate._map_point );
+                cntSuccess++;
+                break; // 如果这个grid里有成功的匹配，就去掉剩余的点
+            }
         }
     } 
     
+    LOG(INFO) << "success = " << cntSuccess << ", failed = "<<cntFailed << endl; 
     LOG(INFO) << "matched pixels in current frame: " << current->_map_point.size()<< endl;
     
     if ( current->_map_point.size() < 10 ) { // TODO magic number, adjust it!
@@ -167,6 +200,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
         iter_obs->head<2>() = px;
         (*iter_obs)[2] = 1;
     }
+    return true;
 }
 
 bool LocalMapping::TestDirectMatch ( 

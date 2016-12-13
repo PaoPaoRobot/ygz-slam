@@ -49,6 +49,9 @@ public:
     
     // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计，如果匹配顺利，进一步优化当前帧的 pose
     bool TrackLocalMap( Frame::Ptr current );
+    
+    // 新增一个路标点
+    void AddMapPoint( const unsigned long& map_point_id );
 
 };
 }

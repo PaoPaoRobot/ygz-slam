@@ -1,5 +1,6 @@
-#ifndef FRAME_H_
-#define FRAME_H_
+#ifndef YGZ_FRAME_H
+#define YGZ_FRAME_H
+
 #include "ygz/common_include.h"
 #include "ygz/camera.h"
 #include "ygz/map_point.h"

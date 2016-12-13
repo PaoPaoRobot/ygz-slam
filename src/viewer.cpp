@@ -49,12 +49,19 @@ void Viewer::Draw()
     // draw the map points
     for ( auto point : Memory::_points )
     {
-        glPointSize ( 3 );
-        glBegin ( GL_POINTS );
-        glColor3d ( 0.1,0.1,0.1 );
-
-        glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
-        glEnd();
+        if ( point.second->_bad == false ) {
+            glPointSize ( 3 );
+            glBegin ( GL_POINTS );
+            glColor3d ( 0.1,0.1,0.1 );
+            glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
+            glEnd();
+        } else {
+            glPointSize ( 3 );
+            glBegin ( GL_POINTS );
+            glColor3d ( 0.9,0.1,0.1 );
+            glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
+            glEnd();
+        }
     }
 
     pangolin::FinishFrame();
