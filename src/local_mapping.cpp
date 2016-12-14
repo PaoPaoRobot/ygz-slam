@@ -13,6 +13,7 @@ namespace ygz {
 LocalMapping::LocalMapping()
 {
     _num_local_keyframes = Config::get<int>("LocalMapping.local_keyframes");
+    _num_local_map_points = Config::get<int>("LocalMapping.local_mappoints");
     _image_width = Config::get<int>("image.width");
     _image_height = Config::get<int>("image.height");
     _cell_size = Config::get<int>("feature.cell");
@@ -35,6 +36,19 @@ void LocalMapping::AddKeyFrame ( Frame::Ptr keyframe )
     }
     
     // 删除太远的地图点和 key frame
+    if ( _local_keyframes.size() > _num_local_keyframes ) {
+        auto iter_min = std::min_element( _local_keyframes.begin(), _local_keyframes.end() );
+        _local_keyframes.erase( iter_min );
+    }
+    
+    // 如果某个地图点不在所有的key-frame中出现，则删除之？还是说只要出了当前帧就删除之？
+    // Local map的地图点太少，可能会影响追踪性能，因为普通帧是没有新特征点的
+    if ( _local_map_points.size() > _num_local_map_points ) {
+        // 删除一些旧的
+    }
+    
+    // call Local Bundle Adjustment
+    LocalBA( keyframe );
 }
 
 void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
@@ -62,7 +76,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     int cntCandidate =0;
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
         MapPoint::Ptr map_point = Memory::GetMapPoint( *it );
-        
+        if ( map_point->_bad == true )
+            continue;
         // 检查这个地图点是否可见
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         if ( pt_curr[2] < 0 ) // 在相机后面
@@ -123,6 +138,15 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
                 cntFailed++;
                 continue;
             }
+            /*
+            Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
+            Mat img_curr = current->_color.clone();
+            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,0,250), 2);
+            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,0,250), 2);
+            cv::imshow("correct match ref", img_ref );
+            cv::imshow("correct match curr", img_curr );
+            cv::waitKey(1);
+            */
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
@@ -131,7 +155,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
                 current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
-                break; // 如果这个grid里有成功的匹配，就去掉剩余的点
+                break; // 如果这个map point已经被匹配过了，就没必要再匹配了? 存疑
             }
         }
     } 
@@ -146,8 +170,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     }
         
     // Step 3
-    // 优化当前帧的pose，类似pnp的做法
-    opti::OptimizePoseCeres( current );
+    // Call Local bundle adjustment to optimize the current pose and map point 
+    opti::OptimizePoseCeres( current, true );
     // remove the outliers by reprojection 
     auto iter_obs = current->_observations.begin();
     auto iter_pt = current->_map_point.begin();
@@ -155,7 +179,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     int cnt_outlier = 0;
     for ( ; iter_obs!=current->_observations.end();  ) {
         MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
-        Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
+        Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w);
+        Vector2d px = current->_camera->Camera2Pixel( pt );
         Vector2d obs = iter_obs->head<2>();
         double error = (px-obs).norm();
         LOG(INFO) << "reprojection error = "<< error << endl;
@@ -169,39 +194,124 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
             // reset 也有点问题，可能把本该看不见的东西变成可见了？
             // 由于被遮挡，该点的深度就会发生改变，导致和其他特征点出现不一致
             
-            // iter_obs = current->_observations.erase( iter_obs );
-            // iter_pt = current->_map_point.erase( iter_pt );
-            (*iter_obs) [2] = -1;
-            iter_obs++;
-            iter_pt++;
+            iter_obs = current->_observations.erase( iter_obs );
+            iter_pt = current->_map_point.erase( iter_pt );
+            // (*iter_obs) [2] = -1;
+            // iter_obs++;
+            // iter_pt++;
             
             cnt_outlier++;
             continue; 
         } else {
+            (*iter_obs)[2] = pt[2];
             iter_obs++;
             iter_pt++;
         }
     }
     
     LOG(INFO) << "outliers = " << cnt_outlier << endl;
-    // 现在当前帧应该全是内点了吧，再优化一次以求更精确
-    opti::OptimizePoseCeres( current );
     
+    // Step 4
+    // 现在当前帧应该全是内点了吧，再优化一次以求更精确
+    // 这里需要使用局部地图的 ba 
+    // LocalBA( current );
+    opti::OptimizePoseCeres( current, false );
     // 把地图点按照重投影位置设置一下
+    // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
+    
     iter_obs = current->_observations.begin();
     iter_pt = current->_map_point.begin();
     
     for ( ; iter_obs!=current->_observations.end(); iter_obs++, iter_pt++ ) {
-        if ( (*iter_obs)[2] > 0 ) // inlier
-            continue;
-        // reset the outlier's pose 
+        // reset the observation 
         MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
+        Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
         iter_obs->head<2>() = px;
-        (*iter_obs)[2] = 1;
+        (*iter_obs)[2] = pt[2];
     }
+    
     return true;
 }
+
+void LocalMapping::LocalBA ( Frame::Ptr current )
+{
+    ceres::Problem problem;
+    vector<Vector6d*> poses;  
+    
+    // 把每个帧与current 有关的map point拿出来的优化？还是说所有的放在一起优化？
+    for ( const unsigned long& id: _local_keyframes ) {
+        
+        Frame::Ptr frame = Memory::GetFrame( id );
+        Vector6d* pose = new Vector6d();
+        Vector3d r = frame->_T_c_w.so3().log(), t=frame->_T_c_w.translation();
+        pose->head<3>() = t;
+        pose->tail<3>() = r;
+        poses.push_back( pose );
+        
+        auto iter_mp = frame->_map_point.begin();
+        auto iter_obs = frame->_observations.begin();
+        for (; iter_obs!=frame->_observations.end(); iter_mp++, iter_obs++ ) {
+            MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
+            if ( mp->_bad ) continue; 
+            Vector3d pt = frame->_camera->Pixel2Camera( (*iter_obs).head<2>() );
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
+                    new CeresReprojectionError ( pt.head<2>() )
+                ),
+                nullptr,
+                pose->data(),
+                mp->_pos_world.data()
+            );
+        }
+    }
+    
+    // and the current 
+    Vector6d* pose = new Vector6d();
+    Vector3d r = current->_T_c_w.so3().log(), t=current->_T_c_w.translation();
+    pose->head<3>() = t;
+    pose->tail<3>() = r;
+    poses.push_back( pose );
+    
+    auto iter_mp = current->_map_point.begin();
+    auto iter_obs = current->_observations.begin();
+    for (; iter_obs!=current->_observations.end(); iter_mp++, iter_obs++ ) {
+        MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
+        if ( mp->_bad ) continue; 
+        Vector3d pt = current->_camera->Pixel2Camera( (*iter_obs).head<2>() );
+        problem.AddResidualBlock (
+            new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
+                new CeresReprojectionError ( pt.head<2>() )
+            ),
+            nullptr,
+            pose->data(),
+            mp->_pos_world.data()
+        );
+    }
+    
+    // 解之
+    
+    ceres::Solver::Options options;
+    // options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
+
+    ceres::Solver::Summary summary;
+    ceres::Solve ( options, &problem, &summary );
+    cout<< summary.FullReport() << endl;
+    
+    int i=0; 
+    for ( const unsigned long& id: _local_keyframes ) {
+        Frame::Ptr frame = Memory::GetFrame( id );
+        frame->_T_c_w = SE3( SO3::exp(poses[i]->tail<3>()), poses[i]->head<3> () );
+        delete poses[i];
+        i++ ;
+    }
+    
+    current->_T_c_w = SE3( SO3::exp(pose->tail<3>()), pose->head<3>() );
+    delete pose;
+}
+ 
 
 bool LocalMapping::TestDirectMatch ( 
     Frame::Ptr current, const MatchPointCandidate& candidate,
@@ -249,6 +359,10 @@ bool LocalMapping::TestDirectMatch (
     int search_level = utils::GetBestSearchLevel( A_c_r, _pyramid_level );
     // LOG(INFO) << "search level= "<<search_level<<endl;
     
+    if ( ref->_id == 2 ) {
+        LOG(INFO) << A_c_r << endl;
+        LOG(INFO) << candidate._keyframe_pixel << endl;
+    }
     WarpAffine( 
         A_c_r, 
         ref->_pyramid[ map_point->_pyramid_level ],

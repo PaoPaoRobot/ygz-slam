@@ -40,8 +40,9 @@ feature.cell: 20
 feature.detection_threshold: 20.0
 
 # 关键帧参数
-vo.keyframe.min_rot: 0.1 
-vo.keyframe.min_trans: 0.1 
+vo.keyframe.min_rot: 0.2
+vo.keyframe.min_trans: 0.3 
 vo.keyframe.min_features: 50
 
 LocalMapping.local_keyframes: 3
+LocalMapping.local_mappoints: 500

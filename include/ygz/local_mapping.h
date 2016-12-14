@@ -19,9 +19,23 @@ namespace ygz {
 
 class LocalMapping {
     
+public:
+    LocalMapping();
+    // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
+    void AddKeyFrame( Frame::Ptr keyframe );
+    
+    // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计，如果匹配顺利，进一步优化当前帧的 pose
+    bool TrackLocalMap( Frame::Ptr current );
+    
+    // 新增一个路标点
+    void AddMapPoint( const unsigned long& map_point_id );
+    
 private:
     // 测试某个点是否可以和当前帧匹配上
     bool TestDirectMatch( Frame::Ptr current, const MatchPointCandidate& candidate, Vector2d& px_curr );
+    
+    // Local Bundle Adjustment 
+    void LocalBA( Frame::Ptr current ); 
     
     // 相邻关键帧和地图点，以ID形式标出
     set<unsigned long> _local_keyframes;        // 
@@ -34,6 +48,7 @@ private:
     
     // parameters 
     int _num_local_keyframes =3; // 相邻关键帧数量
+    int _num_local_map_points =500;
     
     int _image_width=640, _image_height=480;
     int _cell_size;
@@ -42,16 +57,6 @@ private:
     
     vector<vector<MatchPointCandidate>> _grid;  // 候选点网格,每个格点有一串的候选点
     
-public:
-    LocalMapping();
-    // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
-    void AddKeyFrame( Frame::Ptr keyframe );
-    
-    // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计，如果匹配顺利，进一步优化当前帧的 pose
-    bool TrackLocalMap( Frame::Ptr current );
-    
-    // 新增一个路标点
-    void AddMapPoint( const unsigned long& map_point_id );
 
 };
 }

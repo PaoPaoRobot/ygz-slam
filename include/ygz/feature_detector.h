@@ -68,7 +68,7 @@ public:
     // 参数可以指定是否覆盖之前的特征点
     void Detect ( Frame::Ptr frame, bool overwrite_existing_features=true );
     
-    // 设置已经存在的特征点
+    // 设置已经存在的特征点，这里根据frame->_observation来设的
     void SetExistingFeatures( Frame::Ptr frame );
 
 private:

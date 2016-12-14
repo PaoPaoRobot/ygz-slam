@@ -114,6 +114,7 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
         point._obs[frame->_id] = Vector3d( c.x, c.y, 1 );
         point._pyramid_level = c.level; 
         frame->_map_point_candidates.push_back( point );
+        // point.PrintInfo();
     }
     LOG(INFO) << "add total "<<frame->_map_point_candidates.size()<<" new features. "<<endl;
 
@@ -125,13 +126,11 @@ void FeatureDetector::SetExistingFeatures ( Frame::Ptr frame )
     int cnt=0;
     LOG(INFO) << "observations: " << frame->_observations.size() << endl;
     for ( Vector3d& obs : frame->_observations ) {
-        // if ( obs[3] > 0 ) {
-            // inlier observations 
-            const int gy = static_cast<int>( obs[0]/_cell_size);
-            const int gx = static_cast<int>( obs[1]/_cell_size);
-            const size_t k = gy*_grid_cols+gx;
-            frame->_grid[k] = 1;
-        // }
+        // inlier observations 
+        const int gy = static_cast<int>( obs[0]/_cell_size);
+        const int gx = static_cast<int>( obs[1]/_cell_size);
+        const size_t k = gy*_grid_cols+gx;
+        frame->_grid[k] = 1;
         cnt++;
     }
     

@@ -31,7 +31,8 @@ void TwoViewBACeres (
 // pose only BA
 // 在普通帧寻找匹配点之后调用
 void OptimizePoseCeres(
-    const Frame::Ptr& current
+    const Frame::Ptr& current,
+    bool robust = false
 );
 
 // sparse image alignment, using ceres 
@@ -65,7 +66,6 @@ protected:
     vector<PixelPattern> _patterns_ref;
     int _pyramid_level;
     double _scale;
-    vector<bool> _visible_pts;
     Frame::Ptr _frame1 =nullptr, _frame2=nullptr;
     SE3 _TCR;   // estimated pose 
 };

@@ -77,6 +77,8 @@ void WarpAffine (
             }
             else
             {
+                // LOG(INFO) << px.transpose() << endl;
+                // LOG(INFO) << A_c_r << endl;
                 *patch_ptr = GetBilateralInterpUchar ( px[0], px[1], img_ref );
             }
         }
@@ -210,6 +212,9 @@ bool Align2D (
         
         // 没有收敛，可能出现误差上升，或者达到最大迭代次数
         // 我们认为迭代后误差小于一开始的误差的一半，就认为配准是对的？—— TODO check G-N的收敛判定
+        if ( chi2_vec.empty() ) 
+            return false;
+        // LOG(INFO) << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
         if ( chi2_vec.back()/chi2_vec.front() < 0.55 )
             return true;
     }
@@ -318,7 +323,7 @@ bool FindEpipolarMatchDirect (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
-                LOG(INFO) << "epipolar line is short! " << endl;
+                // LOG(INFO) << "epipolar line is short! " << endl;
                 return true;
             }
         }

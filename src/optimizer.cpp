@@ -218,12 +218,14 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     {
         // 没必要重新算 ref 的 patch
         _have_ref_patch = true;
+    } else {
+        _have_ref_patch = false;
     }
 
     _frame1 = frame1;
     _frame2 = frame2;
 
-    cv::Mat& curr_img = _frame2->_pyramid[pyramid_level];
+    // cv::Mat& curr_img = _frame2->_pyramid[pyramid_level];
     if ( _have_ref_patch==false )
     {
         PrecomputeReferencePatches();
@@ -238,30 +240,10 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     pose2.tail<3>() = r2;
 
     int index = 0;
-    for ( auto it=_frame1->_map_point.begin(); it!=_frame1->_map_point.end(); it++, index++ )
+    for ( auto it=_frame1->_observations.begin(); it!=_frame1->_observations.end(); it++, index++ )
     {
-
-        if ( _visible_pts[index] == false )
-        {
-            continue;
-        }
-        
-        MapPoint::Ptr mappoint = Memory::GetMapPoint ( *it );
-        if ( mappoint->_bad )
-            continue;
-
         // camera coordinates in ref
-        Vector3d xyz_ref = _frame1->_camera->World2Camera ( mappoint->_pos_world, _frame1->_T_c_w );
-
-        /*
-        LOG(INFO) << "index = "<<index<<endl;
-        LOG(INFO) << "pattern ref = ";
-        for ( int k=0; k<8; k++ ) {
-            LOG(INFO) << _patterns_ref[index].pattern[k] <<" ";
-        }
-        LOG(INFO)<<endl;
-        */
-
+        Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->head<2>() ,(*it)[2]) ; // 我日，之前忘乘了深度，怪不得怎么算都不对
         problem.AddResidualBlock (
             new CeresReprojSparseDirectError (
                 _frame2->_pyramid[_pyramid_level],
@@ -270,8 +252,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
                 _frame1->_camera,
                 _scale
             ),
-            // new ceres::HuberLoss(1), // TODO do I need Loss Function?
-            nullptr,
+            new ceres::HuberLoss(10), // TODO do I need Loss Function?
+            // nullptr,
             pose2.data()
         );
     }
@@ -282,78 +264,57 @@ void SparseImgAlign::SparseImageAlignmentCeres (
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    cout<< summary.FullReport() << endl;
-
-
+    // cout<< summary.FullReport() << endl;
     // show the estimated pose
     _TCR = SE3 (
                SO3::exp ( pose2.tail<3>() ),
                pose2.head<3>()
            );
 
+    /*
+#ifdef DEBUG_VIZ
     cv::Mat ref_show, curr_show;
     cv::cvtColor ( _frame1->_pyramid[pyramid_level], ref_show, CV_GRAY2BGR );
     cv::cvtColor ( _frame2->_pyramid[pyramid_level], curr_show, CV_GRAY2BGR );
 
-    /*
-#ifdef DEBUG_VIZ
     LOG ( INFO ) << "TCR = " << _TCR.matrix() << endl;
-    index=0;
-    for ( auto it=_frame1->_map_point.begin(); it!=_frame1->_map_point.end(); it++,index++ )
+    auto iter_mp = _frame1->_map_point.begin(); 
+    auto iter_obs = _frame1->_observations.begin(); 
+    for ( ; iter_mp!=_frame1->_map_point.end(); iter_mp++, iter_obs++ )
     {
-        if ( _visible_pts[index] == false )
-        {
-            continue;
-        }
-        MapPoint::Ptr mappoint = Memory::GetMapPoint ( *it );
         // camera coordinates in ref
-        Vector3d xyz_ref = _frame1->_camera->World2Camera ( mappoint->_pos_world, _frame1->_T_c_w );
-        Vector2d px_ref = _frame1->_camera->Camera2Pixel ( xyz_ref ) / _scale;
+        Vector2d px_ref = iter_obs->head<2>();
+        Vector3d pt_ref = _frame1->_camera->Pixel2Camera ( px_ref, (*iter_obs)[2]);
         // in current
-        Vector3d xyz_curr = _TCR * xyz_ref;
+        Vector3d xyz_curr = _TCR * pt_ref;
         Vector2d px_curr = _frame2->_camera->Camera2Pixel ( xyz_curr ) / _scale;
 
-        cv::circle ( ref_show, cv::Point2d ( px_ref[0], px_ref[1] ), 3, cv::Scalar ( 0,250,0 ) );
+        cv::circle ( ref_show, cv::Point2d ( px_ref[0]/_scale, px_ref[1]/_scale ), 3, cv::Scalar ( 0,250,0 ) );
         cv::circle ( curr_show, cv::Point2d ( px_curr[0], px_curr[1] ), 3, cv::Scalar ( 0,250,0 ) );
     }
-
     cv::imshow ( "ref", ref_show );
     cv::imshow ( "curr", curr_show );
-    cv::waitKey ( 1 );
+    cv::waitKey ( 0 );
 #endif
     */
-
 }
 
 
 void SparseImgAlign::PrecomputeReferencePatches()
 {
-    LOG ( INFO ) << "frame 1 map points: "<<_frame1->_map_point.size() <<endl;
-    _patterns_ref.clear();
     _patterns_ref.resize ( _frame1->_map_point.size() );
 
     cv::Mat& ref_img = _frame1->_pyramid[_pyramid_level];
-    _visible_pts = vector<bool> ( _frame1->_map_point.size(), false );
     int i=0;
-
-    for ( auto it=_frame1->_map_point.begin(); it!=_frame1->_map_point.end(); it++, i++ )
-    {
-        MapPoint::Ptr mappoint = Memory::GetMapPoint ( *it );
-        // camera coordinates in ref
-        Vector3d xyz_ref = _frame1->_camera->World2Camera ( mappoint->_pos_world, _frame1->_T_c_w );
-        Vector2d pixel_ref = _frame1->_camera->Camera2Pixel ( xyz_ref ) /_scale;
-
-        if ( !_frame1->InFrame ( pixel_ref, 10 ) ) // 不在图像范围中
-        {
-            continue;
-        }
-        _visible_pts[i] = true;
-
+    auto it_obs = _frame1->_observations.begin();
+    
+    for( ; it_obs != _frame1->_observations.end(); it_obs++, i++ ) {
+        Vector2d px_ref = (*it_obs).head<2>();
         PixelPattern pattern_ref;
         for ( int k=0; k<PATTERN_SIZE; k++ )
         {
-            double u = pixel_ref[0] + PATTERN_DX[k];
-            double v = pixel_ref[1] + PATTERN_DX[k];
+            double u = px_ref[0] + PATTERN_DX[k];
+            double v = px_ref[1] + PATTERN_DX[k];
             pattern_ref.pattern[k] = utils::GetBilateralInterp ( u,v,ref_img );
         }
         _patterns_ref[i] = pattern_ref;
@@ -361,7 +322,7 @@ void SparseImgAlign::PrecomputeReferencePatches()
     _have_ref_patch = true;
 }
 
-void OptimizePoseCeres ( const Frame::Ptr& current )
+void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
 {
     auto it_mappoint = current->_map_point.begin();
     auto it_obs = current->_observations.begin();
@@ -378,17 +339,30 @@ void OptimizePoseCeres ( const Frame::Ptr& current )
         {
             continue;
         }
-        problem.AddResidualBlock (
-            new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
-                new CeresReprojectionErrorPoseOnly (
-                    current->_camera->Pixel2Camera2D ( it_obs->head<2>() ),
-                    map_point->_pos_world
-                )
-            ),
-            // nullptr,
-            new ceres::HuberLoss ( 5 ),
-            pose.data()
-        );
+        if ( robust ) {
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
+                    new CeresReprojectionErrorPoseOnly (
+                        current->_camera->Pixel2Camera2D ( it_obs->head<2>() ),
+                        map_point->_pos_world
+                    )
+                ),
+                new ceres::HuberLoss ( 5 ),
+                pose.data()
+            );
+        } else {
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
+                    new CeresReprojectionErrorPoseOnly (
+                        current->_camera->Pixel2Camera2D ( it_obs->head<2>() ),
+                        map_point->_pos_world
+                    )
+                ),
+                nullptr,
+                pose.data()
+            );
+            
+        }
     }
 
     ceres::Solver::Options options;
@@ -420,7 +394,6 @@ Seed::Seed ( const unsigned long& frame, MapPoint* ftr, float depth_mean, float 
     sigma2 ( z_range*z_range/36 ),
     frame_id(frame)
 {
-    
 }
 
 int Seed::batch_counter =0;
@@ -567,6 +540,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( !FindEpipolarMatchDirect ( first_frame, frame, *it->ftr, 1.0/it->mu, 1.0/z_inv_min, 1.0/z_inv_max, z ) )
         {
             // 挂了
+            LOG(INFO) << "find epipolar match failed"<<endl;
             it->b++;
             ++it;
             ++n_failed_matches;
@@ -574,6 +548,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             cntFailed++;
         }
 
+        LOG(INFO) << "find epipolar match success"<<endl;
         cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
@@ -586,7 +561,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         // if the seed has converged, we initialize a new candidate point and remove the seed
         if ( sqrt ( it->sigma2 ) < it->z_range/_options.seed_convergence_sigma2_thresh )
         {
-            LOG(INFO) << "seed has converged! "<<endl;
+            LOG(INFO) << "seed "<< it->id <<" from key-frame " << it->frame_id <<" has converged, depth = "<< 1.0/it->mu <<endl;
             // 向 Memory 注册一个新的 Map Point，并且添加到 Local Map 中
             MapPoint::Ptr mp = Memory::CreateMapPoint();
             Vector3d xyz_world ( frame->_T_c_w.inverse() * ( pt_ref * ( 1.0/it->mu ) ) );
@@ -614,7 +589,6 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
     }
     
     LOG(INFO) << "seed succeed = "<< cntSucceed <<", failed = "<<cntFailed << endl;
-
 }
 
 void DepthFilter::UpdateSeed (

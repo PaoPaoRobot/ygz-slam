@@ -42,16 +42,17 @@ int main( int argc, char** argv )
     VisualOdometry vo(nullptr); 
     Viewer viewer;
     
-    for ( size_t i=0; i<50; i++ ) {
+    for ( size_t i=0; i<rgbFiles.size(); i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         Frame::Ptr pf( new Frame );
         pf->_color = color; 
         pf->InitFrame();
         bool ret = vo.AddFrame( pf );
-        vo.PlotFrame();
+        // vo.PlotFrame();
         
         if ( ret ) {
-            viewer.AddTempPose( pf->_T_c_w );
+            // viewer.AddTempPose( pf->_T_c_w );
+            viewer.SetCurrPose( pf->_T_c_w );
         }
         viewer.Draw();
     }

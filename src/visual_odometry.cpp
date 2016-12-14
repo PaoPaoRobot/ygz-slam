@@ -1,6 +1,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include <boost/format.hpp>
+
 #include "ygz/system.h"
 #include "ygz/visual_odometry.h"
 #include "ygz/optimizer.h"
@@ -62,14 +64,14 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
                 LOG(INFO) << "Track success, current TCW = \n" << _curr_frame->_T_c_w.matrix() << endl;
                 
                 // 检查此帧是否可以作为关键帧
-                // if ( NeedNewKeyFrame() ) {
+                if ( NeedNewKeyFrame() ) {
                     // create new key-frame 
-                    // LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
-                    // cv::waitKey(0);
-                // } else {
+                    LOG(INFO) << "this frame is regarded as a new key-frame. "<< endl;
+                    SetKeyframe( _curr_frame );
+                } else {
                     // 该帧是普通帧，加到 depth filter 中去
                     _depth_filter->AddFrame( frame );
-                // }
+                }
                 
                 // 把参考帧设为当前帧
                 _ref_frame = _curr_frame;
@@ -81,8 +83,7 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
                     cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
                 }
                 cv::imshow("current", img_show);
-                cv::waitKey(0);
-                
+                cv::waitKey(30);
                 
             } else {
                 _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
@@ -124,7 +125,6 @@ void VisualOdometry::MonocularInitialization()
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
             
-            Memory::PrintInfo();
             /** * debug only 
             // check the covisibility 
             for ( unsigned long map_point_id : _ref_frame->_map_point ) {
@@ -209,7 +209,10 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
 {
     frame->_is_keyframe = true; 
     Memory::PrintInfo();
-    Memory::RegisterFrame( frame, true );
+    if ( frame->_id != 0 ) { // 已经注册了，就不要重复注册一遍
+    } else {
+        Memory::RegisterFrame( frame );  // 未注册，则注册新的关键帧
+    }
     LOG(INFO) << "frame id = " << frame->_id << endl;
     
     if ( initializing == false ) {
@@ -225,7 +228,16 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
         _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
         
+        // set the observation of map points 
+        auto iter_mp = frame->_map_point.begin();
+        auto iter_obs = frame->_observations.begin();
+        for ( ; iter_mp != frame->_map_point.end(); iter_mp++, iter_obs++ ) {
+            MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
+            mp->_obs[frame->_id] = *iter_obs;
+        }
+        
         // draw the candidate 
+        /*
         cv::Mat img_show = frame->_color.clone();
         for ( MapPoint& point: frame->_map_point_candidates ) {
             Vector2d px = point._obs.begin()->second.head<2>();
@@ -238,10 +250,12 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         
         cv::imshow("new features", img_show );
         cv::waitKey(0);
+        */
         
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
+    /*
     ORBExtractor orb;
     for ( unsigned long map_point_id: frame->_map_point ) {
         MapPoint::Ptr map_point = Memory::GetMapPoint( map_point_id );
@@ -250,14 +264,30 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
             orb.Compute( frame->_pyramid[map_point->_pyramid_level], map_point->_obs[frame->_id].head<2>(), map_point->_keypoint, map_point->_descriptor );
         }
     }
+    */
     
     _local_mapping.AddKeyFrame( frame );
     _last_key_frame = frame; 
+    
+    /*
+    // show the key frame 
+    if ( initializing == false ) {
+        boost::format fmt("keyframe-%d");
+        string title = (fmt%frame->_id).str();
+        cv::Mat img_show = frame->_color.clone();
+        for ( Vector3d& obs:frame->_observations ) {
+            cv::circle( img_show, cv::Point2f(obs[0], obs[1]), 5, cv::Scalar(250,0,250), 2 );
+        }
+        cv::imshow(title.c_str(), img_show);
+        cv::waitKey(1);
+    }
+    */
     
 }
 
 bool VisualOdometry::TrackRefFrame()
 {
+    _TCR_estimated = SE3();
     SE3 TCR = _TCR_estimated; 
     for ( int level = _curr_frame->_pyramid.size()-1; level>=0; level -- ) {
         _align[level].SetTCR(TCR);
@@ -272,21 +302,25 @@ bool VisualOdometry::TrackRefFrame()
     _curr_frame->_T_c_w = _TCR_estimated * _ref_frame->_T_c_w;
     
     // 我有点怀疑这里的结果对不对，让我们测试一下
-    // 所有地图点在帧0和当前帧的投影
+    // 所有地图点在参考帧和当前帧的投影
     
+    /*
     Mat ref_img = _ref_frame->_color.clone();
     Mat curr_img = _curr_frame->_color.clone();
+    
     for ( unsigned long& map_point_id: _ref_frame->_map_point ) {
         MapPoint::Ptr point = Memory::GetMapPoint( map_point_id );
         Vector2d px_ref = _ref_frame->_camera->World2Pixel( point->_pos_world, _ref_frame->_T_c_w);
         Vector2d px_curr = _curr_frame->_camera->World2Pixel( point->_pos_world, _curr_frame->_T_c_w );
         
-        cv::circle( ref_img, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0));
-        cv::circle( curr_img, cv::Point2f(px_curr[0], px_curr[1]), 5, cv::Scalar(0,250,0));
+        cv::circle( ref_img, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2);
+        cv::circle( curr_img, cv::Point2f(px_curr[0], px_curr[1]), 5, cv::Scalar(0,250,0), 2);
     }
     cv::imshow("ref frame", ref_img);
     cv::imshow("current frame", curr_img);
     cv::waitKey(0);
+    */
+    
     return true; 
 }
 
@@ -296,8 +330,19 @@ bool VisualOdometry::TrackLocalMap()
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
     bool success = _local_mapping.TrackLocalMap( _curr_frame );
     
-    
-    return true;
+    // project the map points in last key frame into current 
+    /*
+    cv::Mat img_show = _curr_frame->_color.clone();
+    for ( unsigned long& map_point_id: _last_key_frame->_map_point ) {
+        MapPoint::Ptr mp = Memory::GetMapPoint( map_point_id );
+        if ( mp->_bad ) continue; 
+        Vector2d px_curr = _curr_frame->_camera->World2Pixel( mp->_pos_world, _curr_frame->_T_c_w );
+        cv::circle( img_show, cv::Point2f(px_curr[0], px_curr[1]), 5, cv::Scalar(250,0,250), 2);
+    }
+    cv::imshow("current vs key-frame", img_show);
+    cv::waitKey(1);
+    */
+    return success;
 }
 
 void VisualOdometry::ReprojectMapPointsInInitializaion()
@@ -319,7 +364,7 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
             }
             
             LOG(INFO) << "pt[2] = " << pt[2] << endl;
-            if ( pt[2] < 0.1 || pt[2] > 10 ) {
+            if ( pt[2] < 0.01 || pt[2] > 15 ) {
                 // 距离太近或太远，通常来自误匹配
                 badpoint = true; 
                 break;
@@ -370,11 +415,31 @@ void VisualOdometry::ResetCurrentObservation()
         } else {
             // set the observation 
             Vector2d px = _curr_frame->_camera->World2Pixel( map_point->_pos_world, _curr_frame->_T_c_w );
-            _curr_frame->_observations.push_back( Vector3d(px[0], px[1], 1) );
+            Vector3d pt = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
+            _curr_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+            
+            map_point->_obs[_curr_frame->_id] = Vector3d(px[0], px[1], pt[2]);
+            
             iter++;
         }
     }
     
+    for ( auto iter = _ref_frame->_map_point.begin(); iter!=_ref_frame->_map_point.end(); ) {
+        MapPoint::Ptr map_point = Memory::GetMapPoint( *iter );
+        if ( map_point->_bad ) {
+            // remove this observation 
+            iter = _ref_frame->_map_point.erase( iter );
+            cntRemove ++ ;
+        } else {
+            // set the observation 
+            Vector2d px = _ref_frame->_camera->World2Pixel( map_point->_pos_world, _ref_frame->_T_c_w );
+            Vector3d pt = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
+            _ref_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+            
+            map_point->_obs[_ref_frame->_id] = Vector3d(px[0], px[1], pt[2]);
+            iter++;
+        }
+    }
     LOG(INFO) << "removed total "<<cntRemove<<" points"<<endl;
 }
 

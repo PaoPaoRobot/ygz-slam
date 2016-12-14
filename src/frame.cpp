@@ -36,11 +36,11 @@ bool Frame::GetMeanAndMinDepth ( double& mean_depth, double& min_depth )
         double depth = this->_camera->World2Camera( map_point->_pos_world, this->_T_c_w )[2];
         if ( depth<0 ) 
             continue; 
-        LOG(INFO) << "depth = "<<depth<<endl;
-        if ( depth>10 || depth < 0.05 ) {
+        // LOG(INFO) << "depth = "<<depth<<endl;
+        // if ( depth>10 || depth < 0.05 ) {
             // 明显不对啊
-            LOG(INFO) << map_point->_pos_world.transpose() << endl;
-        }
+            // LOG(INFO) << map_point->_pos_world.transpose() << endl;
+        // }
         
         cnt_valid_points ++ ;
         mean_depth += depth;

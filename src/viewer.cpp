@@ -4,7 +4,7 @@
 namespace ygz
 {
 
-Viewer::Viewer()
+Viewer::Viewer( )
 {
     pangolin::CreateWindowAndBind ( "YGZ-SLAM: GUI", 1024, 768 );
 
@@ -34,17 +34,20 @@ void Viewer::Draw()
     glClearColor ( 1.0f, 1.0f, 1.0f, 1.0f );
     // draw the key-frames and map points in memory
 
-
     for ( auto frame: Memory::_frames )
     {
-        DrawPose ( frame.second->_T_c_w );
+        DrawPose ( frame.second->_T_c_w, 1.0, 0, 0 );
     }
 
+    DrawPose( _curr_pose, 0.0, 0.0, 1.0 );
+    
     // temp pose
     for ( SE3& pose: _poses_tmp )
     {
-        DrawPose ( pose );
+        DrawPose ( pose, false );
     }
+    
+    
 
     // draw the map points
     for ( auto point : Memory::_points )
@@ -68,7 +71,7 @@ void Viewer::Draw()
     usleep ( 1000 );
 }
 
-void Viewer::DrawPose ( const SE3& T_c_w )
+void Viewer::DrawPose ( const SE3& T_c_w, float r, float g, float b )
 {
     const static float w = 0.18;
     const static float h = w*0.75;
@@ -101,8 +104,9 @@ void Viewer::DrawPose ( const SE3& T_c_w )
     glPushMatrix();
     glMultMatrixd ( m.m );
 
-    glLineWidth ( 0.5f );
-    glColor3f ( 0.6f,0.6f,0.6f );
+    glLineWidth ( 1.0f );
+    glColor3f ( r,g,b );
+    
     glBegin ( GL_LINES );
     glVertex3f ( 0,0,0 );
     glVertex3f ( w,h,z );

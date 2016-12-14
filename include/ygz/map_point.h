@@ -35,6 +35,7 @@ public:
     Vector3d GetObservedPt( const unsigned long& keyframe_id );
     
     // for debug use
+    /*
     void PrintInfo() {
         LOG(INFO) << "map point " << _id << "\nworld pos = " << _pos_world.transpose()<<endl;
         LOG(INFO) << "first observed from " << _first_observed_frame << endl;
@@ -43,6 +44,7 @@ public:
             LOG(INFO) << "from frame "<<obs.first << ", pixel pos = " << obs.second.transpose() << endl;
         }
     }
+    */
 }; 
 }
 
