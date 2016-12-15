@@ -134,7 +134,7 @@ bool Align2D (
 
     // termination condition
     float min_update_squared = 0.001;
-    const int cur_step = cur_img.step.p[0];
+    int cur_step = cur_img.cols;
     Eigen::Vector3f update;
     update.setZero();
     int iter = 0;
@@ -204,8 +204,11 @@ bool Align2D (
     }
 
     cur_px_estimate << u, v;
+    // return converged; 
     if ( converged == true ) return true;
     if ( converged == false ) {
+        
+        return false; 
         // LOG(INFO) << "iter = "<<iter<<", update = " << update.transpose()<<endl;
         // for ( float& c: chi2_vec )
             // LOG(INFO) << c ;
@@ -219,11 +222,6 @@ bool Align2D (
             return true;
     }
     
-    /*
-    for ( float& c: chi2_vec )
-        LOG(INFO) << "chi2 = "<< c ;
-    LOG(INFO)<<chi2_vec.back()/chi2_vec.front()<<endl;
-    */
     return false;
 
 }

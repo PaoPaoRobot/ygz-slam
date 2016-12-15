@@ -137,6 +137,7 @@ void TwoViewBAG2O (
     }
 }
 
+// 日，Ceres会修改scale……
 void TwoViewBACeres (
     const long unsigned int& frameID1,
     const long unsigned int& frameID2
@@ -147,33 +148,43 @@ void TwoViewBACeres (
     Frame::Ptr frame1 = Memory::GetFrame ( frameID1 );
     Frame::Ptr frame2 = Memory::GetFrame ( frameID2 );
 
-    Vector6d pose1, pose2;
-    Vector3d r1 = frame1->_T_c_w.so3().log(), t1=frame1->_T_c_w.translation();
+    Vector6d pose2;
     Vector3d r2 = frame2->_T_c_w.so3().log(), t2=frame2->_T_c_w.translation();
-    pose1.head<3>() = t1;
-    pose1.tail<3>() = r1;
     pose2.head<3>() = t2;
     pose2.tail<3>() = r2;
 
     ceres::Problem problem;
-    for ( auto iter = frame1->_map_point.begin(); iter!= frame1->_map_point.end(); iter++ )
-    {
-        MapPoint::Ptr map_point = Memory::GetMapPoint ( *iter );
-        if ( map_point->_bad ) continue;
+    
+    auto& all_points = Memory::GetAllPoints();
+    for ( auto& map_point_pair: all_points ) {
+        MapPoint::Ptr map_point = map_point_pair.second;
         for ( auto obs:map_point->_obs )
         {
-            Vector2d px = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );
-            problem.AddResidualBlock (
-                new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
-                    new CeresReprojectionError ( px )
-                ),
-                nullptr,
-                obs.first==frame1->_id ? pose1.data() : pose2.data(),
-                map_point->_pos_world.data()
-            );
+            if ( obs.first == frame1->_id ) {
+                /*
+                Vector2d px = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );
+                // 不想要改第一帧的位姿
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( px, frame1->_T_c_w )
+                    ),
+                    nullptr,
+                    map_point->_pos_world.data()
+                );
+                */
+            } else {
+                Vector2d px = frame2->_camera->Pixel2Camera2D ( obs.second.head<2>() );
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPoseOnly,2,6> (
+                        new CeresReprojectionErrorPoseOnly ( px, map_point->_pos_world )
+                    ),
+                    nullptr,
+                    pose2.data()
+                );
+            }
         }
     }
-
+    
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.minimizer_progress_to_stdout = true;
@@ -183,15 +194,18 @@ void TwoViewBACeres (
     cout<< summary.FullReport() << endl;
 
     // set the value of two frames
-    frame1->_T_c_w = SE3 (
-                         SO3::exp ( pose1.tail<3>() ), pose1.head<3>()
-                     );
-
     frame2->_T_c_w = SE3 (
                          SO3::exp ( pose2.tail<3>() ), pose2.head<3>()
                      );
     
+    /*
+    for ( auto& all_points: Memory::GetAllPoints() ) {
+        all_points.second->PrintInfo();
+    }
+    */
+    
     // check the depth in the two views 
+    /*
     for ( auto iter = frame1->_map_point.begin(); iter!= frame1->_map_point.end(); iter++ )
     {
         MapPoint::Ptr map_point = Memory::GetMapPoint ( *iter );
@@ -204,7 +218,7 @@ void TwoViewBACeres (
             map_point->_bad = true; 
         }
     }
-
+    */
 }
 
 void SparseImgAlign::SparseImageAlignmentCeres (
@@ -260,7 +274,7 @@ void SparseImgAlign::SparseImageAlignmentCeres (
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
+    // options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
@@ -367,11 +381,11 @@ void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
+    // options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    cout<< summary.FullReport() << endl;
+    // cout<< summary.FullReport() << endl;
 
     // set the pose of current
     current->_T_c_w = SE3 (
@@ -540,15 +554,15 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( !FindEpipolarMatchDirect ( first_frame, frame, *it->ftr, 1.0/it->mu, 1.0/z_inv_min, 1.0/z_inv_max, z ) )
         {
             // 挂了
-            LOG(INFO) << "find epipolar match failed"<<endl;
+            // LOG(INFO) << "find epipolar match failed"<<endl;
             it->b++;
             ++it;
             ++n_failed_matches;
-            continue;
             cntFailed++;
+            continue;
         }
 
-        LOG(INFO) << "find epipolar match success"<<endl;
+        // LOG(INFO) << "find epipolar match success"<<endl;
         cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
@@ -570,12 +584,11 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             mp->_first_observed_frame = it->ftr->_first_observed_frame;
             mp->_obs = it->ftr->_obs;
             Vector2d px_ref = it->ftr->_obs.begin()->second.head<2>();
-            mp->_converged = true;
             frame->_map_point.push_back( mp->_id );
             frame->_observations.push_back( Vector3d(px_ref[0], px_ref[1], 1) );
+            mp->_converged = false; 
             
             _local_mapping->AddMapPoint( mp->_id );
-            
             it = _seeds.erase ( it );
         }
         else if ( isnan ( z_inv_min ) )

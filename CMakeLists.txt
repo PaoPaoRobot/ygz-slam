@@ -4,6 +4,7 @@ project ( ygz )
 # compiler
 set( CMAKE_CXX_COMPILER "g++" )
 # set( CMAKE_CXX_COMPILER "clang++" )
+
 # debug 
 set( CMAKE_BUILD_TYPE "Debug" )
 set( CMAKE_CXX_FLAGS "-std=c++11 -Wno-reorder" )

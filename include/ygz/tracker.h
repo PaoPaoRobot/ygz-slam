@@ -35,7 +35,7 @@ private:
     
 public:
     
-    Tracker();
+    Tracker( shared_ptr<FeatureDetector> detector );
     
     // set the reference to track 
     void SetReference( Frame::Ptr ref );

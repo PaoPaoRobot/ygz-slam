@@ -13,7 +13,7 @@ void Frame::InitFrame()
     cv::cvtColor( _color, gray, CV_BGR2GRAY );
     _pyramid_level = Config::get<int>("frame.pyramid");
     _pyramid.resize( _pyramid_level );
-    _pyramid[0] = gray;
+    _pyramid[0] = gray.clone();
     CreateImagePyramid();
 }
 
@@ -57,7 +57,6 @@ bool Frame::GetMeanAndMinDepth ( double& mean_depth, double& min_depth )
     mean_depth /= cnt_valid_points;
     return true; 
 }
-
 
 PinholeCamera::Ptr Frame::_camera = nullptr;
 

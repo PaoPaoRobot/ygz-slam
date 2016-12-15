@@ -16,7 +16,6 @@ namespace ygz {
  * 请注意可能有一些候选的地图点，它们的三维位置尚未确定，但二维位置由某个关键帧给出
  ****************************************************************/
 
-
 class LocalMapping {
     
 public:
@@ -35,11 +34,13 @@ private:
     bool TestDirectMatch( Frame::Ptr current, const MatchPointCandidate& candidate, Vector2d& px_curr );
     
     // Local Bundle Adjustment 
+    // 这里只修改current的pose，以及与current关联的路标点，不会修改其他的路标点和帧的位姿
+    // 用于刚加入新的普通帧时的优化
     void LocalBA( Frame::Ptr current ); 
     
     // 相邻关键帧和地图点，以ID形式标出
-    set<unsigned long> _local_keyframes;        // 
-    set<unsigned long> _local_map_points;       // 
+    set<unsigned long> _local_keyframes;        // 关键帧
+    set<unsigned long> _local_map_points;       // 地图点
     
     // 匹配局部地图用的 patch
     uchar _patch[WarpPatchSize*WarpPatchSize];
@@ -55,6 +56,7 @@ private:
     int _grid_rows=0, _grid_cols=0;
     int _pyramid_level=0;
     
+    // 这个网格目前还没用上
     vector<vector<MatchPointCandidate>> _grid;  // 候选点网格,每个格点有一串的候选点
     
 

@@ -3,8 +3,8 @@
 
 namespace ygz {
     
-Tracker::Tracker( ) : 
-_detector( new FeatureDetector )
+Tracker::Tracker( shared_ptr<FeatureDetector> detector ) : 
+_detector( detector )
 {
     // read the params from config 
     _min_features_initializing = Config::get<int>("init.min_features");
@@ -88,15 +88,15 @@ void Tracker::TrackKLT()
     auto pt_cur_it = pt_curr.begin();
     
     _px_curr.clear();
-    
     // copy the tracked ones and remove the lost ones
     for ( size_t i=0; px_ref_it != _px_ref.end(); ++i, ++pt_cur_it )
     {
-        if ( !status[i] )
+        if ( !status[i] || ! _curr->InFrame( *pt_cur_it) )
         {
             px_ref_it = _px_ref.erase( px_ref_it );
             continue;
         }
+        // LOG(INFO) << "error = "<<error[i]<<endl;
         _px_curr.push_back( *pt_cur_it );
         px_ref_it++;
     }
@@ -114,10 +114,24 @@ void Tracker::PlotTrackedPoints() const
         return; 
     }
     
-    for ( const cv::Point2f& p: _px_curr ) {
-        cv::circle( img_show, p, 5, cv::Scalar(0,250,0), 2 );
+    Mat ref_show = _ref->_color.clone();
+    
+    auto ref_it = _px_ref.begin();
+    auto curr_it = _px_curr.begin();
+    
+    LOG(INFO) << "ref pts: "<<_px_ref.size()<<", curr pts: "<<_px_curr.size();
+    for ( ; curr_it != _px_curr.end(); ++ref_it, ++curr_it ) {
+        cv::circle( img_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
+        cv::circle( img_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
+        cv::line( img_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
+        
+        cv::circle( ref_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
+        cv::circle( ref_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
+        cv::line( ref_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
     }
-    cv::imshow( "tracked points", img_show );
+    
+    cv::imshow( "tracked points in curr", img_show );
+    // cv::imshow( "tracked points in ref", ref_show );
     cv::waitKey(1);
 }
 

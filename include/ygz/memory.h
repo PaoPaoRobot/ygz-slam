@@ -51,6 +51,10 @@ public:
         return iter->second;
     }
     
+    static inline unordered_map<unsigned long, MapPoint::Ptr>& GetAllPoints() {
+        return _points;
+    }
+    
     void optimizeMemory(); 
     void clean();
     

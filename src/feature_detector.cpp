@@ -31,7 +31,6 @@
 #include "ygz/config.h"
 #include "ygz/frame.h"
 
-
 namespace ygz {
     
 // 构造：从Config中读取相关信息
@@ -49,6 +48,7 @@ FeatureDetector::FeatureDetector()
 void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features )
 {
     // reset the feature grid
+    // 这东西偶尔会挂掉，原因不明，试试改用opencv的fast？
     if ( overwrite_existing_features ) {
         frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
         frame->_map_point_candidates.clear();
@@ -62,11 +62,16 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
     {
         const int scale = (1<<L);
         vector<fast::fast_xy> fast_corners;
-        if ( frame->_pyramid[L].data == nullptr ) {
-            LOG(FATAL) << "strange. " <<endl;
-        }
+        
+        // if ( frame->_pyramid[L].data == nullptr ) {
+            // LOG(FATAL) << "strange. " <<endl;
+        // }
         
         LOG(INFO) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<", w,h="<< frame->_pyramid[L].rows << frame->_pyramid[L].cols <<endl;
+        // cv::imshow("Pyramid", frame->_pyramid[L] );
+        // cv::waitKey(0);
+        LOG(INFO) << "start detecting features"<<endl;
+        
 #if __SSE2__
         fast::fast_corner_detect_10_sse2(
             (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,
@@ -85,7 +90,7 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
         fast::fast_corner_score_10((fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols, fast_corners, 20, scores);
         fast::fast_nonmax_3x3(fast_corners, scores, nm_corners);
 
-        LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
+        // LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
         for(auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it)
         {
             fast::fast_xy& xy = fast_corners.at(*it);

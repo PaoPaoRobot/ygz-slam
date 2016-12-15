@@ -48,7 +48,7 @@ void LocalMapping::AddKeyFrame ( Frame::Ptr keyframe )
     }
     
     // call Local Bundle Adjustment
-    LocalBA( keyframe );
+    // LocalBA( keyframe );
 }
 
 void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
@@ -214,22 +214,35 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     // Step 4
     // 现在当前帧应该全是内点了吧，再优化一次以求更精确
     // 这里需要使用局部地图的 ba 
-    // LocalBA( current );
-    opti::OptimizePoseCeres( current, false );
-    // 把地图点按照重投影位置设置一下
+    LocalBA( current );
+    // opti::OptimizePoseCeres( current, false );
+    // 把观测按照重投影位置设置一下
     // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
     
     iter_obs = current->_observations.begin();
     iter_pt = current->_map_point.begin();
     
+    // 看看重投影和obs有何不同
+    cv::Mat img_show = current->_color.clone();
     for ( ; iter_obs!=current->_observations.end(); iter_obs++, iter_pt++ ) {
         // reset the observation 
         MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
-        iter_obs->head<2>() = px;
-        (*iter_obs)[2] = pt[2];
+        
+        cv::circle( img_show, cv::Point2f( (*iter_obs)[0], (*iter_obs)[1] ), 5, cv::Scalar(0,0,250), 2 );
+        cv::circle( img_show, cv::Point2f( px[0], px[1] ), 5, cv::Scalar(0,250,0), 2 );
+        
+        // iter_obs->head<2>() = px;
+        
+        // 在地图点中添加额外观测
+        if ( map_point->_converged == false )
+            map_point->_extra_obs.push_back( ExtraObservation( pt/pt[2], current->_T_c_w) );
+        (*iter_obs)[2] = pt[2]; // 只重设一下距离试试？
+        
     }
+    cv::imshow("obs vs reproj" , img_show);
+    cv::waitKey(0);
     
     return true;
 }
@@ -239,77 +252,100 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
     ceres::Problem problem;
     vector<Vector6d*> poses;  
     
-    // 把每个帧与current 有关的map point拿出来的优化？还是说所有的放在一起优化？
-    for ( const unsigned long& id: _local_keyframes ) {
-        
-        Frame::Ptr frame = Memory::GetFrame( id );
-        Vector6d* pose = new Vector6d();
-        Vector3d r = frame->_T_c_w.so3().log(), t=frame->_T_c_w.translation();
-        pose->head<3>() = t;
-        pose->tail<3>() = r;
-        poses.push_back( pose );
-        
-        auto iter_mp = frame->_map_point.begin();
-        auto iter_obs = frame->_observations.begin();
-        for (; iter_obs!=frame->_observations.end(); iter_mp++, iter_obs++ ) {
-            MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
-            if ( mp->_bad ) continue; 
-            Vector3d pt = frame->_camera->Pixel2Camera( (*iter_obs).head<2>() );
-            problem.AddResidualBlock (
-                new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
-                    new CeresReprojectionError ( pt.head<2>() )
-                ),
-                nullptr,
-                pose->data(),
-                mp->_pos_world.data()
-            );
-        }
-    }
-    
-    // and the current 
     Vector6d* pose = new Vector6d();
     Vector3d r = current->_T_c_w.so3().log(), t=current->_T_c_w.translation();
     pose->head<3>() = t;
     pose->tail<3>() = r;
     poses.push_back( pose );
     
+    // 把每个帧与current 有关的map point拿出来的优化？还是说所有的放在一起优化？
     auto iter_mp = current->_map_point.begin();
     auto iter_obs = current->_observations.begin();
-    for (; iter_obs!=current->_observations.end(); iter_mp++, iter_obs++ ) {
+    
+    map<unsigned long, Vector3d> mp_backup; // 缓存优化前的地图点坐标
+    
+    for ( ; iter_mp!=current->_map_point.end(); iter_mp++, iter_obs++ ) {
         MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
-        if ( mp->_bad ) continue; 
-        Vector3d pt = current->_camera->Pixel2Camera( (*iter_obs).head<2>() );
-        problem.AddResidualBlock (
-            new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
-                new CeresReprojectionError ( pt.head<2>() )
-            ),
-            nullptr,
-            pose->data(),
-            mp->_pos_world.data()
-        );
+        
+        Vector3d pt_curr = current->_camera->Pixel2Camera( iter_obs->head<2>() );
+        if ( mp->_converged ) {
+            // 对于收敛的地图点，不再优化它的位置，只给位姿估计提供信息
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction<CeresReprojectionErrorPoseOnly,2,6> (
+                    new CeresReprojectionErrorPoseOnly ( pt_curr.head<2>(), mp->_pos_world ) 
+                ),
+                nullptr,
+                pose->data()
+            );
+        } else {
+            // 未收敛的地图点，同时优化点的位置
+            // 这是当前帧观测到的地图点，添加一个当前帧与它的pose-point对
+            mp_backup[mp->_id] = mp->_pos_world;
+            
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
+                    new CeresReprojectionError ( pt_curr.head<2>() )
+                ),
+                nullptr,
+                pose->data(),
+                mp->_pos_world.data()
+            );
+            
+            // 同时，这个point又被许多别的帧看到，也要添加在那些帧里的观测
+            for ( auto& obs_pair : mp->_obs ) {
+                Frame::Ptr obs_frame = Memory::GetFrame( obs_pair.first );
+                Vector3d pt_obs = obs_frame->_camera->Pixel2Camera( obs_pair.second.head<2>() );
+                // 但是不希望优化那些关键帧的位姿，使用 structure only 
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( pt_obs.head<2>(), obs_frame->_T_c_w )
+                    ),
+                    nullptr,
+                    mp->_pos_world.data()
+                );
+            }
+            
+            for ( auto& extra_obs : mp->_extra_obs ) {
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( extra_obs._pt.head<2>(), extra_obs._TCW )
+                    ),
+                    nullptr,
+                    mp->_pos_world.data()
+                );
+            }
+        }
     }
     
+    // Optimize it! 
     // 解之
     
     ceres::Solver::Options options;
-    // options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    // options.linear_solver_type = ceres::SPARSE_SCHUR;
+    // options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    cout<< summary.FullReport() << endl;
-    
-    int i=0; 
-    for ( const unsigned long& id: _local_keyframes ) {
-        Frame::Ptr frame = Memory::GetFrame( id );
-        frame->_T_c_w = SE3( SO3::exp(poses[i]->tail<3>()), poses[i]->head<3> () );
-        delete poses[i];
-        i++ ;
-    }
+    // cout<< summary.FullReport() << endl;
     
     current->_T_c_w = SE3( SO3::exp(pose->tail<3>()), pose->head<3>() );
     delete pose;
+    
+    // 判断地图点是否收敛
+    for ( auto& backup_pair: mp_backup ) {
+        MapPoint::Ptr mp = Memory::GetMapPoint( backup_pair.first );
+        if ( mp->_extra_obs.size() < 5 ) 
+            continue; 
+        double update = (mp->_pos_world - backup_pair.second).norm();
+        LOG(INFO) << "update = "<<update;
+        if ( update < 0.01 ) 
+            mp->_converged = true; 
+        if ( update > 20 ) {
+            LOG(WARNING)<< "map point "<<mp->_id <<" changed from "<<backup_pair.second.transpose()<<" to "<<
+                mp->_pos_world.transpose()<<endl;
+        }
+    }
 }
  
 

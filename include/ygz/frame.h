@@ -49,6 +49,11 @@ public:
             && pixel[1] >= boarder && pixel[1] < _color.rows - boarder;
     }
     
+    inline bool InFrame( const cv::Point2f& pixel, const int& boarder = 10 ) const {
+        return pixel.x >= boarder && pixel.x < _color.cols - boarder 
+            && pixel.y >= boarder && pixel.y < _color.rows - boarder;
+    }
+    
     // 带level的查询
     inline bool InFrame( const Vector2d& pixel, const int& boarder, const int& level ) const {
         return pixel[0]/(1<<level) >= boarder && pixel[0]/(1<<level) < _color.cols - boarder 

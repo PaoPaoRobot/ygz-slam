@@ -69,11 +69,12 @@ private:
     Frame::Ptr  _ref_frame=nullptr;     // reference 
 
     System* _system;                    // point to full system 
-    unique_ptr<Tracker>  _tracker;      // tracker, most LK flow
+    shared_ptr<Tracker>  _tracker;      // tracker, most LK flow
     Initializer _init;                  // initializer  
     vector<opti::SparseImgAlign> _align;// sparse image alignment for each pyramid level 
     LocalMapping        _local_mapping; // 局部地图
     opti::DepthFilter*  _depth_filter =nullptr;  // depth filter 
+    shared_ptr<FeatureDetector> _detector=nullptr;
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
     

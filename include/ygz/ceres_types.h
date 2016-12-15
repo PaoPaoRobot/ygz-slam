@@ -12,6 +12,7 @@ using namespace ygz::utils;
 namespace ygz
 {
 
+// 既有位姿又有点的重投影
 class CeresReprojectionError
 {
 public:
@@ -43,6 +44,7 @@ protected:
     Vector2d _pt_cam; // observation: normalized camera coordinate 
 };
 
+// 只有位姿的重投影
 class CeresReprojectionErrorPoseOnly
 {
 public:
@@ -77,6 +79,46 @@ public:
 protected:
     Vector2d _pt_cam; // observation: normalized camera coordinate 
     Vector3d _pt_world; // 3D point in world frame 
+};
+
+// 反之，只有点的重投影
+// Error = pt - TCR*pw
+class CeresReprojectionErrorPointOnly
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW 
+    CeresReprojectionErrorPointOnly( 
+        const Vector2d& pt_cam, const SE3& TCW
+    ): _pt_cam(pt_cam)  {
+        Vector3d r = TCW.so3().log(), t=TCW.translation();
+        // 前面三项为t，后面三项为r 
+        _TCW.head<3>() = t;
+        _TCW.tail<3>() = r;
+    }
+    
+    // cost = z - (Rp+t), note the first three components in the pose are translation 
+    template< typename T > 
+    bool operator() ( 
+        const T* const point_world, 
+        T* residuals
+    ) const {
+        T p[3];
+        T rot[3];
+        for ( size_t i=0; i<3; i++ )
+            rot[i] = (T) _TCW[i+3];
+        ceres::AngleAxisRotatePoint<T>( rot, point_world, p );
+        
+        p[0] += (T) _TCW[0]; 
+        p[1] += (T) _TCW[1]; 
+        p[2] += (T) _TCW[2]; 
+        
+        residuals[0] = _pt_cam[0] - p[0]/p[2];
+        residuals[1] = _pt_cam[1] - p[1]/p[2];
+        return true; 
+    }
+protected:
+    Vector2d _pt_cam; // observation: normalized camera coordinate 
+    Vector6d _TCW; // 3D point in world frame 
 };
 
 // used in sparse direct method 

@@ -45,8 +45,12 @@ int main( int argc, char** argv )
     for ( size_t i=0; i<rgbFiles.size(); i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         Frame::Ptr pf( new Frame );
-        pf->_color = color; 
+        pf->_color = color.clone(); 
         pf->InitFrame();
+        
+        // cv::imshow("pyramid[0]", pf->_pyramid[0]);
+        // cv::waitKey(1);
+        
         bool ret = vo.AddFrame( pf );
         // vo.PlotFrame();
         

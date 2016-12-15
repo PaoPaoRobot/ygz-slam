@@ -79,9 +79,12 @@ bool Initializer::TryInitialize(
     if ( retE == false && retH == false )
         return false;
     if ( retE == true ) {
+        LOG(INFO) << "T21 from E: \n" << T21_E.matrix()<<endl;
+        
         Triangulate( T21_E, features3d_curr );
         // rescale the map 
         double scale = RescaleMap( features3d_curr );
+        // double scale = 1;
         _frame->_T_c_w = T21_E * ref->_T_c_w;
         // change the scale between ref and current 
         _frame->_T_c_w.translation() = -_frame->_T_c_w.rotation_matrix() * ( ref->Pos() + 1/scale*( _frame->Pos() - ref->Pos()));
@@ -104,10 +107,10 @@ bool Initializer::TryInitialize(
                 map_point->_bad = false;
                 
                 // add the observations into frame 
-                ref->_map_point.push_back( map_point->_id );
-                map_point->_obs[ ref->_id ] = Vector3d( _px1[i].x, _px1[i].y, 1 );
+                // ref->_map_point.push_back( map_point->_id );
+                map_point->_obs[ ref->_id ] = Vector3d( _px1[i].x, _px1[i].y, pos[2]/scale );
                 
-                curr->_map_point.push_back( map_point->_id );
+                // curr->_map_point.push_back( map_point->_id );
                 map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
@@ -132,10 +135,10 @@ bool Initializer::TryInitialize(
                 map_point->_bad = false;
                 
                 // add the observations into frame 
-                ref->_map_point.push_back( map_point->_id );
+                // ref->_map_point.push_back( map_point->_id );
                 map_point->_obs[ ref->_id ] = Vector3d( _px1[i].x, _px1[i].y, 1 );
                 
-                curr->_map_point.push_back( map_point->_id );
+                // curr->_map_point.push_back( map_point->_id );
                 map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
@@ -175,6 +178,7 @@ double Initializer::RescaleMap(vector< Vector3d >& pts)
     int cnt = 0;
     for ( size_t i=0; i<pts.size(); i++ ) {
         if ( _inliers[i]==true ) {
+            // LOG(INFO) << "depth = " <<pts[i][2]<<endl;
             mean_d += pts[i][2];
             cnt++;
         }

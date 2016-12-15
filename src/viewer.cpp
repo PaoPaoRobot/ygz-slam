@@ -52,10 +52,10 @@ void Viewer::Draw()
     // draw the map points
     for ( auto point : Memory::_points )
     {
-        if ( point.second->_bad == false ) {
+        if ( point.second->_converged ) {
             glPointSize ( 3 );
             glBegin ( GL_POINTS );
-            glColor3d ( 0.1,0.1,0.1 );
+            glColor3d ( 0.1,0.6,0.1 );
             glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
             glEnd();
         } else {
