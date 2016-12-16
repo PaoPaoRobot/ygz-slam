@@ -219,15 +219,15 @@ bool Align2D (
         // 没有收敛，可能出现误差上升，或者达到最大迭代次数
         // 我们认为迭代后误差小于一开始的误差的一半，就认为配准是对的？—— TODO check G-N的收敛判定
         if ( chi2_vec.empty() ) {
-            // LOG(INFO) << "rejected because u,v runs outside."<<endl;
+            LOG(INFO) << "rejected because u,v runs outside."<<endl;
             return false;
         }
         if ( chi2_vec.back()/chi2_vec.front() < 0.5 && chi2_vec.back()<15000 ) {
-            // LOG(INFO) << "accepted, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
+             LOG(INFO) << "accepted, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
             return true;
         }
         else {
-            // LOG(INFO) << "rejected, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
+            LOG(INFO) << "rejected, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
             return false;
         }
     }
@@ -263,6 +263,7 @@ bool FindEpipolarMatchDirect (
     utils::GetWarpAffineMatrix (
         ref_frame, cur_frame, ref_ftr._obs[ref_frame->_id].head<2>(), pt_ref*d_estimate, ref_ftr._pyramid_level, T_cur_ref,  A_cur_ref
     );
+    // LOG(INFO) << "Acr = " << A_cur_ref << endl;
 
     // feature pre-selection
     bool reject = false;
@@ -279,7 +280,7 @@ bool FindEpipolarMatchDirect (
     }
     */
 
-    int search_level = GetBestSearchLevel ( A_cur_ref, 3 );
+    int search_level = GetBestSearchLevel ( A_cur_ref, 2 );
 
     // 匹配局部地图用的 patch
     uchar patch[halfpatch_size*halfpatch_size];
@@ -290,8 +291,21 @@ bool FindEpipolarMatchDirect (
     Vector2d px_A ( cur_frame->_camera->Camera2Pixel ( Vector3d ( A[0], A[1], 1 ) ) );
     Vector2d px_B ( cur_frame->_camera->Camera2Pixel ( Vector3d ( B[0], B[1], 1 ) ) );
     double epi_length = ( px_A-px_B ).norm() / ( 1<<search_level );
+    
 
     Vector2d px_ref = ref_ftr._obs[ref_frame->_id].head<2>();
+    
+    // show the epipolar line in current 
+    cv::Mat curr_show = cur_frame->_color.clone();
+    cv::Mat ref_show = ref_frame->_color.clone();
+    
+    cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2 );
+    cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 2 );
+    
+    cv::imshow("px in ref", ref_show );
+    cv::imshow("epi line in curr", curr_show );
+    cv::waitKey(1);
+    
     // Warp reference patch at ref_level
     WarpAffine ( A_cur_ref, ref_frame->_pyramid[ref_ftr._pyramid_level], px_ref,
                  ref_ftr._pyramid_level, search_level, halfpatch_size+1, patch_with_border );
@@ -314,6 +328,9 @@ bool FindEpipolarMatchDirect (
         px_cur = ( px_A+px_B ) /2.0;
         Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
         bool res;
+        cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
+        cv::imshow("epi line in curr", curr_show );
+        cv::waitKey(1);
         /*
         if ( options.align_1d )
             res = feature_alignment::align1D (
@@ -323,9 +340,10 @@ bool FindEpipolarMatchDirect (
         */
         res = Align2D (
                   cur_frame->_pyramid[search_level], patch_with_border, patch,
-                  10, px_scaled );
+                  15, px_scaled );
         if ( res )
         {
+            LOG(INFO) << "align 2d succeed"<<endl;
             px_cur = px_scaled* ( 1<<search_level );
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
@@ -334,8 +352,12 @@ bool FindEpipolarMatchDirect (
                 // LOG(INFO) << "epipolar line is short! " << endl;
                 return true;
             }
+            LOG(INFO) << "rejected by triagulation"<<endl;
+            return false;
+        } else {
+            LOG(INFO) << "rejected by align 2d"<<endl;
+            return false;
         }
-        return false;
     }
 
     // 极线比较长，此时沿着极线搜索之
@@ -390,8 +412,12 @@ bool FindEpipolarMatchDirect (
     if ( zmssd_best < PatchScore::threshold() )
     {
         px_cur = cur_frame->_camera->Camera2Pixel ( Vector3d(uv_best[0], uv_best[1], 1) );
-        Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
-        bool res;
+        cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
+        cv::imshow("epi line in curr", curr_show );
+        cv::waitKey(1);
+        
+        // Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
+        // bool res;
         /*
         if ( options_.align_1d )
             res = feature_alignment::align1D (
@@ -399,13 +425,17 @@ bool FindEpipolarMatchDirect (
                       patch_with_border_, patch_, options_.align_max_iter, px_scaled, h_inv_ );
         */
         
-        // 居然又align一遍
+        // 居然又align一遍，别align了行不？
+        /*
         res = Align2D (
                   cur_frame->_pyramid[search_level], patch_with_border, patch,
-                  10, px_scaled );
-        if ( res )
+                  15, px_scaled );
+                  */
+        // if ( res )
         {
-            px_cur = px_scaled* ( 1<<search_level );
+            // px_cur = px_scaled* ( 1<<search_level );
+            LOG(INFO) << "align 2d succeed"<<endl;
+            
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
@@ -423,7 +453,9 @@ bool FindEpipolarMatchDirect (
         
                 return true;
             }
+            // LOG(INFO) << "rejected by triagulation"<<endl;
         }
+        // LOG(INFO) << "rejected by align 2d"<<endl;
         return false;
     }
     return false;

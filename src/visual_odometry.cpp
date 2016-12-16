@@ -242,7 +242,6 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         }
         
         // draw the candidate 
-        /*
         cv::Mat img_show = frame->_color.clone();
         for ( MapPoint& point: frame->_map_point_candidates ) {
             Vector2d px = point._obs.begin()->second.head<2>();
@@ -255,8 +254,6 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         
         cv::imshow("new features", img_show );
         cv::waitKey(0);
-        */
-        
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配

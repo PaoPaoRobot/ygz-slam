@@ -536,6 +536,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( xyz_f.z() < 0.0 )
         {
             ++it; // behind the camera
+            cntFailed++;
             continue;
         }
         // Vector2d x  = frame->_camera->Camera2Pixel ( xyz_f );
@@ -543,6 +544,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( !frame->InFrame ( frame->_camera->Camera2Pixel ( xyz_f ) ) )
         {
             ++it; // point does not project in image
+            cntFailed++;
             continue;
         }
 
@@ -553,7 +555,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( !FindEpipolarMatchDirect ( first_frame, frame, *it->ftr, 1.0/it->mu, 1.0/z_inv_min, 1.0/z_inv_max, z ) )
         {
             // 挂了
-            // LOG(INFO) << "find epipolar match failed"<<endl;
+            LOG(INFO) << "find epipolar match failed"<<endl;
             it->b++;
             ++it;
             ++n_failed_matches;
@@ -561,7 +563,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             continue;
         }
 
-        // LOG(INFO) << "find epipolar match success"<<endl;
+        LOG(INFO) << "find epipolar match success"<<endl;
         cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
@@ -612,7 +614,7 @@ void DepthFilter::UpdateSeed (
     {
         return;
     }
-    // seed->PrintInfo();
+    seed->PrintInfo();
     boost::math::normal_distribution<float> nd ( seed->mu, norm_scale );
     float s2 = 1./ ( 1./seed->sigma2 + 1./tau2 );
     float m = s2* ( seed->mu/seed->sigma2 + x/tau2 );
@@ -631,8 +633,8 @@ void DepthFilter::UpdateSeed (
     seed->mu = mu_new;
     seed->a = ( e-f ) / ( f-e/f );
     seed->b = seed->a* ( 1.0f-f ) /f;
-    // LOG(INFO) << "updated: "; 
-    // seed->PrintInfo();
+    LOG(INFO) << "updated: "; 
+    seed->PrintInfo();
     // LOG(INFO)<<endl;
 }
 
