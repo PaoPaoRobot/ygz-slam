@@ -161,7 +161,6 @@ void TwoViewBACeres (
         for ( auto obs:map_point->_obs )
         {
             if ( obs.first == frame1->_id ) {
-                /*
                 Vector2d px = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );
                 // 不想要改第一帧的位姿
                 problem.AddResidualBlock (
@@ -171,15 +170,15 @@ void TwoViewBACeres (
                     nullptr,
                     map_point->_pos_world.data()
                 );
-                */
             } else {
                 Vector2d px = frame2->_camera->Pixel2Camera2D ( obs.second.head<2>() );
                 problem.AddResidualBlock (
-                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPoseOnly,2,6> (
-                        new CeresReprojectionErrorPoseOnly ( px, map_point->_pos_world )
+                    new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
+                        new CeresReprojectionError( px )
                     ),
                     nullptr,
-                    pose2.data()
+                    pose2.data(),
+                    map_point->_pos_world.data()
                 );
             }
         }
@@ -187,13 +186,13 @@ void TwoViewBACeres (
     
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
+    // options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    cout<< summary.FullReport() << endl;
+    // cout<< summary.FullReport() << endl;
 
-    // set the value of two frames
+    // set the value of the second frame
     frame2->_T_c_w = SE3 (
                          SO3::exp ( pose2.tail<3>() ), pose2.head<3>()
                      );

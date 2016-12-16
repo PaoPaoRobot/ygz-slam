@@ -146,6 +146,7 @@ bool Align2D (
         int v_r = floor ( v );
         if ( u_r < halfpatch_size_ || v_r < halfpatch_size_ || u_r >= cur_img.cols-halfpatch_size_ || v_r >= cur_img.rows-halfpatch_size_ )
         {
+            LOG(INFO) << "u_r = "<<u_r <<", v_r = " << v_r <<endl;
             break;
         }
 
@@ -205,21 +206,30 @@ bool Align2D (
 
     cur_px_estimate << u, v;
     // return converged; 
-    if ( converged == true ) return true;
+    if ( converged == true ) { 
+        // LOG(INFO) << "accepted, converged."<<endl;
+        return true;
+    }
     if ( converged == false ) {
-        
-        return false; 
+        // return false; 
         // LOG(INFO) << "iter = "<<iter<<", update = " << update.transpose()<<endl;
         // for ( float& c: chi2_vec )
             // LOG(INFO) << c ;
         
         // 没有收敛，可能出现误差上升，或者达到最大迭代次数
         // 我们认为迭代后误差小于一开始的误差的一半，就认为配准是对的？—— TODO check G-N的收敛判定
-        if ( chi2_vec.empty() ) 
+        if ( chi2_vec.empty() ) {
+            // LOG(INFO) << "rejected because u,v runs outside."<<endl;
             return false;
-        // LOG(INFO) << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
-        if ( chi2_vec.back()/chi2_vec.front() < 0.55 )
+        }
+        if ( chi2_vec.back()/chi2_vec.front() < 0.5 && chi2_vec.back()<15000 ) {
+            // LOG(INFO) << "accepted, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
             return true;
+        }
+        else {
+            // LOG(INFO) << "rejected, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
+            return false;
+        }
     }
     
     return false;

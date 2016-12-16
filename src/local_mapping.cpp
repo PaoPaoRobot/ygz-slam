@@ -65,8 +65,7 @@ void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
 bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
 {
     // Step 1
-    // 建立匹配点的网格
-    
+    // 建立匹配点的网格，提候选点
     LOG(INFO) << "frames in local map: "<< this->_local_keyframes.size()<< endl;
     LOG(INFO) << "map points in local map: "<< this->_local_map_points.size() << endl;
     
@@ -111,7 +110,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     LOG(INFO) << "Find total "<<cntCandidate <<" candidates."<<endl;
     
     // Step 2 
-    // 寻找每个网格中，和当前帧的匹配
+    // 寻找每个候选点和当前帧的匹配
     
     int cntSuccess = 0;
     int cntFailed = 0;
@@ -120,10 +119,11 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     for ( size_t i=0; i<_grid.size(); i++ ) {
         for ( size_t j=0; j<_grid[i].size(); j++ ) {
             // 类似于光流的匹配 
-            Vector2d matched_px(0,0); 
             MatchPointCandidate candidate = _grid[i][j];
+            Vector2d matched_px = candidate._projected_pixel; 
             bool success = TestDirectMatch( current, candidate, matched_px );
             if ( !success ) {  // 没有匹配到
+                
                 /*
                 // 我要看一下怎么样的匹配才算失败
                 Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
@@ -133,35 +133,35 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
                 cv::imshow("wrong match ref", img_ref );
                 cv::imshow("wrong match curr", img_curr );
                 cv::waitKey(0);
-                
                 */
+                
                 cntFailed++;
                 continue;
-            }
+            } 
+            
             /*
             Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
             Mat img_curr = current->_color.clone();
-            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,0,250), 2);
-            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,0,250), 2);
+            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,250,0), 2);
+            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,250,0), 2);
             cv::imshow("correct match ref", img_ref );
             cv::imshow("correct match curr", img_curr );
-            cv::waitKey(1);
+            cv::waitKey(0);
             */
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
                 current->_map_point.push_back( candidate._map_point );
-                // 匹配到的点作为观测值，深度值未知，置1
+                // 匹配到的点作为观测值
                 current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
-                break; // 如果这个map point已经被匹配过了，就没必要再匹配了? 存疑
+                break; // 如果这个map point已经被匹配过了，就没必要再匹配了
             }
         }
     } 
     
     LOG(INFO) << "success = " << cntSuccess << ", failed = "<<cntFailed << endl; 
-    LOG(INFO) << "matched pixels in current frame: " << current->_map_point.size()<< endl;
     
     if ( current->_map_point.size() < 10 ) { // TODO magic number, adjust it!
         // 匹配不够
@@ -170,6 +170,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     }
         
     // Step 3
+    // 根据前面的匹配信息，计算当前帧的Pose，以及优化这些地图点的位姿
     // Call Local bundle adjustment to optimize the current pose and map point 
     opti::OptimizePoseCeres( current, true );
     // remove the outliers by reprojection 
@@ -183,9 +184,9 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
         Vector2d px = current->_camera->Camera2Pixel( pt );
         Vector2d obs = iter_obs->head<2>();
         double error = (px-obs).norm();
-        LOG(INFO) << "reprojection error = "<< error << endl;
+        // LOG(INFO) << "reprojection error = "<< error << endl;
         
-        if ( error > 5 ) { // magic number again! 
+        if ( error > 10 ) { // magic number again! 
             // 重投影误差太大，认为这是个外点
             // TODO 想清楚这里是直接去掉呢，还是按照重投影来计算？
             // 如果计算重投影，那么由于该点被遮挡，它的纹理可能和map point处的纹理非常不同，这会使得local mapping在匹配模板时失败
@@ -215,7 +216,6 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     // 现在当前帧应该全是内点了吧，再优化一次以求更精确
     // 这里需要使用局部地图的 ba 
     LocalBA( current );
-    // opti::OptimizePoseCeres( current, false );
     // 把观测按照重投影位置设置一下
     // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
     
@@ -243,6 +243,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     }
     cv::imshow("obs vs reproj" , img_show);
     cv::waitKey(0);
+    
+    LOG(INFO) << "final observations: "<<current->_observations.size()<<endl;
     
     return true;
 }
@@ -389,16 +391,13 @@ bool LocalMapping::TestDirectMatch (
         A_c_r
     );
     
-    // LOG(INFO) << "A_c_r = "<< A_c_r << endl;
+    //LOG(INFO) << "A_c_r = "<< A_c_r << endl;
     
     // 应用affine warp 
-    int search_level = utils::GetBestSearchLevel( A_c_r, _pyramid_level );
-    // LOG(INFO) << "search level= "<<search_level<<endl;
+    int search_level = utils::GetBestSearchLevel( A_c_r, _pyramid_level-1 );
+    // int search_level = 0;
+    //LOG(INFO) << "search level= "<<search_level<<endl;
     
-    if ( ref->_id == 2 ) {
-        LOG(INFO) << A_c_r << endl;
-        LOG(INFO) << candidate._keyframe_pixel << endl;
-    }
     WarpAffine( 
         A_c_r, 
         ref->_pyramid[ map_point->_pyramid_level ],
@@ -409,36 +408,6 @@ bool LocalMapping::TestDirectMatch (
         _patch_with_border
     );
     
-    /*
-#ifdef DEBUG_VIZ
-    // show the original and warpped patch 
-    cv::Rect2d rect( 
-        candidate._keyframe_pixel[0] * (1<<map_point->_pyramid_level) -WarpHalfPatchSize, 
-        candidate._keyframe_pixel[1] * (1<<map_point->_pyramid_level) -WarpHalfPatchSize,
-        WarpPatchSize,
-        WarpPatchSize
-    );
-    
-    cv::namedWindow("ref patch", CV_WINDOW_NORMAL);
-    cv::Mat ref_patch = ref->_pyramid[map_point->_pyramid_level](rect);
-    cv::imshow( "ref patch", ref_patch );
-    cv::resizeWindow("ref patch", 500, 500);
-    
-    // and the affine warpped patch 
-    cv::Mat curr_patch( WarpPatchSize+2, WarpPatchSize+2, CV_8UC1 );
-    for ( size_t i=0; i<WarpPatchSize+2; i++ )
-        for ( size_t j=0; j<WarpPatchSize+2; j++ )
-        {
-            curr_patch.ptr<uchar>(i)[j] = _patch_with_border[ i*(WarpPatchSize+2) + j];
-        }
-    
-    cv::namedWindow("curr patch", CV_WINDOW_NORMAL);
-    cv::imshow( "curr patch", curr_patch );
-    cv::resizeWindow("curr patch", 500, 500);
-    
-    cv::waitKey(0);
-#endif
-    */
     
     // 去掉边界
     uint8_t* ref_patch_ptr = _patch;
@@ -458,7 +427,7 @@ bool LocalMapping::TestDirectMatch (
         current->_pyramid[search_level], 
         _patch_with_border,
         _patch,
-        10,
+        15,
         px_scaled
     );
     
@@ -466,6 +435,44 @@ bool LocalMapping::TestDirectMatch (
     
     /*
 #ifdef DEBUG_VIZ
+    // show the original and warpped patch 
+    cv::Rect2d rect( 
+        px_scaled[0] -WarpHalfPatchSize, 
+        px_scaled[1] -WarpHalfPatchSize,
+        WarpPatchSize,
+        WarpPatchSize
+    );
+    
+    cv::Rect2d rect_ref( 
+        candidate._keyframe_pixel[0] -WarpHalfPatchSize, 
+        candidate._keyframe_pixel[1] -WarpHalfPatchSize,
+        WarpPatchSize,
+        WarpPatchSize
+    );
+    
+    // and the affine warpped patch 
+    cv::Mat ref_patch( WarpPatchSize+2, WarpPatchSize+2, CV_8UC1 );
+    for ( size_t i=0; i<WarpPatchSize+2; i++ )
+        for ( size_t j=0; j<WarpPatchSize+2; j++ )
+        {
+            ref_patch.ptr<uchar>(i)[j] = _patch_with_border[ i*(WarpPatchSize+2) + j];
+        }
+        
+    cv::Mat ref_original = Memory::GetFrame(candidate._observed_keyframe)->_pyramid[0]( rect_ref ).clone();
+    cv::namedWindow("ref patch", CV_WINDOW_NORMAL);
+    cv::imshow( "ref patch", ref_original );
+    cv::resizeWindow("ref patch", 500, 500);
+    
+    cv::namedWindow("ref affined patch", CV_WINDOW_NORMAL);
+    cv::imshow( "ref affined patch", ref_patch );
+    cv::resizeWindow("ref affined patch", 500, 500);
+    
+    cv::Mat matched_patch = current->_pyramid[search_level](rect).clone();
+    cv::namedWindow("curr patch", CV_WINDOW_NORMAL);
+    cv::imshow( "curr patch", matched_patch );
+    cv::resizeWindow("curr patch", 500, 500);
+    
+    cv::waitKey(1);
     curr_img = current->_color.clone();
     px_curr_tmp = cv::Point2f( px_curr[0], px_curr[1] );
     cv::rectangle( curr_img, px_curr_tmp+cv::Point2f(-6,-6), px_curr_tmp+cv::Point2f(6,6), cv::Scalar(0,250,0),3 );

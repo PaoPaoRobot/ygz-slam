@@ -48,15 +48,11 @@ int main( int argc, char** argv )
         pf->_color = color.clone(); 
         pf->InitFrame();
         
-        // cv::imshow("pyramid[0]", pf->_pyramid[0]);
-        // cv::waitKey(1);
-        
         bool ret = vo.AddFrame( pf );
-        // vo.PlotFrame();
         
         if ( ret ) {
-            // viewer.AddTempPose( pf->_T_c_w );
             viewer.SetCurrPose( pf->_T_c_w );
+            viewer.SetCurrFrame( pf );
         }
         viewer.Draw();
     }

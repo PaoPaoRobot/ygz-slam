@@ -47,8 +47,6 @@ void Viewer::Draw()
         DrawPose ( pose, false );
     }
     
-    
-
     // draw the map points
     for ( auto point : Memory::_points )
     {
@@ -64,6 +62,21 @@ void Viewer::Draw()
             glColor3d ( 0.9,0.1,0.1 );
             glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
             glEnd();
+        }
+    }
+    
+    // 画当前帧对地图点的观测
+    if ( _current ) {
+        Vector3d p_cam = _current->_T_c_w.inverse().translation();
+        for ( unsigned long& id: _current->_map_point ) {
+            MapPoint::Ptr mp = Memory::GetMapPoint( id );
+            Vector3d p = mp->_pos_world;
+            glBegin ( GL_LINES );
+            glColor3f ( 0,1.0,0 );
+            glVertex3f ( p_cam[0], p_cam[1], p_cam[2] );
+            glVertex3f ( p[0], p[1], p[2] );
+            glEnd();
+            
         }
     }
 

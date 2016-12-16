@@ -135,15 +135,14 @@ void VisualOdometry::MonocularInitialization()
             // opti::TwoViewBAG2O( _ref_frame->_id, _curr_frame->_id );
             
             opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id );
-            
-            LOG(INFO) << "ref pose = \n" <<_ref_frame->_T_c_w.matrix()<<endl;
-            LOG(INFO) << "current pose = \n"<< _curr_frame->_T_c_w.matrix()<<endl;
-            
             // reproject the map points in these two views 
+            // 这步会删掉深度值不对的那些点
             ReprojectMapPointsInInitializaion();
+            
             // 去掉外点后再优化一次
             opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id ); 
-            // 去掉外点后，重置观测
+            
+            // 重置观测以及map scale 
             ResetCurrentObservation();
             
             LOG(INFO) << "ref pose = \n" <<_ref_frame->_T_c_w.matrix()<<endl;
@@ -361,25 +360,27 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
             Vector3d pt = frame->_camera->World2Camera( map_point->_pos_world, frame->_T_c_w );
             Vector2d px = frame->_camera->Camera2Pixel( pt );
             double reproj_error = (px - observation.second.head<2>()).norm();
+            
+            LOG(INFO) << "pt[2] = " << pt[2]<<endl;
+            
             if ( reproj_error > _options.init_reproj_error_th ) // 重投影误差超过阈值
             {
                 badpoint = true;
+                LOG(INFO) << "rejected because reprojection error = "<<reproj_error<<endl;
                 break;
             }
             
-            /*
-            if ( pt[2] < 0.01 || pt[2] > 20 ) {
+            if ( pt[2] < 0.001 || pt[2] > 20 ) {
                 // 距离太近或太远，通常来自误匹配
+                LOG(INFO) << "remove point with depth = "<<pt[2]<<endl;
                 badpoint = true; 
                 break;
             }
-            */
             // observation.second = Vector3d( px[0], px[1], pt[2]); // reset the observed posiiton 
         }
         
         if ( badpoint == true ) {
             // set this point as a bad one, require the memory to remove it 
-            map_point->_bad = true; 
             iter = Memory::_points.erase(iter); // erase the bad one 
         } else {
             iter++;
@@ -413,15 +414,58 @@ bool VisualOdometry::NeedNewKeyFrame()
 void VisualOdometry::ResetCurrentObservation()
 {
     // set the observation in current and ref 
+    double mean_depth = 0; 
+    int cnt = 0;
+    auto& all_points = Memory::GetAllPoints();
+    for ( auto iter = all_points.begin(); iter!=all_points.end(); ) {
+        MapPoint::Ptr map_point = iter->second;
+        Vector3d pt_ref = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
+        Vector3d pt_curr = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
+        
+        if ( pt_ref[2] <0 || pt_ref[2]>20 || pt_curr[2] <0 || pt_curr[2]>20 ) {
+            iter = all_points.erase( iter );
+            continue; 
+        }
+        
+        mean_depth += pt_ref[2];
+        cnt++;
+        // LOG(INFO) << "pt_ref[2] = " << pt_ref[2];
+        mean_depth += pt_curr[2];
+        cnt++;
+        // LOG(INFO) << "pt_curr[2] = " << pt_curr[2];
+        iter++;
+    }
+    mean_depth /= cnt;
+    LOG(INFO) << "mean depth = " << mean_depth << endl;
+    double scale = 1.0 / mean_depth;
+    
+    LOG(INFO) << "current pose = \n"<<_curr_frame->_T_c_w.matrix()<<endl;
+    Vector3d t = _curr_frame->_T_c_w.translation();
+    _curr_frame->_T_c_w.translation() = t*scale;
+    LOG(INFO) << "current pose = \n"<<_curr_frame->_T_c_w.matrix()<<endl;
+    
+    
+    for ( auto& map_point_pair: Memory::GetAllPoints() ) {
+        MapPoint::Ptr map_point = map_point_pair.second;
+        map_point->_pos_world = map_point->_pos_world * scale;
+    }
+    
+    
     for ( auto& map_point_pair: Memory::GetAllPoints() ) {
         MapPoint::Ptr map_point = map_point_pair.second;
         for ( auto& obs_pair:map_point->_obs ) {
             if ( obs_pair.first == _ref_frame->_id ) {
+                Vector3d pt = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
+                Vector2d px = _ref_frame->_camera->World2Pixel( map_point->_pos_world, _ref_frame->_T_c_w );
                 _ref_frame->_map_point.push_back( map_point_pair.first );
-                _ref_frame->_observations.push_back( obs_pair.second );
+                _ref_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+                obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             } else {
+                Vector3d pt = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
+                Vector2d px = _curr_frame->_camera->World2Pixel( map_point->_pos_world, _curr_frame->_T_c_w );
                 _curr_frame->_map_point.push_back( map_point_pair.first );
-                _curr_frame->_observations.push_back( obs_pair.second );
+                _curr_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+                obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             }
         }
     }

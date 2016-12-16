@@ -31,6 +31,10 @@ public:
         _curr_pose = curr_pose;
     }
     
+    inline void SetCurrFrame( const Frame::Ptr current ) {
+        _current = current;
+    }
+    
 private:
     // 画一个相机
     void DrawPose( const SE3& T_c_w, float r=0, float g=0, float b=0 );
@@ -42,6 +46,8 @@ private:
     SE3 _curr_pose;
     
     LocalMapping* _local_mapping =nullptr;       // 想要画出LocalMapping中的位姿和地图点
+    
+    Frame::Ptr _current =nullptr; 
 };
     
 }
