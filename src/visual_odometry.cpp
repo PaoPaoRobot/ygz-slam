@@ -23,6 +23,7 @@ VisualOdometry::VisualOdometry ( System* system )
     
     _depth_filter = new opti::DepthFilter( &_local_mapping );
     _tracker = make_shared<Tracker>(_detector);
+    
 }
 
 VisualOdometry::~VisualOdometry()
@@ -39,6 +40,7 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
         _ref_frame = frame;
         SetKeyframe(_ref_frame, true);
         _status = VO_INITING;
+        return false;
     }
 
     _curr_frame = frame;
@@ -154,6 +156,7 @@ void VisualOdometry::MonocularInitialization()
             
             _status = VO_GOOD;
             
+            /*
 #ifdef DEBUG_VIZ
             // 画出初始化点在两个图像中的投影
             Mat img_ref=  _ref_frame->_color.clone();
@@ -194,6 +197,7 @@ void VisualOdometry::MonocularInitialization()
             cv::waitKey(1);
 #endif 
             
+            */
             _ref_frame = _curr_frame;
             
             return;
@@ -207,30 +211,27 @@ void VisualOdometry::MonocularInitialization()
     }
 }
 
-void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
+void VisualOdometry::SetKeyframe ( Frame::Ptr& frame, bool initializing )
 {
     frame->_is_keyframe = true; 
     Memory::PrintInfo();
     if ( frame->_id != 0 ) { // 已经注册了，就不要重复注册一遍
     } else {
-        Memory::RegisterFrame( frame );  // 未注册，则注册新的关键帧
+        frame = Memory::RegisterFrame( frame );  // 未注册，则注册新的关键帧
     }
     LOG(INFO) << "frame id = " << frame->_id << endl;
     
     if ( initializing == false ) {
         // 在新的关键帧中，提取新的特征点
         
-        // cv::imshow("keyframe-gray", frame->_pyramid[0] );
-        // cv::waitKey(0);
-        
-        _detector->SetExistingFeatures( frame );
-        _detector->Detect( frame, false );
+        _detector->SetExistingFeatures( frame.get() );
+        _detector->Detect( frame.get(), false );
         
         // 向 depth filter 中加入新的关键帧
         double mean_depth=0, min_depth=0; 
         frame->GetMeanAndMinDepth( mean_depth, min_depth );
         
-        LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
+        // LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
         _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
         
         // set the observation of map points 
@@ -253,7 +254,7 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         }
         
         cv::imshow("new features", img_show );
-        cv::waitKey(0);
+        cv::waitKey(1);
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
@@ -271,6 +272,7 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
     _local_mapping.AddKeyFrame( frame );
     _last_key_frame = frame; 
     
+    /*
     // show the key frame 
     if ( initializing == false ) {
         boost::format fmt("keyframe-%d");
@@ -282,11 +284,13 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr frame, bool initializing )
         cv::imshow(title.c_str(), img_show);
         cv::waitKey(1);
     }
+    */
 }
 
 // TODO 考虑sparse alignment 失败的情况
 bool VisualOdometry::TrackRefFrame()
 {
+    LOG(INFO) <<"ref frame id = "<<_ref_frame->_id<<endl;
     _TCR_estimated = SE3();
     SE3 TCR = _TCR_estimated; 
     for ( int level = _curr_frame->_pyramid.size()-1; level>=0; level -- ) {

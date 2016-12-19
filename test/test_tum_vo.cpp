@@ -16,6 +16,8 @@ using namespace cv;
 
 int main( int argc, char** argv ) 
 {
+    // google::InitGoogleLogging( argv[0] );
+    google::InstallFailureSignalHandler();
     if ( argc!= 2 ) {
         cout <<"usage: test_tum_tracking path_to_TUM_dataset " <<endl;
         return 1;
@@ -40,7 +42,8 @@ int main( int argc, char** argv )
     PinholeCamera::Ptr cam( new PinholeCamera ); 
     Frame::SetCamera( cam );
     VisualOdometry vo(nullptr); 
-    Viewer viewer;
+    LOG(INFO) << "start viewer"<<endl;
+    Viewer* v = new Viewer();
     
     for ( size_t i=0; i<rgbFiles.size(); i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
@@ -51,11 +54,18 @@ int main( int argc, char** argv )
         bool ret = vo.AddFrame( pf );
         
         if ( ret ) {
-            viewer.SetCurrPose( pf->_T_c_w );
-            viewer.SetCurrFrame( pf );
+            LOG(INFO) << pf->_id<<endl;
+            v->SetCurrPose( pf->_T_c_w );
+            v->SetCurrFrame( pf );
+            LOG(INFO) << v->_current->_id<<endl;
+            LOG(INFO) << "viewer = " << v << endl;
+            v->Draw();
+            if ( v->_current )
+                LOG(INFO) << v->_current->_id<<endl;
+            cv::waitKey(0);
         }
-        viewer.Draw();
     }
+    delete v;
     
     return 0;
 }

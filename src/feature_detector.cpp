@@ -24,7 +24,7 @@
  *
  */
 
-#include <fast/fast.h>
+// #include <fast/fast.h>
 
 #include "ygz/memory.h"
 #include "ygz/feature_detector.h"
@@ -42,21 +42,18 @@ FeatureDetector::FeatureDetector()
     _grid_rows = ceil(double(_image_height)/_cell_size);
     _grid_cols = ceil(double(_image_width)/_cell_size);
     _detection_threshold = Config::get<double>("feature.detection_threshold");
+    
+    _detector = cv::FastFeatureDetector::create( _detection_threshold );
 }
 
 // 提取算法
-void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features )
+/*
+void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features )
 {
     // reset the feature grid
-    // 这东西偶尔会挂掉，原因不明，试试改用opencv的fast？
-    if ( overwrite_existing_features ) {
-        frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
-        frame->_map_point_candidates.clear();
-    }
 
     Corners corners; 
     corners.resize( _grid_cols*_grid_rows );
-    // ( _grid_cols*_grid_rows, Corner(0,0,_detection_threshold,0,0.0f));
     
     for(int L=0; L<frame->_pyramid_level; ++L)
     {
@@ -122,10 +119,10 @@ void FeatureDetector::Detect(Frame::Ptr frame, bool overwrite_existing_features 
         // point.PrintInfo();
     }
     LOG(INFO) << "add total "<<frame->_map_point_candidates.size()<<" new features. "<<endl;
-
 }
+*/
 
-void FeatureDetector::SetExistingFeatures ( Frame::Ptr frame )
+void FeatureDetector::SetExistingFeatures ( Frame* frame )
 {
     frame->_grid = vector<int>(_grid_cols*_grid_rows, 0);
     int cnt=0;

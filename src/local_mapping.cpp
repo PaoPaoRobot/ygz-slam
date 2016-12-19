@@ -230,19 +230,20 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
         
+        Vector3d pt_obs = current->_camera->Pixel2Camera( iter_obs->head<2>() );
+        
         cv::circle( img_show, cv::Point2f( (*iter_obs)[0], (*iter_obs)[1] ), 5, cv::Scalar(0,0,250), 2 );
         cv::circle( img_show, cv::Point2f( px[0], px[1] ), 5, cv::Scalar(0,250,0), 2 );
         
-        // iter_obs->head<2>() = px;
+        iter_obs->head<2>() = px;
         
         // 在地图点中添加额外观测
         if ( map_point->_converged == false )
-            map_point->_extra_obs.push_back( ExtraObservation( pt/pt[2], current->_T_c_w) );
+            map_point->_extra_obs.push_back( ExtraObservation( pt_obs, current->_T_c_w) );
         (*iter_obs)[2] = pt[2]; // 只重设一下距离试试？
-        
     }
     cv::imshow("obs vs reproj" , img_show);
-    cv::waitKey(0);
+    cv::waitKey(1);
     
     LOG(INFO) << "final observations: "<<current->_observations.size()<<endl;
     
@@ -340,12 +341,13 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
         if ( mp->_extra_obs.size() < 5 ) 
             continue; 
         double update = (mp->_pos_world - backup_pair.second).norm();
-        LOG(INFO) << "update = "<<update;
+        // LOG(INFO) << "update = "<<update;
         if ( update < 0.01 ) 
             mp->_converged = true; 
         if ( update > 20 ) {
             LOG(WARNING)<< "map point "<<mp->_id <<" changed from "<<backup_pair.second.transpose()<<" to "<<
                 mp->_pos_world.transpose()<<endl;
+            mp->_bad = true; 
         }
     }
 }
@@ -485,9 +487,5 @@ bool LocalMapping::TestDirectMatch (
     
     return success;
 }
-
-
-
-
     
 }

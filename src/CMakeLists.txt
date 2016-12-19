@@ -1,4 +1,4 @@
-add_library( ygz-slam 
+add_library( ygz-slam SHARED
     frame.cpp
     memory.cpp
     tracker.cpp
@@ -9,9 +9,9 @@ add_library( ygz-slam
     feature_detector.cpp
     initializer.cpp
     optimizer.cpp
-    viewer.cpp
     local_mapping.cpp
     utils.cpp
+    viewer.cpp
     
     ORB/ORBextractor.cpp 
 )

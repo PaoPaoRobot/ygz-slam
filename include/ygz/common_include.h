@@ -3,6 +3,9 @@
 
 // define the commonly included file to avoid a long include list
 // for Eigen
+#define EIGEN_DONT_ALIGN_STATICALLY
+#define  EIGEN_DONT_VECTORIZE
+#define EIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 using Eigen::Vector2d;
@@ -12,6 +15,8 @@ using Eigen::Matrix3f;
 using Eigen::Matrix4f;
 // other things I need in optimiztion 
 typedef Eigen::Matrix<double, 6, 1> Vector6d; 
+
+#include <Eigen/StdVector> // for vector of Eigen objects 
 
 // for Sophus
 #include <sophus/se3.h>

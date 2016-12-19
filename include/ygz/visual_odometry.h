@@ -42,7 +42,7 @@ public:
 protected:
     // set the input frame as a key-frame 
     // 第二个参数表示是否在初始化中使用
-    void SetKeyframe( Frame::Ptr frame, bool initializing = false ); 
+    void SetKeyframe( Frame::Ptr& frame, bool initializing = false ); 
     
     // 跟踪最近的帧
     bool TrackRefFrame();
@@ -85,6 +85,11 @@ private:
     double _min_keyframe_rot;
     double _min_keyframe_trans;
     int _min_keyframe_features;
+    
+    int _image_width=640, _image_height=480;    // 图像长宽，用以计算网格
+    int _cell_size;                             // 网格大小
+    int _grid_rows=0, _grid_cols=0;             // 网格矩阵的行和列
+    double _detection_threshold =20.0;          // 特征响应阈值
 };
 }
 

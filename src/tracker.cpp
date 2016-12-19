@@ -13,7 +13,7 @@ _detector( detector )
 void Tracker::SetReference(Frame::Ptr ref)
 {
     // detect the features in reference 
-    _detector->Detect( ref );
+    _detector->Detect( ref.get() );
     LOG(INFO) << "Keypoints detected: "<< ref->_map_point_candidates.size() <<endl;
     
     if ( ref->_map_point_candidates.size() < _min_features_initializing ) {
@@ -140,7 +140,7 @@ float Tracker::MeanDisparity() const
     auto ref_it = _px_ref.begin();
     auto curr_it = _px_curr.begin();
     
-    double mean_disparity; 
+    double mean_disparity =0; 
     for ( auto ref_it_end = _px_ref.end(); ref_it!=ref_it_end; ref_it++, curr_it++ ) {
         mean_disparity += Vector2d(ref_it->x-curr_it->x, ref_it->y - curr_it->y).norm();
     }

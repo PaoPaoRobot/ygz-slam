@@ -242,7 +242,7 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     if ( _have_ref_patch==false )
     {
         PrecomputeReferencePatches();
-        LOG ( INFO ) <<"ref patterns: "<<_patterns_ref.size() <<endl;
+        //LOG ( INFO ) <<"ref patterns: "<<_patterns_ref.size() <<endl;
     }
 
     // solve this problem
@@ -555,7 +555,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( !FindEpipolarMatchDirect ( first_frame, frame, *it->ftr, 1.0/it->mu, 1.0/z_inv_min, 1.0/z_inv_max, z ) )
         {
             // 挂了
-            LOG(INFO) << "find epipolar match failed"<<endl;
+            // LOG(INFO) << "find epipolar match failed"<<endl;
             it->b++;
             ++it;
             ++n_failed_matches;
@@ -563,7 +563,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             continue;
         }
 
-        LOG(INFO) << "find epipolar match success"<<endl;
+        // LOG(INFO) << "find epipolar match success"<<endl;
         cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
@@ -576,21 +576,26 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         // if the seed has converged, we initialize a new candidate point and remove the seed
         if ( sqrt ( it->sigma2 ) < it->z_range/_options.seed_convergence_sigma2_thresh )
         {
-            LOG(INFO) << "seed "<< it->id <<" from key-frame " << it->frame_id <<" has converged, depth = "<< 1.0/it->mu <<endl;
             // 向 Memory 注册一个新的 Map Point，并且添加到 Local Map 中
             MapPoint::Ptr mp = Memory::CreateMapPoint();
             Vector3d xyz_world ( frame->_T_c_w.inverse() * ( pt_ref * ( 1.0/it->mu ) ) );
+            
             mp->_pos_world = xyz_world; 
             mp->_pyramid_level = it->ftr->_pyramid_level;
-            mp->_first_observed_frame = it->ftr->_first_observed_frame;
-            mp->_obs = it->ftr->_obs;
-            Vector2d px_ref = it->ftr->_obs.begin()->second.head<2>();
+            mp->_first_observed_frame = it->frame_id;
+            mp->_obs[it->frame_id] = it->ftr->_obs[it->frame_id];
+            mp->_obs[it->frame_id][2] = 1.0/it->mu;
             frame->_map_point.push_back( mp->_id );
-            frame->_observations.push_back( Vector3d(px_ref[0], px_ref[1], 1) );
+            frame->_observations.push_back( mp->_obs[it->frame_id] );
             mp->_converged = false; 
+            mp->_bad = false;
             
+            LOG(INFO) << "seed "<< mp->_id <<" from key-frame " << it->frame_id <<" has converged, depth = "<< 1.0/it->mu 
+                << "pos = "<<xyz_world.transpose()<<endl;
+                
             _local_mapping->AddMapPoint( mp->_id );
             it = _seeds.erase ( it );
+            
         }
         else if ( isnan ( z_inv_min ) )
         {
@@ -614,7 +619,7 @@ void DepthFilter::UpdateSeed (
     {
         return;
     }
-    seed->PrintInfo();
+    //seed->PrintInfo();
     boost::math::normal_distribution<float> nd ( seed->mu, norm_scale );
     float s2 = 1./ ( 1./seed->sigma2 + 1./tau2 );
     float m = s2* ( seed->mu/seed->sigma2 + x/tau2 );
@@ -633,8 +638,8 @@ void DepthFilter::UpdateSeed (
     seed->mu = mu_new;
     seed->a = ( e-f ) / ( f-e/f );
     seed->b = seed->a* ( 1.0f-f ) /f;
-    LOG(INFO) << "updated: "; 
-    seed->PrintInfo();
+    // LOG(INFO) << "updated: "; 
+    // seed->PrintInfo();
     // LOG(INFO)<<endl;
 }
 

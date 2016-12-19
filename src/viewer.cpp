@@ -6,6 +6,7 @@ namespace ygz
 
 Viewer::Viewer( )
 {
+    LOG(INFO)<<"start viewer"<<endl;
     pangolin::CreateWindowAndBind ( "YGZ-SLAM: GUI", 1024, 768 );
 
     // 3D Mouse handler requires depth testing to be enabled
@@ -25,10 +26,17 @@ Viewer::Viewer( )
     _dcam = pangolin::CreateDisplay()
             .SetBounds ( 0.0, 1.0, pangolin::Attach::Pix ( 175 ), 1.0, -640.0f/480.0f )
             .SetHandler ( new pangolin::Handler3D ( _scam ) );
+            
+    _current = nullptr;
 }
 
+    /*
 void Viewer::Draw()
 {
+    if (_current) {
+        LOG(INFO) << "current id = " << _current->_id << endl;
+        LOG(INFO) << "this = " << this << endl;
+    }
     glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     _dcam.Activate ( _scam );
     glClearColor ( 1.0f, 1.0f, 1.0f, 1.0f );
@@ -83,6 +91,7 @@ void Viewer::Draw()
     pangolin::FinishFrame();
     usleep ( 1000 );
 }
+    */
 
 void Viewer::DrawPose ( const SE3& T_c_w, float r, float g, float b )
 {
@@ -90,6 +99,7 @@ void Viewer::DrawPose ( const SE3& T_c_w, float r, float g, float b )
     const static float h = w*0.75;
     const static float z = w*0.6;
     pangolin::OpenGlMatrix m;
+    LOG(INFO) << "TCW = \n"<<T_c_w.matrix()<<endl;
     SE3 Twc = T_c_w.inverse();
     Eigen::Matrix4d T = Twc.matrix();
     m.m[0] = T ( 0,0 );

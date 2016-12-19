@@ -1,6 +1,7 @@
 #ifndef YGZ_FRAME_H
 #define YGZ_FRAME_H
 
+
 #include "ygz/common_include.h"
 #include "ygz/camera.h"
 #include "ygz/map_point.h"
@@ -76,6 +77,7 @@ public:
     
     // 关联的地图点，以id标识。只有向系统注册后的地图点才会有 id 
     list<unsigned long> _map_point; // associated map point 
+    
     // 候选地图点，由特征提取算法给出
     vector<MapPoint>    _map_point_candidates; 
     

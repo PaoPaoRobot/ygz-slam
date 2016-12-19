@@ -8,7 +8,7 @@ set( CMAKE_CXX_COMPILER "g++" )
 # debug 
 set( CMAKE_BUILD_TYPE "Debug" )
 set( CMAKE_CXX_FLAGS "-std=c++11 -Wno-reorder" )
-add_definitions( "-DDEBUG_VIZ" )
+# add_definitions( "-DDEBUG_VIZ" )
 
 # Release config
 # set( CMAKE_BUILD_TYPE "Release" )
@@ -21,10 +21,6 @@ IF(DEFINED ENV{ARM_ARCHITECTURE})
 ELSE()
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmmx -msse -msse -msse2 -msse3 -mssse3")
 ENDIF()
-
-# Debug config 
-# set( CMAKE_BUILD_TYPE "Debug" )
-# set( CMAKE_CXX_FLAGS "-std=c++11 -march=native" )
 
 list( APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules )
 set( EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin )
@@ -61,8 +57,6 @@ include_directories( ${CERES_INCLUDE_DIRS} )
 # pangolin 
 find_package( Pangolin REQUIRED )
 include_directories( ${Pangolin_INCLUDE_DIRS} )
-
-
 
 # TODO: add gtsam and other libs you will use
 

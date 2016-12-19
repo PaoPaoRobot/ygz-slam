@@ -21,7 +21,7 @@ public:
     }
     
     // left multiply
-    virtual void oplusImpl( const double* update ) {
+    virtual void oplusImpl( const double* update ) override {
         Vector6d v;
         v << update[0], update[1], update[2], update[3], update[4], update[5]; 
         _estimate = (SE3::exp(v) * SE3::exp(_estimate)).log();

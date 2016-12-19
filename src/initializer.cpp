@@ -291,7 +291,7 @@ vector< HomographyDecomposition > Initializer::DecomposeHomography()
     if(nCase != 1)
     {
         LOG(WARNING) << "FATAL Homography Initialization: This motion case is not implemented or is degenerate. Try again. " << endl;
-        return std::move( decompositions );
+        return decompositions;
     }
 
     double x1_PM;
