@@ -148,7 +148,7 @@ bool Initializer::TryInitialize(
     return false;
 }
 
-void Initializer::Triangulate(const SE3& T21, vector< Vector3d >& pts_triangulated)
+void Initializer::Triangulate(const SE3& T21, VecVector3d& pts_triangulated)
 {
     // triangulate the inliers
     int cnt_inlier = 0;
@@ -173,7 +173,7 @@ void Initializer::Triangulate(const SE3& T21, vector< Vector3d >& pts_triangulat
     LOG(INFO) << "inliers in triangulation: " << cnt_inlier << endl;
 }
 
-double Initializer::RescaleMap(vector< Vector3d >& pts)
+double Initializer::RescaleMap(VecVector3d& pts)
 {
     double mean_d = 0;
     int cnt = 0;
@@ -254,11 +254,11 @@ bool Initializer::TestEssential()
     return true;
 }
 
-HomographyDecs Initializer::DecomposeHomography()
+Initializer::HomographyDecs Initializer::DecomposeHomography()
 {
     // OpenCV's homography decomposition seems still not work, we directly use SVD
     // from SVO, I think case 2 and case 3 will not happen because we are using double matricies
-    vector<HomographyDecomposition> decompositions;
+    HomographyDecs decompositions;
     Eigen::Matrix3d H;
     H << _H_estimated.at<double>(0,0),  _H_estimated.at<double>(0,1), _H_estimated.at<double>(0,2),
       _H_estimated.at<double>(1,0),  _H_estimated.at<double>(1,1), _H_estimated.at<double>(1,2),

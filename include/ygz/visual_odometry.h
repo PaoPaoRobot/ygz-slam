@@ -34,11 +34,6 @@ public:
     // 新增一个帧，如果该帧可以顺利跟踪，返回真
     bool AddFrame( Frame* frame );
     
-    // 画出跟踪的地图点
-    void PlotFrame() const {
-        _tracker->PlotTrackedPoints();
-    }
-    
 protected:
     // set the input frame as a key-frame 
     // 第二个参数表示是否在初始化中使用
@@ -70,7 +65,7 @@ private:
 
     System* _system=nullptr;                    // point to full system 
     Tracker*  _tracker=nullptr;                 // tracker, most LK flow
-    Initializer _init =nullptr;                 // initializer  
+    Initializer* _init =nullptr;                 // initializer  
     
     // sparse image alignment for each pyramid level 
     vector<opti::SparseImgAlign, Eigen::aligned_allocator<opti::SparseImgAlign>> _align;

@@ -31,6 +31,8 @@
 #include "ygz/config.h"
 #include "ygz/frame.h"
 
+#include <opencv2/imgproc/imgproc.hpp>
+
 namespace ygz
 {
 
@@ -60,7 +62,7 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
     vector<cv::KeyPoint> selected_kps;
     selected_kps.resize ( _grid_cols*_grid_rows );
 
-    for ( size_t l=0; l<frame->_pyramid_level; l++ )
+    for ( int l=0; l<frame->_pyramid_level; l++ )
     {
         vector<cv::KeyPoint> kps;
         kps.reserve ( 3000 );
@@ -101,14 +103,18 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         {
             continue;
         }
-        MapPoint point;
-        point._first_observed_frame = frame->_id;
-        point._obs[frame->_id] = Vector3d ( kp.pt.x, kp.pt.y, 1 );
-        point._pyramid_level = kp.octave;
-        frame->_map_point_candidates.push_back ( point );
+        frame->_map_point_candidates.push_back ( kp );
     }
 
     LOG ( INFO ) << "add total "<<frame->_map_point_candidates.size() <<" new features. "<<endl;
+    
+    Mat img_show = frame->_color.clone();
+    for ( cv::KeyPoint& kp: frame->_map_point_candidates ) {
+        cv::circle( img_show, kp.pt, 5, cv::Scalar(0,250,250), 2 );
+    }
+    cv::imshow("new features", img_show);
+    cv::waitKey(1);
+    
 // reset the feature grid
 
 /*

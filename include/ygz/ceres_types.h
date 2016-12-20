@@ -131,7 +131,7 @@ public:
         cv::Mat& curr_img, 
         PixelPattern& ref_pattern,
         Vector3d& pt_ref, 
-        PinholeCamera::Ptr cam,
+        PinholeCamera* cam,
         double scale
     ) : _curr_img(curr_img), _pt_ref(pt_ref), _cam(cam), _ref_pattern(ref_pattern),_scale(scale)
     { 

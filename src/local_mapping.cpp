@@ -22,17 +22,17 @@ LocalMapping::LocalMapping()
     _pyramid_level = Config::get<int>("frame.pyramid");
 }
 
-void LocalMapping::AddKeyFrame ( Frame::Ptr keyframe )
+void LocalMapping::AddKeyFrame ( Frame* keyframe )
 {
     assert( keyframe->_is_keyframe==true );
     // _local_keyframes.push_back( keyframe->_id );
     _local_keyframes.insert( keyframe->_id );
     
     // TODO 考虑把新增的keyframe中的地图点存储起来，并去掉视野外的点
-    for ( unsigned long& point_id: keyframe->_map_point ) {
-        MapPoint::Ptr map_point = Memory::GetMapPoint( point_id );
+    for ( auto& obs: keyframe->_obs ) {
+        MapPoint* map_point = Memory::GetMapPoint( obs.first );
         if ( map_point->_bad ) continue;
-        _local_map_points.insert( point_id );
+        _local_map_points.insert( obs.first );
     }
     
     // 删除太远的地图点和 key frame
@@ -62,7 +62,7 @@ void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
 // 这一步有点像光流
 // 希望得到的匹配点能在图像中均匀分布，而不要扎堆在一起，所以使用网格进行区分
 // 如果匹配数量足够，调用一次仅有pose的优化
-bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
+bool LocalMapping::TrackLocalMap ( Frame* current )
 {
     // Step 1
     // 建立匹配点的网格，提候选点
@@ -74,7 +74,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     
     int cntCandidate =0;
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
-        MapPoint::Ptr map_point = Memory::GetMapPoint( *it );
+        MapPoint* map_point = Memory::GetMapPoint( *it );
         if ( map_point->_bad == true )
             continue;
         // 检查这个地图点是否可见
@@ -151,9 +151,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
-                current->_map_point.push_back( candidate._map_point );
+                current->_obs[candidate._map_point] = Vector3d( matched_px[0], matched_px[1], 1 );
                 // 匹配到的点作为观测值
-                current->_observations.push_back( Vector3d(matched_px[0], matched_px[1], 1) );
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
                 break; // 如果这个map point已经被匹配过了，就没必要再匹配了
@@ -163,7 +162,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     
     LOG(INFO) << "success = " << cntSuccess << ", failed = "<<cntFailed << endl; 
     
-    if ( current->_map_point.size() < 10 ) { // TODO magic number, adjust it!
+    if ( current->_obs.size() < 10 ) { // TODO magic number, adjust it!
         // 匹配不够
         LOG(WARNING) << "insufficient matched pixels, abort this frame ... "<< endl;
         return false;
@@ -174,15 +173,13 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     // Call Local bundle adjustment to optimize the current pose and map point 
     opti::OptimizePoseCeres( current, true );
     // remove the outliers by reprojection 
-    auto iter_obs = current->_observations.begin();
-    auto iter_pt = current->_map_point.begin();
     
     int cnt_outlier = 0;
-    for ( ; iter_obs!=current->_observations.end();  ) {
-        MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
+    for ( auto iter = current->_obs.begin(); iter!=current->_obs.end();) {
+        MapPoint* map_point = Memory::GetMapPoint( iter->first );
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w);
         Vector2d px = current->_camera->Camera2Pixel( pt );
-        Vector2d obs = iter_obs->head<2>();
+        Vector2d obs = iter->second.head<2>();
         double error = (px-obs).norm();
         // LOG(INFO) << "reprojection error = "<< error << endl;
         
@@ -195,8 +192,7 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
             // reset 也有点问题，可能把本该看不见的东西变成可见了？
             // 由于被遮挡，该点的深度就会发生改变，导致和其他特征点出现不一致
             
-            iter_obs = current->_observations.erase( iter_obs );
-            iter_pt = current->_map_point.erase( iter_pt );
+            iter = current->_obs.erase( iter );
             // (*iter_obs) [2] = -1;
             // iter_obs++;
             // iter_pt++;
@@ -204,9 +200,8 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
             cnt_outlier++;
             continue; 
         } else {
-            (*iter_obs)[2] = pt[2];
-            iter_obs++;
-            iter_pt++;
+            iter->second[2] = pt[2];
+            iter++;
         }
     }
     
@@ -219,38 +214,35 @@ bool LocalMapping::TrackLocalMap ( Frame::Ptr current )
     // 把观测按照重投影位置设置一下
     // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
     
-    iter_obs = current->_observations.begin();
-    iter_pt = current->_map_point.begin();
-    
     // 看看重投影和obs有何不同
     cv::Mat img_show = current->_color.clone();
-    for ( ; iter_obs!=current->_observations.end(); iter_obs++, iter_pt++ ) {
+    for ( auto iter=current->_obs.begin(); iter!=current->_obs.end(); iter++ ) {
         // reset the observation 
-        MapPoint::Ptr map_point = Memory::GetMapPoint( *iter_pt );
+        MapPoint* map_point = Memory::GetMapPoint( iter->first );
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
         
-        Vector3d pt_obs = current->_camera->Pixel2Camera( iter_obs->head<2>() );
+        Vector3d pt_obs = current->_camera->Pixel2Camera( iter->second.head<2>() );
         
-        cv::circle( img_show, cv::Point2f( (*iter_obs)[0], (*iter_obs)[1] ), 5, cv::Scalar(0,0,250), 2 );
+        cv::circle( img_show, cv::Point2f( (iter->second)[0], (iter->second)[1] ), 5, cv::Scalar(0,0,250), 2 );
         cv::circle( img_show, cv::Point2f( px[0], px[1] ), 5, cv::Scalar(0,250,0), 2 );
         
-        iter_obs->head<2>() = px;
+        iter->second.head<2>() = px;
         
         // 在地图点中添加额外观测
         if ( map_point->_converged == false )
             map_point->_extra_obs.push_back( ExtraObservation( pt_obs, current->_T_c_w) );
-        (*iter_obs)[2] = pt[2]; // 只重设一下距离试试？
+        iter->second[2] = pt[2]; // 只重设一下距离试试？
     }
     cv::imshow("obs vs reproj" , img_show);
     cv::waitKey(1);
     
-    LOG(INFO) << "final observations: "<<current->_observations.size()<<endl;
+    LOG(INFO) << "final observations: "<<current->_obs.size()<<endl;
     
     return true;
 }
 
-void LocalMapping::LocalBA ( Frame::Ptr current )
+void LocalMapping::LocalBA ( Frame* current )
 {
     ceres::Problem problem;
     vector<Vector6d*> poses;  
@@ -262,15 +254,11 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
     poses.push_back( pose );
     
     // 把每个帧与current 有关的map point拿出来的优化？还是说所有的放在一起优化？
-    auto iter_mp = current->_map_point.begin();
-    auto iter_obs = current->_observations.begin();
+    map<unsigned long, Vector3d, less<unsigned long>, Eigen::aligned_allocator<Vector3d>> mp_backup; // 缓存优化前的地图点坐标
     
-    map<unsigned long, Vector3d> mp_backup; // 缓存优化前的地图点坐标
-    
-    for ( ; iter_mp!=current->_map_point.end(); iter_mp++, iter_obs++ ) {
-        MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
-        
-        Vector3d pt_curr = current->_camera->Pixel2Camera( iter_obs->head<2>() );
+    for ( auto iter = current->_obs.begin(); iter != current->_obs.end(); iter++ ) {
+        MapPoint* mp = Memory::GetMapPoint( iter->first );
+        Vector3d pt_curr = current->_camera->Pixel2Camera( iter->second.head<2>() );
         if ( mp->_converged ) {
             // 对于收敛的地图点，不再优化它的位置，只给位姿估计提供信息
             problem.AddResidualBlock (
@@ -296,7 +284,7 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
             
             // 同时，这个point又被许多别的帧看到，也要添加在那些帧里的观测
             for ( auto& obs_pair : mp->_obs ) {
-                Frame::Ptr obs_frame = Memory::GetFrame( obs_pair.first );
+                Frame* obs_frame = Memory::GetFrame( obs_pair.first );
                 Vector3d pt_obs = obs_frame->_camera->Pixel2Camera( obs_pair.second.head<2>() );
                 // 但是不希望优化那些关键帧的位姿，使用 structure only 
                 problem.AddResidualBlock (
@@ -337,7 +325,7 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
     
     // 判断地图点是否收敛
     for ( auto& backup_pair: mp_backup ) {
-        MapPoint::Ptr mp = Memory::GetMapPoint( backup_pair.first );
+        MapPoint* mp = Memory::GetMapPoint( backup_pair.first );
         if ( mp->_extra_obs.size() < 5 ) 
             continue; 
         double update = (mp->_pos_world - backup_pair.second).norm();
@@ -354,12 +342,12 @@ void LocalMapping::LocalBA ( Frame::Ptr current )
  
 
 bool LocalMapping::TestDirectMatch ( 
-    Frame::Ptr current, const MatchPointCandidate& candidate,
+    Frame* current, const MatchPointCandidate& candidate,
     Vector2d& px_curr
 )
 {
-    Frame::Ptr ref = Memory::GetFrame(candidate._observed_keyframe);
-    MapPoint::Ptr map_point = Memory::GetMapPoint( candidate._map_point );
+    Frame* ref = Memory::GetFrame(candidate._observed_keyframe);
+    MapPoint* map_point = Memory::GetMapPoint( candidate._map_point );
     
     /*
 #ifdef DEBUG_VIZ

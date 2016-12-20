@@ -74,10 +74,10 @@ protected:
     );
     
     // triagulate the points between ref and curr 
-    void Triangulate( const SE3& T21, vector<Vector3d>& pts_triangulated );
+    void Triangulate( const SE3& T21, VecVector3d& pts_triangulated );
     
     // rescale the map, return the map 
-    double RescaleMap( vector<Vector3d>&pts );
+    double RescaleMap( VecVector3d&pts );
     
 private:
     // params

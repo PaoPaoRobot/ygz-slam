@@ -6,7 +6,6 @@ namespace ygz
 
 Viewer::Viewer( )
 {
-    LOG(INFO)<<"start viewer"<<endl;
     pangolin::CreateWindowAndBind ( "YGZ-SLAM: GUI", 1024, 768 );
 
     // 3D Mouse handler requires depth testing to be enabled
@@ -32,7 +31,6 @@ Viewer::Viewer( )
 
 void Viewer::Draw()
 {
-
     glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     _dcam.Activate ( _scam );
     glClearColor ( 1.0f, 1.0f, 1.0f, 1.0f );
@@ -51,16 +49,41 @@ void Viewer::Draw()
         DrawPose ( pose, false );
     }
     
+    // 画当前帧对地图点的观测
+    if ( _current ) {
+        Vector3d p_cam = _current->_T_c_w.inverse().translation();
+        for ( auto& obs_pair: _current->_obs ) {
+            MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+            Vector3d p = mp->_pos_world;
+            // LOG(INFO) << "observed " << obs_pair.first << ", pos: " << p.transpose() << endl;
+            glBegin ( GL_LINES );
+            glColor3f ( 0,1.0,0 );
+            glVertex3f ( p_cam[0], p_cam[1], p_cam[2] );
+            glVertex3f ( p[0], p[1], p[2] );
+            glEnd();
+        }
+    }
+    
     // draw the map points
     for ( auto& point : Memory::_points )
     {
+        // LOG(INFO) << "map point " << point.first << ", pos: " << point.second->_pos_world.transpose() << endl;
         if ( point.second->_converged ) {
+            // converged points 
             glPointSize ( 3 );
             glBegin ( GL_POINTS );
             glColor3d ( 0.1,0.6,0.1 );
             glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
             glEnd();
+        } else if ( point.second->_bad == false ) {
+            // good points
+            glPointSize ( 3 );
+            glBegin ( GL_POINTS );
+            glColor3d ( 0.1,0.1,0.9 );
+            glVertex3d ( point.second->_pos_world[0], point.second->_pos_world[1], point.second->_pos_world[2] );
+            glEnd();
         } else {
+            // bad points
             glPointSize ( 3 );
             glBegin ( GL_POINTS );
             glColor3d ( 0.9,0.1,0.1 );
@@ -69,20 +92,6 @@ void Viewer::Draw()
         }
     }
     
-    // 画当前帧对地图点的观测
-    if ( _current ) {
-        Vector3d p_cam = _current->_T_c_w.inverse().translation();
-        for ( unsigned long& id: _current->_map_point ) {
-            MapPoint::Ptr mp = Memory::GetMapPoint( id );
-            Vector3d p = mp->_pos_world;
-            glBegin ( GL_LINES );
-            glColor3f ( 0,1.0,0 );
-            glVertex3f ( p_cam[0], p_cam[1], p_cam[2] );
-            glVertex3f ( p[0], p[1], p[2] );
-            glEnd();
-            
-        }
-    }
 
     pangolin::FinishFrame();
     usleep ( 1000 );

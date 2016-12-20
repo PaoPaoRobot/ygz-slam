@@ -12,6 +12,27 @@ namespace ygz
 namespace utils
 {
 
+Vector3d TriangulateFeatureNonLin (
+    const SE3& T,
+    const Vector3d& feature1,
+    const Vector3d& feature2
+)
+{
+    Vector3d f2 = T.rotation_matrix() * feature2;
+    Vector2d b;
+    b[0] = T.translation().dot ( feature1 );
+    b[1] = T.translation().dot ( f2 );
+    Eigen::Matrix2d A;
+    A ( 0,0 ) = feature1.dot ( feature1 );
+    A ( 1,0 ) = feature1.dot ( f2 );
+    A ( 0,1 ) = -A ( 1,0 );
+    A ( 1,1 ) = -f2.dot ( f2 );
+    Vector2d lambda = A.inverse() * b;
+    Vector3d xm = lambda[0] * feature1;
+    Vector3d xn = T.translation() + lambda[1] * f2;
+    return ( xm + xn ) /2;
+}
+
 void GetWarpAffineMatrix (
     const Frame* ref,
     const Frame* curr,
@@ -228,11 +249,13 @@ bool Align2D (
 bool FindEpipolarMatchDirect (
     const Frame* ref_frame,
     const Frame* cur_frame,
-    MapPoint* ref_ftr,
+    const cv::KeyPoint& ref_ftr,
     const double& d_estimate,
     const double& d_min,
     const double& d_max,
-    double& depth )
+    double& depth, 
+    Vector2d& matched_px
+)
 {
     const int halfpatch_size = 4;
     const int patch_size = 8;
@@ -242,7 +265,7 @@ bool FindEpipolarMatchDirect (
     Vector2d uv_best;
 
     // Compute start and end of epipolar line in old_kf for match search, on unit plane!
-    const Vector3d pt_ref = ref_ftr->GetObservedPt ( ref_frame->_id );
+    Vector3d pt_ref = ref_frame->_camera->Pixel2Camera( utils::Cv2Eigen(ref_ftr.pt) );
     Vector2d A = Project2d ( T_cur_ref * ( pt_ref*d_min ) );    // 相机坐标
     Vector2d B = Project2d ( T_cur_ref * ( pt_ref*d_max ) );
     Vector2d ep_dir = A - B; // epipolar direction
@@ -250,11 +273,12 @@ bool FindEpipolarMatchDirect (
     // Compute affine warp matrix
     Eigen::Matrix2d A_cur_ref;
     utils::GetWarpAffineMatrix (
-        ref_frame, cur_frame, ref_ftr->_obs[ref_frame->_id].head<2>(), pt_ref*d_estimate, ref_ftr->_pyramid_level, T_cur_ref,  A_cur_ref
+        ref_frame, cur_frame, utils::Cv2Eigen(ref_ftr.pt), pt_ref*d_estimate, ref_ftr.octave, T_cur_ref,  A_cur_ref
     );
 
     // feature pre-selection
     bool reject = false;
+    
     /* 现在没有 edgelet
     if ( ref_ftr.type == Feature::EDGELET && options_.epi_search_edgelet_filtering )
     {
@@ -280,7 +304,7 @@ bool FindEpipolarMatchDirect (
     Vector2d px_B ( cur_frame->_camera->Camera2Pixel ( Vector3d ( B[0], B[1], 1 ) ) );
     double epi_length = ( px_A-px_B ).norm() / ( 1<<search_level );
 
-    Vector2d px_ref = ref_ftr->_obs[ref_frame->_id].head<2>();
+    Vector2d px_ref = utils::Cv2Eigen( ref_ftr.pt );
     
     /*
     // show the epipolar line in current 
@@ -296,8 +320,8 @@ bool FindEpipolarMatchDirect (
     */
     
     // Warp reference patch at ref_level
-    WarpAffine ( A_cur_ref, ref_frame->_pyramid[ref_ftr._pyramid_level], px_ref,
-                 ref_ftr._pyramid_level, search_level, halfpatch_size+1, patch_with_border );
+    WarpAffine ( A_cur_ref, ref_frame->_pyramid[ref_ftr.octave], px_ref,
+                 ref_ftr.octave, search_level, halfpatch_size+1, patch_with_border );
     uint8_t* ref_patch_ptr = patch;
 
     for ( int y=1; y<patch_size+1; ++y, ref_patch_ptr += patch_size )
@@ -339,6 +363,24 @@ bool FindEpipolarMatchDirect (
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
                 // LOG(INFO) << "epipolar line is short! " << endl;
+                /*
+                if ( depth > 10 ) {
+                    cv::Mat curr_show = cur_frame->_color.clone();
+                    cv::Mat ref_show = ref_frame->_color.clone();
+                    
+                    LOG(INFO) << "stange depth from align2D = " << depth << endl;
+                    
+                    cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0), 1 );
+                    cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 1 );
+                    cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 3, cv::Scalar(0,250,0), 1 );
+                    cv::imshow("epi line in curr", curr_show );
+                    cv::imshow("epi line in ref", ref_show );
+                    
+                    cv::waitKey(0);
+                }
+                */
+                
+                matched_px = px_cur;
                 return true;
             }
             //LOG(INFO) << "rejected by triagulation"<<endl;
@@ -407,7 +449,6 @@ bool FindEpipolarMatchDirect (
         cv::waitKey(1);
         */
         
-        // Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
         // bool res;
         /*
         if ( options_.align_1d )
@@ -417,12 +458,11 @@ bool FindEpipolarMatchDirect (
         */
         
         // 居然又align一遍，别align了行不？
-        /*
-        res = Align2D (
+        Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
+        bool res = Align2D (
                   cur_frame->_pyramid[search_level], patch_with_border, patch,
                   15, px_scaled );
-                  */
-        // if ( res )
+        if ( res )
         {
             // px_cur = px_scaled* ( 1<<search_level );
             //LOG(INFO) << "align 2d succeed"<<endl;
@@ -431,6 +471,20 @@ bool FindEpipolarMatchDirect (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
+                if ( depth > 10 ) {
+                    /*
+                    cv::Mat curr_show = cur_frame->_color.clone();
+                    cv::Mat ref_show = ref_frame->_color.clone();
+                    
+                    LOG(INFO) << "stange depth = " << depth << endl;
+                    cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0), 1 );
+                    cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 1 );
+                    cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 3, cv::Scalar(0,250,0), 1 );
+                    cv::imshow("epi line in curr", curr_show );
+                    cv::imshow("epi line in ref", ref_show );
+                    cv::waitKey(0);
+                    */
+                }
                 /*
                 LOG(INFO) << "epipolar search succeed"<<endl;
                 cv::Mat ref_show = ref_frame->_color.clone();        
@@ -442,6 +496,7 @@ bool FindEpipolarMatchDirect (
                 cv::waitKey(1);
                 */
         
+                matched_px = px_cur;
                 return true;
             }
             // LOG(INFO) << "rejected by triagulation"<<endl;

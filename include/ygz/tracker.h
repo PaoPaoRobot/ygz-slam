@@ -25,10 +25,10 @@ public:
     Tracker( FeatureDetector* detector );
     
     // set the reference to track 
-    void SetReference( Frame::Ptr ref );
+    void SetReference( Frame* ref );
     
     // track the frame, call it after setting the reference
-    void Track( Frame::Ptr curr );   
+    void Track( Frame* curr );   
     
     // compute mean disparity, used in initilization 
     float MeanDisparity() const ;

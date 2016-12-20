@@ -65,7 +65,7 @@ bool System::Initialize( const string& config_file )
     
     // initialize the system 
     if ( _sensor_type == MONOCULAR ) {
-        PinholeCamera::Ptr camera (new PinholeCamera());
+        PinholeCamera* camera = new PinholeCamera();
         Frame::SetCamera( camera );
     }
     

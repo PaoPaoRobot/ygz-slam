@@ -3,6 +3,9 @@
 #include <iostream>
 
 #include "ygz/tracker.h"
+#include "ygz/config.h"
+#include "ygz/camera.h"
+#include "ygz/feature_detector.h"
 
 
 using namespace std;
@@ -32,13 +35,13 @@ int main( int argc, char** argv )
     }
     
     Config::setParameterFile("./config/default.yaml");
-    PinholeCamera::Ptr cam( new PinholeCamera ); 
+    PinholeCamera* cam = new PinholeCamera; 
     Frame::SetCamera( cam );
     
-    Tracker tracker( make_shared<ygz::FeatureDetector>()); 
+    Tracker tracker( new ygz::FeatureDetector ); 
     for ( size_t i=0; i<50; i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
-        Frame::Ptr pf( new Frame );
+        Frame* pf = new Frame ;
         pf->_color = color; 
         pf->InitFrame();
         if ( i==0 ) {
@@ -50,7 +53,11 @@ int main( int argc, char** argv )
         tracker.PlotTrackedPoints();
         if ( tracker.Status() == Tracker::TRACK_LOST )
             break; 
+        
+        // delete就交给visual odometry自己决定吧
     }
+    
+    delete cam;
     
     return 0;
 }

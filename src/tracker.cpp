@@ -4,6 +4,7 @@
 #include "ygz/tracker.h"
 #include "ygz/feature_detector.h"
 #include "ygz/map_point.h"
+#include "ygz/camera.h"
 
 namespace ygz {
     
@@ -14,10 +15,10 @@ _detector( detector )
     _min_features_initializing = Config::get<int>("init.min_features");
 }
 
-void Tracker::SetReference(Frame::Ptr ref)
+void Tracker::SetReference(Frame* ref)
 {
     // detect the features in reference 
-    _detector->Detect( ref.get() );
+    _detector->Detect( ref );
     LOG(INFO) << "Keypoints detected: "<< ref->_map_point_candidates.size() <<endl;
     
     if ( ref->_map_point_candidates.size() < _min_features_initializing ) {

@@ -39,7 +39,7 @@ int main( int argc, char** argv )
     }
     
     Config::setParameterFile("./config/default.yaml");
-    PinholeCamera::Ptr cam( new PinholeCamera ); 
+    PinholeCamera* cam = new PinholeCamera; 
     Frame::SetCamera( cam );
     VisualOdometry vo(nullptr); 
     LOG(INFO) << "start viewer"<<endl;
@@ -47,7 +47,7 @@ int main( int argc, char** argv )
     
     for ( size_t i=0; i<rgbFiles.size(); i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
-        Frame::Ptr pf( new Frame );
+        Frame* pf = new Frame ;
         pf->_color = color.clone(); 
         pf->InitFrame();
         
@@ -57,15 +57,12 @@ int main( int argc, char** argv )
             LOG(INFO) << pf->_id<<endl;
             v->SetCurrPose( pf->_T_c_w );
             v->SetCurrFrame( pf );
-            LOG(INFO) << v->_current->_id<<endl;
-            LOG(INFO) << "viewer = " << v << endl;
             v->Draw();
-            if ( v->_current )
-                LOG(INFO) << v->_current->_id<<endl;
-            cv::waitKey(0);
         }
     }
+    
     delete v;
+    delete cam;
     
     return 0;
 }

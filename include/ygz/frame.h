@@ -31,6 +31,10 @@ public:
         const Mat& depth = Mat()
     ) : _timestamp(timestamp), _T_c_w(T_c_w), _is_keyframe(is_keyframe), _color(color), 
     _depth( depth ) {} 
+   
+    ~Frame() {
+        _obs.clear();
+    }
     
     Frame operator = ( const Frame& f2 ) =delete; // 不允许赋值
 

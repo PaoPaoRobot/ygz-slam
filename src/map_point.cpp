@@ -1,5 +1,6 @@
 #include "ygz/map_point.h"
 #include "ygz/memory.h"
+#include "ygz/camera.h"
 
 namespace ygz 
 {

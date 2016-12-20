@@ -1,5 +1,5 @@
-#ifndef MEMORY_H_
-#define MEMORY_H_
+#ifndef YGZ_MEMORY_H_
+#define YGZ_MEMORY_H_
 
 #include "ygz/frame.h"
 #include "ygz/map_point.h"
@@ -17,7 +17,6 @@ class Memory {
     friend VisualOdometry;
     
 public:
-    Memory() {}
     Memory( const Memory& ) =delete;
     Memory& operator = ( const Memory& ) =delete;
     

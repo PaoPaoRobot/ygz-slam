@@ -8,7 +8,7 @@ set( CMAKE_CXX_COMPILER "g++" )
 # debug 
 set( CMAKE_BUILD_TYPE "Debug" )
 set( CMAKE_CXX_FLAGS "-std=c++11 -Wno-reorder" )
-# add_definitions( "-DDEBUG_VIZ" )
+add_definitions( "-DDEBUG_VIZ" )
 
 # Release config
 # set( CMAKE_BUILD_TYPE "Release" )

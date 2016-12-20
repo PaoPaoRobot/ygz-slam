@@ -66,7 +66,8 @@ protected:
     vector<PixelPattern> _patterns_ref;
     int _pyramid_level;
     double _scale;
-    Frame* _frame1 =nullptr, _frame2=nullptr;
+    Frame* _frame1 =nullptr;
+    Frame* _frame2=nullptr;
     SE3 _TCR;   // estimated pose 
 };
 
@@ -81,17 +82,16 @@ struct Seed {
     static int batch_counter;
     static int seed_counter;
     
-    int batch_id;                //!< Batch id is the id of the keyframe for which the seed was created.
     unsigned long frame_id;      // 最先提取这个seed的frame
     int id;                      //!< Seed ID, only used for visualization.
-    MapPoint* ftr;                //!< Feature in the keyframe for which the depth should be computed.
+    cv::KeyPoint kp;                //!< Feature in the keyframe for which the depth should be computed.
     float a;                     //!< a of Beta distribution: When high, probability of inlier is large.
     float b;                     //!< b of Beta distribution: When high, probability of outlier is large.
     float mu;                    //!< Mean of normal distribution.
     float z_range;               //!< Max range of the possible depth.
     float sigma2;                //!< Variance of normal distribution.
     Eigen::Matrix2d patch_cov;          //!< Patch covariance in reference image.
-    Seed ( const unsigned long& frame, MapPoint* ftr, float depth_mean, float depth_min );
+    Seed ( const unsigned long& frame, cv::KeyPoint& keypoint, float depth_mean, float depth_min );
     
     inline void PrintInfo() {
         LOG(INFO) << " mu = " << mu << ", sigma2 = "<< sigma2 << sigma2 << ", a = "<<a<<", b = "<<b <<endl;
@@ -128,7 +128,7 @@ public:
               use_photometric_disparity_error ( false ),
               max_n_kfs ( 3 ),
               sigma_i_sq ( 5e-4 ),
-              seed_convergence_sigma2_thresh ( 150.0 )
+              seed_convergence_sigma2_thresh ( 200.0 )
         {}
     } _options;
     
@@ -147,7 +147,7 @@ public:
     // 一些平凡的函数
     /// If the map is reset, call this function such that we don't have pointers
     /// to old frames.
-    void reset();
+    void Reset();
 
     /// Returns a copy of the seeds belonging to frame. Thread-safe.
     /// Can be used to compute the Next-Best-View in parallel.
@@ -156,7 +156,7 @@ public:
     void GetSeedsCopy ( Frame* frame, std::list<Seed>& seeds );
 
     /// Return a reference to the seeds. This is NOT THREAD SAFE!
-    std::list<Seed, Eigen::aligned_allocator<Seed> >& GetSeeds() {
+    std::list<Seed>& GetSeeds() {
         return _seeds;
     }
 
@@ -174,7 +174,7 @@ public:
         const double& px_error_angle );
     
 protected:
-    std::list<Seed, Eigen::aligned_allocator<Seed> > _seeds;
+    std::list<Seed> _seeds;
     double _new_keyframe_min_depth =0.0;       //!< Minimum depth in the new keyframe. Used for range in new seeds.
     double _new_keyframe_mean_depth=0.0;      //!< Maximum depth in the new keyframe. Used for range in new seeds.
     bool _new_keyframe_set =false;
@@ -182,10 +182,10 @@ protected:
     LocalMapping* _local_mapping =nullptr;
     
     /// Initialize new seeds from a frame.
-    void InitializeSeeds ( Frame::Ptr frame );
+    void InitializeSeeds ( Frame* frame );
 
     /// Update all seeds with a new measurement frame.
-    virtual void UpdateSeeds ( Frame::Ptr frame );
+    virtual void UpdateSeeds ( Frame* frame );
 
     /// When a new keyframe arrives, the frame queue should be cleared.
     void ClearFrameQueue();

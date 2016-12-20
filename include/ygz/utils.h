@@ -20,22 +20,7 @@ Vector3d TriangulateFeatureNonLin (
     const SE3& T,
     const Vector3d& feature1,
     const Vector3d& feature2
-)
-{
-    Vector3d f2 = T.rotation_matrix() * feature2;
-    Vector2d b;
-    b[0] = T.translation().dot ( feature1 );
-    b[1] = T.translation().dot ( f2 );
-    Eigen::Matrix2d A;
-    A ( 0,0 ) = feature1.dot ( feature1 );
-    A ( 1,0 ) = feature1.dot ( f2 );
-    A ( 0,1 ) = -A ( 1,0 );
-    A ( 1,1 ) = -f2.dot ( f2 );
-    Vector2d lambda = A.inverse() * b;
-    Vector3d xm = lambda[0] * feature1;
-    Vector3d xn = T.translation() + lambda[1] * f2;
-    return ( xm + xn ) /2;
-}
+);
 
 // 3d -> 2d projection
 inline Vector2d Project2d ( const Vector3d& v )
@@ -144,7 +129,7 @@ inline Eigen::Matrix<double,2,6> JacobXYZ2Cam ( const Vector3d& xyz )
 
 // xyz 到 像素坐标 的雅可比，平移在前
 // 这里已经取了负号，不要再取一遍！
-inline Eigen::Matrix<double,2,6> JacobXYZ2Pixel ( const Vector3d& xyz,  PinholeCamera::Ptr cam )
+inline Eigen::Matrix<double,2,6> JacobXYZ2Pixel ( const Vector3d& xyz,  PinholeCamera* cam )
 {
     Eigen::Matrix<double,2,6> J;
     const double x = xyz[0];
@@ -228,11 +213,12 @@ bool Align2D (
 bool FindEpipolarMatchDirect (
     const Frame* ref_frame,
     const Frame* cur_frame,
-    MapPoint* ref_ftr,
+    const cv::KeyPoint& ref_ftr,
     const double& d_estimate,
     const double& d_min,
     const double& d_max,
-    double& depth
+    double& depth,
+    Vector2d& matched_px
 );
 
 // 三角化计算特征点深度

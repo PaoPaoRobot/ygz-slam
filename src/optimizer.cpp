@@ -46,12 +46,12 @@ void TwoViewBAG2O (
     // vertecies and edges
     VertexSE3Sophus* v1 = new VertexSE3Sophus();
     v1->setId ( 0 );
-    Frame::Ptr frame1 = Memory::GetFrame ( frameID1 );
+    Frame* frame1 = Memory::GetFrame ( frameID1 );
     v1->setEstimate ( frame1->_T_c_w.log() );
 
     VertexSE3Sophus* v2 = new VertexSE3Sophus();
     v2->setId ( 1 );
-    Frame::Ptr frame2 = Memory::GetFrame ( frameID2 );
+    Frame* frame2 = Memory::GetFrame ( frameID2 );
     v2->setEstimate ( frame2->_T_c_w.log() );
 
     optimizer.addVertex ( v1 );
@@ -78,9 +78,9 @@ void TwoViewBAG2O (
     **/
 
 
-    for ( auto iter = frame1->_map_point.begin(); iter!=frame1->_map_point.end(); iter++ )
+    for ( auto iter = frame1->_obs.begin(); iter!=frame1->_obs.end(); iter++ )
     {
-        MapPoint::Ptr map_point = Memory::GetMapPoint ( *iter );
+        MapPoint* map_point = Memory::GetMapPoint ( iter->first );
         if ( map_point==nullptr && map_point->_bad==true )
         {
             continue;
@@ -132,7 +132,7 @@ void TwoViewBAG2O (
 
     for ( auto v:vertex_points )
     {
-        MapPoint::Ptr map_point = Memory::GetMapPoint ( v.first );
+        MapPoint* map_point = Memory::GetMapPoint ( v.first );
         map_point->_pos_world = v.second->estimate();
     }
 }
@@ -145,8 +145,8 @@ void TwoViewBACeres (
 {
     assert ( Memory::GetFrame ( frameID1 ) != nullptr && Memory::GetFrame ( frameID2 ) != nullptr );
 
-    Frame::Ptr frame1 = Memory::GetFrame ( frameID1 );
-    Frame::Ptr frame2 = Memory::GetFrame ( frameID2 );
+    Frame* frame1 = Memory::GetFrame ( frameID1 );
+    Frame* frame2 = Memory::GetFrame ( frameID2 );
 
     Vector6d pose2;
     Vector3d r2 = frame2->_T_c_w.so3().log(), t2=frame2->_T_c_w.translation();
@@ -157,7 +157,7 @@ void TwoViewBACeres (
     
     auto& all_points = Memory::GetAllPoints();
     for ( auto& map_point_pair: all_points ) {
-        MapPoint::Ptr map_point = map_point_pair.second;
+        MapPoint* map_point = map_point_pair.second;
         for ( auto obs:map_point->_obs )
         {
             if ( obs.first == frame1->_id ) {
@@ -221,7 +221,7 @@ void TwoViewBACeres (
 }
 
 void SparseImgAlign::SparseImageAlignmentCeres (
-    Frame::Ptr frame1, Frame::Ptr frame2,
+    Frame* frame1, Frame* frame2,
     const int& pyramid_level
 )
 {
@@ -253,10 +253,10 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     pose2.tail<3>() = r2;
 
     int index = 0;
-    for ( auto it=_frame1->_observations.begin(); it!=_frame1->_observations.end(); it++, index++ )
+    for ( auto it=_frame1->_obs.begin(); it!=_frame1->_obs.end(); it++, index++ )
     {
         // camera coordinates in ref
-        Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->head<2>() ,(*it)[2]) ; // 我日，之前忘乘了深度，怪不得怎么算都不对
+        Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->second.head<2>() ,it->second[2]) ; // 我日，之前忘乘了深度，怪不得怎么算都不对
         problem.AddResidualBlock (
             new CeresReprojSparseDirectError (
                 _frame2->_pyramid[_pyramid_level],
@@ -315,14 +315,12 @@ void SparseImgAlign::SparseImageAlignmentCeres (
 
 void SparseImgAlign::PrecomputeReferencePatches()
 {
-    _patterns_ref.resize ( _frame1->_map_point.size() );
+    _patterns_ref.resize ( _frame1->_obs.size() );
 
     cv::Mat& ref_img = _frame1->_pyramid[_pyramid_level];
     int i=0;
-    auto it_obs = _frame1->_observations.begin();
-    
-    for( ; it_obs != _frame1->_observations.end(); it_obs++, i++ ) {
-        Vector2d px_ref = (*it_obs).head<2>();
+    for( auto it_obs = _frame1->_obs.begin(); it_obs != _frame1->_obs.end(); it_obs++, i++ ) {
+        Vector2d px_ref = it_obs->second.head<2>();
         PixelPattern pattern_ref;
         for ( int k=0; k<PATTERN_SIZE; k++ )
         {
@@ -335,20 +333,18 @@ void SparseImgAlign::PrecomputeReferencePatches()
     _have_ref_patch = true;
 }
 
-void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
+void OptimizePoseCeres ( Frame* current, bool robust )
 {
-    auto it_mappoint = current->_map_point.begin();
-    auto it_obs = current->_observations.begin();
     Vector6d pose;
     Vector3d r = current->_T_c_w.so3().log(), t = current->_T_c_w.translation();
     pose.head<3>() = t;
     pose.tail<3>() = r;
 
     ceres::Problem problem;
-    for ( ; it_mappoint!=current->_map_point.end(); it_mappoint++, it_obs++ )
+    for ( auto iter = current->_obs.begin(); iter!=current->_obs.end(); iter++ )
     {
-        MapPoint::Ptr map_point = Memory::GetMapPoint ( *it_mappoint );
-        if ( ( *it_obs ) [2] < 0 )
+        MapPoint* map_point = Memory::GetMapPoint ( iter->first );
+        if ( iter->second[2] < 0 )
         {
             continue;
         }
@@ -356,7 +352,7 @@ void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
             problem.AddResidualBlock (
                 new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
                     new CeresReprojectionErrorPoseOnly (
-                        current->_camera->Pixel2Camera2D ( it_obs->head<2>() ),
+                        current->_camera->Pixel2Camera2D ( iter->second.head<2>() ),
                         map_point->_pos_world
                     )
                 ),
@@ -367,7 +363,7 @@ void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
             problem.AddResidualBlock (
                 new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
                     new CeresReprojectionErrorPoseOnly (
-                        current->_camera->Pixel2Camera2D ( it_obs->head<2>() ),
+                        current->_camera->Pixel2Camera2D ( iter->second.head<2>() ),
                         map_point->_pos_world
                     )
                 ),
@@ -396,39 +392,41 @@ void OptimizePoseCeres ( const Frame::Ptr& current, bool robust )
  * Depth filter
  * *************************************************/
 
-Seed::Seed ( const unsigned long& frame, MapPoint* ftr, float depth_mean, float depth_min ) :
-    batch_id ( batch_counter ),
+Seed::Seed ( const unsigned long& frame, cv::KeyPoint& keypoint, float depth_mean, float depth_min ) :
     id ( seed_counter++ ),
-    ftr ( ftr ),
+    kp ( keypoint ),
     a ( 10 ),
     b ( 10 ),
     mu ( 1.0/depth_mean ),
     z_range ( 1.0/depth_min ),
     sigma2 ( z_range*z_range/36 ),
-    frame_id(frame)
+    frame_id( frame )
 {
 }
 
 int Seed::batch_counter =0;
 int Seed::seed_counter =0;
 
-void DepthFilter::AddKeyframe ( Frame::Ptr frame, double depth_mean, double depth_min )
+void DepthFilter::AddKeyframe ( Frame* frame, double depth_mean, double depth_min )
 {
+    LOG(INFO) << "mean depth = " << depth_mean << ", min depth = " << depth_min << endl;
     _new_keyframe_set = true;
     _new_keyframe_min_depth = depth_min;
     _new_keyframe_mean_depth = depth_mean;
     
     _frame_queue.push_back( frame );
     InitializeSeeds( frame );
+    
+    Seed::batch_counter++;
 }
 
-void DepthFilter::InitializeSeeds ( Frame::Ptr frame )
+void DepthFilter::InitializeSeeds ( Frame* frame )
 {
     // frame 的 map point candidate 已经被特征提取算法提取了
-    for ( MapPoint& map_point: frame->_map_point_candidates )
+    for ( cv::KeyPoint& kp: frame->_map_point_candidates )
     {
         _seeds.push_back ( 
-            Seed ( frame->_id ,&map_point, _new_keyframe_mean_depth, _new_keyframe_min_depth ) 
+            Seed ( frame->_id ,kp, _new_keyframe_mean_depth, _new_keyframe_min_depth ) 
         );
     }
 
@@ -440,13 +438,13 @@ void DepthFilter::InitializeSeeds ( Frame::Ptr frame )
 
 
 // why remove key-frame ...
-void DepthFilter::RemoveKeyframe ( Frame::Ptr frame )
+void DepthFilter::RemoveKeyframe ( Frame* frame )
 {
     list<Seed>::iterator it=_seeds.begin();
     size_t n_removed = 0;
     while ( it!=_seeds.end() )
     {
-        if ( it->ftr->_first_observed_frame == frame->_id )
+        if ( it->frame_id == frame->_id )
         {
             it = _seeds.erase ( it );
             ++n_removed;
@@ -464,7 +462,7 @@ void DepthFilter::ClearFrameQueue()
     _frame_queue.clear();
 }
 
-void DepthFilter::AddFrame ( Frame::Ptr frame )
+void DepthFilter::AddFrame ( Frame* frame )
 {
     /*
     _frame_queue.push_back ( frame );
@@ -502,7 +500,7 @@ void DepthFilter::UpdateSeedsLoop()
     // 这应该是个循环队列的线程
 }
 
-void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
+void DepthFilter::UpdateSeeds ( Frame* frame )
 {
     // update only a limited number of seeds, because we don't have time to do it
     // for all the seeds in every frame!
@@ -517,19 +515,17 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
     while ( it!=_seeds.end() )
     {
         // check if seed is not already too old
-        if ( ( Seed::batch_counter - it->batch_id ) > _options.max_n_kfs )
+        if ( ( Seed::batch_counter - it->frame_id ) > _options.max_n_kfs )
         {
             it = _seeds.erase ( it );
             continue;
         }
 
         // check if point is visible in the current image
-        Frame::Ptr first_frame = Memory::GetFrame ( it->frame_id );
+        Frame* first_frame = Memory::GetFrame ( it->frame_id );
         SE3 T_ref_cur = first_frame->_T_c_w * frame->_T_c_w.inverse();
-        // Vector2d px_ref = it->ftr->_obs[ it->frame_id ].head<2>();
-        // LOG(INFO) << "px in ref is "<<px_ref.transpose()<<endl;
 
-        Vector3d pt_ref = frame->_camera->Pixel2Camera ( it->ftr->_obs[it->frame_id].head<2>() );
+        Vector3d pt_ref = frame->_camera->Pixel2Camera ( utils::Cv2Eigen(it->kp.pt) );
 
         // xyz in current
         Vector3d xyz_f ( T_ref_cur.inverse() * ( 1.0/it->mu * pt_ref ) );
@@ -539,8 +535,7 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
             cntFailed++;
             continue;
         }
-        // Vector2d x  = frame->_camera->Camera2Pixel ( xyz_f );
-        // LOG(INFO) << "px in current should be: " << x.transpose()<< endl;
+        
         if ( !frame->InFrame ( frame->_camera->Camera2Pixel ( xyz_f ) ) )
         {
             ++it; // point does not project in image
@@ -552,7 +547,8 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         float z_inv_min = it->mu + sqrt ( it->sigma2 );
         float z_inv_max = max ( it->mu - sqrt ( it->sigma2 ), 0.00000001f );
         double z;
-        if ( !FindEpipolarMatchDirect ( first_frame, frame, *it->ftr, 1.0/it->mu, 1.0/z_inv_min, 1.0/z_inv_max, z ) )
+        Vector2d matched_px;
+        if ( !FindEpipolarMatchDirect ( first_frame, frame, it->kp, 0.8/it->mu, 1.2/z_inv_min, 1.0/z_inv_max, z, matched_px) ) // 稍微扩大一点搜索范围试试
         {
             // 挂了
             // LOG(INFO) << "find epipolar match failed"<<endl;
@@ -577,21 +573,28 @@ void DepthFilter::UpdateSeeds ( Frame::Ptr frame )
         if ( sqrt ( it->sigma2 ) < it->z_range/_options.seed_convergence_sigma2_thresh )
         {
             // 向 Memory 注册一个新的 Map Point，并且添加到 Local Map 中
-            MapPoint::Ptr mp = Memory::CreateMapPoint();
+            MapPoint* mp = Memory::CreateMapPoint();
             Vector3d xyz_world ( frame->_T_c_w.inverse() * ( pt_ref * ( 1.0/it->mu ) ) );
             
             mp->_pos_world = xyz_world; 
-            mp->_pyramid_level = it->ftr->_pyramid_level;
+            mp->_pyramid_level = it->kp.octave;
             mp->_first_observed_frame = it->frame_id;
-            mp->_obs[it->frame_id] = it->ftr->_obs[it->frame_id];
+            mp->_obs[it->frame_id].head<2>() = utils::Cv2Eigen( it->kp.pt );
             mp->_obs[it->frame_id][2] = 1.0/it->mu;
-            frame->_map_point.push_back( mp->_id );
-            frame->_observations.push_back( mp->_obs[it->frame_id] );
+            frame->_obs[mp->_id] = mp->_obs[it->frame_id];
             mp->_converged = false; 
             mp->_bad = false;
             
             LOG(INFO) << "seed "<< mp->_id <<" from key-frame " << it->frame_id <<" has converged, depth = "<< 1.0/it->mu 
-                << "pos = "<<xyz_world.transpose()<<endl;
+                << ", pos = "<<xyz_world.transpose()<<endl;
+                
+            Mat ref_show = first_frame->_color.clone();
+            Mat curr_show = frame->_color.clone();
+            cv::circle( ref_show, it->kp.pt, 5, cv::Scalar(0,250,0), 2 );
+            cv::circle( curr_show, cv::Point2f(matched_px[0], matched_px[1]), 5, cv::Scalar(0,250,0), 2 );
+            cv::imshow("seed_ref", ref_show);
+            cv::imshow("seed_curr", curr_show);
+            cv::waitKey(0);
                 
             _local_mapping->AddMapPoint( mp->_id );
             it = _seeds.erase ( it );
@@ -662,12 +665,12 @@ double DepthFilter::ComputeTau (
     return ( z_plus - z ); // tau
 }
 
-void DepthFilter::GetSeedsCopy ( const Frame::Ptr& frame, list< Seed >& seeds )
+void DepthFilter::GetSeedsCopy ( Frame* frame, list< Seed >& seeds )
 {
 
 }
 
-void DepthFilter::reset()
+void DepthFilter::Reset()
 {
 
 }

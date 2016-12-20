@@ -12,6 +12,7 @@
 #include "ygz/feature_detector.h"
 #include "ygz/initializer.h"
 #include "ygz/local_mapping.h"
+#include "ygz/camera.h"
 
 namespace ygz {
     
@@ -25,10 +26,11 @@ VisualOdometry::VisualOdometry ( System* system )
     _min_keyframe_trans = Config::get<double>("vo.keyframe.min_trans");
     _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
     
-    _depth_filter = new opti::DepthFilter( &_local_mapping );
+    _init = new Initializer();
     _detector = new FeatureDetector();
     _tracker = new Tracker(_detector);
     _local_mapping = new LocalMapping();
+    _depth_filter = new opti::DepthFilter( _local_mapping );
 }
 
 VisualOdometry::~VisualOdometry()
@@ -88,6 +90,8 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 }
                 
                 // 把参考帧设为当前帧
+                if ( _ref_frame && _ref_frame->_is_keyframe==false )
+                    delete _ref_frame;  // 不是关键帧的话就可以删了
                 _ref_frame = _curr_frame;
                 
                 // plot the currernt image 
@@ -98,7 +102,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
                     cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
                 }
                 cv::imshow("current", img_show);
-                cv::waitKey(30);
+                cv::waitKey(1);
                 
             } else {
                 _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
@@ -137,7 +141,7 @@ void VisualOdometry::MonocularInitialization()
 
         // _tracker->GetTrackedPointsNormalPlane( pt1, pt2 );
         _tracker->GetTrackedPixel( pt1, pt2 );
-        bool init_success = _init.TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
+        bool init_success = _init->TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
             
@@ -164,11 +168,8 @@ void VisualOdometry::MonocularInitialization()
             
             // set current as key-frame and their observed points 
             SetKeyframe( _curr_frame );
-            
-            
             _status = VO_GOOD;
             
-            /*
 #ifdef DEBUG_VIZ
             // 画出初始化点在两个图像中的投影
             Mat img_ref=  _ref_frame->_color.clone();
@@ -209,12 +210,12 @@ void VisualOdometry::MonocularInitialization()
             cv::waitKey(1);
 #endif 
             
-            */
             _ref_frame = _curr_frame;
             
             return;
         } else {
             // init failed, still tracking
+            delete _curr_frame;
         }
     } else {
         // lost, reset the tracker
@@ -327,7 +328,7 @@ bool VisualOdometry::TrackLocalMap()
 {
     // Track Local Map 还是有点微妙的
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
-    bool success = _local_mapping.TrackLocalMap( _curr_frame );
+    bool success = _local_mapping->TrackLocalMap( _curr_frame );
     
     /*
     // project the map points in last key frame into current 
@@ -349,10 +350,10 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
 {
     // 遍历地图中的3D点
     for ( auto iter = Memory::_points.begin(); iter!=Memory::_points.end();) {
-        MapPoint::Ptr map_point = iter->second;
+        MapPoint* map_point = iter->second;
         bool badpoint = false;
         for ( auto& observation: map_point->_obs ) {
-            Frame::Ptr frame = Memory::GetFrame(observation.first);
+            Frame* frame = Memory::GetFrame(observation.first);
             Vector3d pt = frame->_camera->World2Camera( map_point->_pos_world, frame->_T_c_w );
             Vector2d px = frame->_camera->Camera2Pixel( pt );
             double reproj_error = (px - observation.second.head<2>()).norm();
@@ -402,7 +403,7 @@ bool VisualOdometry::NeedNewKeyFrame()
     
     // 计算正确跟踪的特征数量
     // 如果这个数量太少，很可能前面计算结果也是不对的
-    bool condition2 = _curr_frame->_map_point.size() > _min_keyframe_features;
+    bool condition2 = _curr_frame->_obs.size() > _min_keyframe_features;
     
     return condition1 && condition2;
 }
@@ -414,7 +415,7 @@ void VisualOdometry::ResetCurrentObservation()
     int cnt = 0;
     auto& all_points = Memory::GetAllPoints();
     for ( auto iter = all_points.begin(); iter!=all_points.end(); ) {
-        MapPoint::Ptr map_point = iter->second;
+        MapPoint* map_point = iter->second;
         Vector3d pt_ref = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
         Vector3d pt_curr = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
         
@@ -440,27 +441,23 @@ void VisualOdometry::ResetCurrentObservation()
     _curr_frame->_T_c_w.translation() = t*scale;
     LOG(INFO) << "current pose = \n"<<_curr_frame->_T_c_w.matrix()<<endl;
     
-    
     for ( auto& map_point_pair: Memory::GetAllPoints() ) {
-        MapPoint::Ptr map_point = map_point_pair.second;
+        MapPoint* map_point = map_point_pair.second;
         map_point->_pos_world = map_point->_pos_world * scale;
     }
     
-    
     for ( auto& map_point_pair: Memory::GetAllPoints() ) {
-        MapPoint::Ptr map_point = map_point_pair.second;
+        MapPoint* map_point = map_point_pair.second;
         for ( auto& obs_pair:map_point->_obs ) {
             if ( obs_pair.first == _ref_frame->_id ) {
                 Vector3d pt = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
                 Vector2d px = _ref_frame->_camera->World2Pixel( map_point->_pos_world, _ref_frame->_T_c_w );
-                _ref_frame->_map_point.push_back( map_point_pair.first );
-                _ref_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+                _ref_frame->_obs[ map_point_pair.first ] = Vector3d( px[0], px[1], pt[2] );
                 obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             } else {
                 Vector3d pt = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
                 Vector2d px = _curr_frame->_camera->World2Pixel( map_point->_pos_world, _curr_frame->_T_c_w );
-                _curr_frame->_map_point.push_back( map_point_pair.first );
-                _curr_frame->_observations.push_back( Vector3d(px[0], px[1], pt[2]) );
+                _curr_frame->_obs[ map_point_pair.first ] = Vector3d( px[0], px[1], pt[2] );
                 obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             }
         }
