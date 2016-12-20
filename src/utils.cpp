@@ -1,7 +1,10 @@
-#include "ygz/utils.h"
-
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+
+#include "ygz/utils.h"
+#include "ygz/map_point.h"
+#include "ygz/frame.h"
+
 
 namespace ygz
 {
@@ -10,8 +13,8 @@ namespace utils
 {
 
 void GetWarpAffineMatrix (
-    const Frame::Ptr& ref,
-    const Frame::Ptr& curr,
+    const Frame* ref,
+    const Frame* curr,
     const Vector2d& px_ref,
     const Vector3d& pt_ref,
     const int& level,
@@ -19,22 +22,12 @@ void GetWarpAffineMatrix (
     Eigen::Matrix2d& A_cur_ref
 )
 {
-    // LOG(INFO) << "ref TCW = \n "<<ref->_T_c_w.matrix()<<endl;
-    // LOG(INFO) << "curr TCW = \n "<<curr->_T_c_w.matrix()<<endl;
-
-    // Vector2d px_ref_ = ref->_camera->Camera2Pixel( pt_ref );
-    // LOG(INFO) << "px ref is " << px_ref_.transpose()<<", and the input is "<<px_ref.transpose()<<endl;
-
     // 像素上置一个偏移量
     Vector3d pt_ref_world = ref->_camera->Camera2World ( pt_ref, ref->_T_c_w );
 
     // 偏移之后的3d点，深度取成和pt_ref一致
     Vector3d pt_du_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( WarpHalfPatchSize, 0 ), ref->_T_c_w, pt_ref[2] );
     Vector3d pt_dv_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( 0, WarpHalfPatchSize ), ref->_T_c_w, pt_ref[2] );
-
-    // 让深度与偏移之前相等
-    // pt_du_ref *= pt_ref[2] / pt_du_ref[2];
-    // pt_dv_ref *= pt_ref[2] / pt_dv_ref[2];
 
     const Vector2d px_cur = curr->_camera->World2Pixel ( pt_ref_world, curr->_T_c_w );
     const Vector2d px_du = curr->_camera->World2Pixel ( pt_du_ref, curr->_T_c_w );
@@ -77,8 +70,6 @@ void WarpAffine (
             }
             else
             {
-                // LOG(INFO) << px.transpose() << endl;
-                // LOG(INFO) << A_c_r << endl;
                 *patch_ptr = GetBilateralInterpUchar ( px[0], px[1], img_ref );
             }
         }
@@ -231,15 +222,13 @@ bool Align2D (
             return false;
         }
     }
-    
     return false;
-
 }
 
 bool FindEpipolarMatchDirect (
-    const Frame::Ptr& ref_frame,
-    const Frame::Ptr& cur_frame,
-    MapPoint& ref_ftr,
+    const Frame* ref_frame,
+    const Frame* cur_frame,
+    MapPoint* ref_ftr,
     const double& d_estimate,
     const double& d_min,
     const double& d_max,
@@ -253,7 +242,7 @@ bool FindEpipolarMatchDirect (
     Vector2d uv_best;
 
     // Compute start and end of epipolar line in old_kf for match search, on unit plane!
-    const Vector3d pt_ref = ref_ftr.GetObservedPt ( ref_frame->_id );
+    const Vector3d pt_ref = ref_ftr->GetObservedPt ( ref_frame->_id );
     Vector2d A = Project2d ( T_cur_ref * ( pt_ref*d_min ) );    // 相机坐标
     Vector2d B = Project2d ( T_cur_ref * ( pt_ref*d_max ) );
     Vector2d ep_dir = A - B; // epipolar direction
@@ -261,9 +250,8 @@ bool FindEpipolarMatchDirect (
     // Compute affine warp matrix
     Eigen::Matrix2d A_cur_ref;
     utils::GetWarpAffineMatrix (
-        ref_frame, cur_frame, ref_ftr._obs[ref_frame->_id].head<2>(), pt_ref*d_estimate, ref_ftr._pyramid_level, T_cur_ref,  A_cur_ref
+        ref_frame, cur_frame, ref_ftr->_obs[ref_frame->_id].head<2>(), pt_ref*d_estimate, ref_ftr->_pyramid_level, T_cur_ref,  A_cur_ref
     );
-    // LOG(INFO) << "Acr = " << A_cur_ref << endl;
 
     // feature pre-selection
     bool reject = false;
@@ -291,9 +279,8 @@ bool FindEpipolarMatchDirect (
     Vector2d px_A ( cur_frame->_camera->Camera2Pixel ( Vector3d ( A[0], A[1], 1 ) ) );
     Vector2d px_B ( cur_frame->_camera->Camera2Pixel ( Vector3d ( B[0], B[1], 1 ) ) );
     double epi_length = ( px_A-px_B ).norm() / ( 1<<search_level );
-    
 
-    Vector2d px_ref = ref_ftr._obs[ref_frame->_id].head<2>();
+    Vector2d px_ref = ref_ftr->_obs[ref_frame->_id].head<2>();
     
     /*
     // show the epipolar line in current 

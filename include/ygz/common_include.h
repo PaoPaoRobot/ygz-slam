@@ -1,11 +1,23 @@
 #ifndef COMMON_INCLUDE_H_
 #define COMMON_INCLUDE_H_
 
+// std 
+#include <vector>
+#include <list>
+#include <memory>
+#include <string>
+#include <iostream>
+#include <set>
+#include <unordered_map>
+#include <map>
+#include <algorithm>
+#include <mutex>
+#include <thread>
+
+using namespace std; 
+
 // define the commonly included file to avoid a long include list
 // for Eigen
-#define EIGEN_DONT_ALIGN_STATICALLY
-#define  EIGEN_DONT_VECTORIZE
-#define EIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 using Eigen::Vector2d;
@@ -17,6 +29,7 @@ using Eigen::Matrix4f;
 typedef Eigen::Matrix<double, 6, 1> Vector6d; 
 
 #include <Eigen/StdVector> // for vector of Eigen objects 
+typedef vector<Vector3d, Eigen::aligned_allocator<Vector3d>> VecVector3d;
 
 // for Sophus
 #include <sophus/se3.h>
@@ -33,24 +46,6 @@ using cv::Mat;
 // for glog
 #include <glog/logging.h>
 
-// std 
-#include <vector>
-#include <list>
-#include <memory>
-#include <string>
-#include <iostream>
-#include <set>
-#include <unordered_map>
-#include <map>
-#include <algorithm>
-#include <mutex>
-#include <thread>
-
-using namespace std; 
-
-// g2o 
-#include <g2o/core/base_edge.h>
-#include <g2o/core/base_vertex.h>
 
 // ceres
 #include <ceres/ceres.h>

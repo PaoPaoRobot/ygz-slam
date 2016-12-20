@@ -2,16 +2,16 @@
 #define VISUAL_ODOMETRY_H_
 
 #include "ygz/frame.h"
-#include "ygz/tracker.h"
-#include "ygz/initializer.h"
 #include "ygz/optimizer.h"
-#include "ygz/ORB/ORBextractor.h"
-#include "ygz/local_mapping.h"
 
 namespace ygz {
 
 class System;
 class Memory;
+class Tracker;
+class Initializer;
+class FeatureDetector;
+class LocalMapping;
     
 class VisualOdometry {
     friend class Memory;
@@ -32,7 +32,7 @@ public:
     virtual ~VisualOdometry();
     
     // 新增一个帧，如果该帧可以顺利跟踪，返回真
-    bool AddFrame( const Frame::Ptr& frame );
+    bool AddFrame( Frame* frame );
     
     // 画出跟踪的地图点
     void PlotFrame() const {
@@ -42,7 +42,7 @@ public:
 protected:
     // set the input frame as a key-frame 
     // 第二个参数表示是否在初始化中使用
-    void SetKeyframe( Frame::Ptr& frame, bool initializing = false ); 
+    void SetKeyframe( Frame* frame, bool initializing = false ); 
     
     // 跟踪最近的帧
     bool TrackRefFrame();
@@ -63,33 +63,35 @@ protected:
     
 private:
     Status _status =VO_NOT_READY;       // current status 
-    Status _last_status;                // last status 
+    Status _last_status;                        // last status 
     
-    Frame::Ptr  _curr_frame=nullptr;    // current 
-    Frame::Ptr  _ref_frame=nullptr;     // reference 
+    Frame*  _curr_frame=nullptr;                // current 
+    Frame*  _ref_frame=nullptr;                 // reference 
 
-    System* _system;                    // point to full system 
-    shared_ptr<Tracker>  _tracker;      // tracker, most LK flow
-    Initializer _init;                  // initializer  
-    vector<opti::SparseImgAlign> _align;// sparse image alignment for each pyramid level 
-    LocalMapping        _local_mapping; // 局部地图
-    opti::DepthFilter*  _depth_filter =nullptr;  // depth filter 
-    shared_ptr<FeatureDetector> _detector=nullptr;
+    System* _system=nullptr;                    // point to full system 
+    Tracker*  _tracker=nullptr;                 // tracker, most LK flow
+    Initializer _init =nullptr;                 // initializer  
+    
+    // sparse image alignment for each pyramid level 
+    vector<opti::SparseImgAlign, Eigen::aligned_allocator<opti::SparseImgAlign>> _align;
+    
+    LocalMapping* _local_mapping=nullptr;       // 局部地图
+    
+    opti::DepthFilter* _depth_filter =nullptr;  // depth filter 
+    
+    FeatureDetector* _detector=nullptr;         // feature detection 
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
     
     // 上一个关键帧，这在判断是否产生新关键帧时有用
-    Frame::Ptr _last_key_frame = nullptr;
+    Frame* _last_key_frame = nullptr;
     
+    // params 
     // 关键帧选择策略中的最小旋转和最小平移量
-    double _min_keyframe_rot;
-    double _min_keyframe_trans;
-    int _min_keyframe_features;
+    double _min_keyframe_rot=0;
+    double _min_keyframe_trans=0;
+    int _min_keyframe_features=0;
     
-    int _image_width=640, _image_height=480;    // 图像长宽，用以计算网格
-    int _cell_size;                             // 网格大小
-    int _grid_rows=0, _grid_cols=0;             // 网格矩阵的行和列
-    double _detection_threshold =20.0;          // 特征响应阈值
 };
 }
 

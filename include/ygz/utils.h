@@ -3,20 +3,49 @@
 
 #include "ygz/common_include.h"
 #include "ygz/camera.h"
-#include "ygz/frame.h"
 
 // 一些杂七杂八不知道放哪的东西
 namespace ygz
 {
 
+class Frame;
+class MapPoint;
+
 namespace utils
 {
 
-    
-// 3d -> 2d projection 
-inline Vector2d Project2d(const Vector3d& v)
+// 三角化，给定两个feature和帧间变换，求深度
+// 输入T12和1,2帧下的归一化相机坐标，输出第1帧下的三角化点
+Vector3d TriangulateFeatureNonLin (
+    const SE3& T,
+    const Vector3d& feature1,
+    const Vector3d& feature2
+)
 {
-    return v.head<2>()/v[2];
+    Vector3d f2 = T.rotation_matrix() * feature2;
+    Vector2d b;
+    b[0] = T.translation().dot ( feature1 );
+    b[1] = T.translation().dot ( f2 );
+    Eigen::Matrix2d A;
+    A ( 0,0 ) = feature1.dot ( feature1 );
+    A ( 1,0 ) = feature1.dot ( f2 );
+    A ( 0,1 ) = -A ( 1,0 );
+    A ( 1,1 ) = -f2.dot ( f2 );
+    Vector2d lambda = A.inverse() * b;
+    Vector3d xm = lambda[0] * feature1;
+    Vector3d xn = T.translation() + lambda[1] * f2;
+    return ( xm + xn ) /2;
+}
+
+// 3d -> 2d projection
+inline Vector2d Project2d ( const Vector3d& v )
+{
+    return v.head<2>() /v[2];
+}
+
+inline Vector3d ProjectHomo ( const Vector3d& v )
+{
+    return v/v[2];
 }
 
 // 稀疏直接法里用的pattern
@@ -79,6 +108,7 @@ inline uchar GetBilateralInterpUchar (
            );
 }
 
+// 图像层面判断点是否落在里面
 inline bool IsInside ( const Vector2d& pixel, cv::Mat& img, int boarder=10 )
 {
     return pixel[0] >= boarder && pixel[0] < img.cols - boarder
@@ -145,8 +175,8 @@ static const int WarpPatchSize = 8;      // patch size
 
 // 计算 ref 与 current 之间的一个 affine warp
 void GetWarpAffineMatrix (
-    const Frame::Ptr& ref,
-    const Frame::Ptr& curr,
+    const Frame* ref,
+    const Frame* curr,
     const Vector2d& px_ref,
     const Vector3d& pt_ref,
     const int & level,
@@ -196,9 +226,9 @@ bool Align2D (
 // Find a match by searching along the epipolar line without using any features.
 // 需要假设 curr_frame 是已经知道 pose 的
 bool FindEpipolarMatchDirect (
-    const Frame::Ptr& ref_frame,
-    const Frame::Ptr& cur_frame,
-    MapPoint& ref_ftr,
+    const Frame* ref_frame,
+    const Frame* cur_frame,
+    MapPoint* ref_ftr,
     const double& d_estimate,
     const double& d_min,
     const double& d_max,
@@ -215,28 +245,30 @@ inline bool DepthFromTriangulation (
     Eigen::Matrix<double,3,2> A;
     A << T_search_ref.rotation_matrix() * f_ref, f_cur;
     const Eigen::Matrix2d AtA = A.transpose() *A;
-    if ( AtA.determinant() < 0.000001 )
+    if ( AtA.determinant() < 0.000001 ) {
         return false;
+    }
     const Vector2d depth2 = - AtA.inverse() *A.transpose() *T_search_ref.translation();
     depth = fabs ( depth2[0] );
     return true;
 }
 
+// SSE 计算块匹配方法
 #if __SSE2__
 // Horizontal sum of uint16s stored in an XMM register
-inline int SumXMM_16(__m128i &target)
+inline int SumXMM_16 ( __m128i &target )
 {
-  unsigned short int sums_store[8];
-  _mm_storeu_si128((__m128i*)sums_store, target);
-  return sums_store[0] + sums_store[1] + sums_store[2] + sums_store[3] +
-    sums_store[4] + sums_store[5] + sums_store[6] + sums_store[7];
+    unsigned short int sums_store[8];
+    _mm_storeu_si128 ( ( __m128i* ) sums_store, target );
+    return sums_store[0] + sums_store[1] + sums_store[2] + sums_store[3] +
+           sums_store[4] + sums_store[5] + sums_store[6] + sums_store[7];
 }
 // Horizontal sum of uint32s stored in an XMM register
-inline int SumXMM_32(__m128i &target)
+inline int SumXMM_32 ( __m128i &target )
 {
-  unsigned int sums_store[4];
-  _mm_storeu_si128((__m128i*)sums_store, target);
-  return sums_store[0] + sums_store[1] + sums_store[2] + sums_store[3];
+    unsigned int sums_store[4];
+    _mm_storeu_si128 ( ( __m128i* ) sums_store, target );
+    return sums_store[0] + sums_store[1] + sums_store[2] + sums_store[3];
 }
 #endif
 

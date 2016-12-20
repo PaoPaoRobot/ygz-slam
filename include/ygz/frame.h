@@ -3,16 +3,17 @@
 
 
 #include "ygz/common_include.h"
-#include "ygz/camera.h"
-#include "ygz/map_point.h"
 
 namespace ygz {
     
+// 前置声明
+class Frame;
+class PinholeCamera; 
+
 // Frame，帧
 // 帧是一种数据对象，所以本身使用Struct，成员都使用public
 struct Frame {
 public:
-    typedef shared_ptr<Frame> Ptr; // 通常传递Frame的指针来访问对象 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     
     Frame() {}
@@ -34,7 +35,7 @@ public:
     Frame operator = ( const Frame& f2 ) =delete; // 不允许赋值
 
     // called by system when reading parameters 
-    static void SetCamera( PinholeCamera::Ptr camera ) {
+    static void SetCamera( PinholeCamera* camera ) {
         _camera = camera; 
     }
     
@@ -68,26 +69,26 @@ public:
     // data 
     // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧
     unsigned long _id   =0; 
+    
     // 时间戳，暂时不用，在加入与速度相关的计算之后才会用到
     double  _timestamp  =0; 
+    
     // 位姿，以T_C_W表示，C指Camera,W指World
     SE3     _T_c_w      =SE3();         // pose 
+    
     // 关键帧标志
     bool    _is_keyframe    =false;     // 标识是否是关键帧
     
-    // 关联的地图点，以id标识。只有向系统注册后的地图点才会有 id 
-    list<unsigned long> _map_point; // associated map point 
+    // 2D特征点，由特征提取算法给出
+    vector<cv::KeyPoint>    _map_point_candidates; 
     
-    // 候选地图点，由特征提取算法给出
-    vector<MapPoint>    _map_point_candidates; 
-    
-    // observed features
-    // NOTE observations 与_map_point对应，即每个 map point 在这个帧上的投影位置
+    // 观测
+    // observations 与_map_point对应，即每个 map point 在这个帧上的投影位置
     // 对于关键帧，可以访问map point的_obs变量获取该位置，但对于非关键帧，由于memory中并没有记录非关键帧的信息，所以必须在这里访问
     // 在做 sparse alignment 的时候，也必须在这里访问像素位置
     // 这里的Vector3d，前两维为像素坐标，第三维是深度值
     // 如果深度值小于零，表示该观测是一个outlier
-    list<Vector3d>    _observations;
+    map<unsigned long, Vector3d, std::less<unsigned long>, Eigen::aligned_allocator<Vector3d>> _obs;
     
     // 图像，原始的彩色图和深度图
     Mat     _color;     // if we have 
@@ -98,7 +99,7 @@ public:
     vector<Mat>  _pyramid;      // gray image pyramid, it must be CV_8U
     
     // camera, 静态对象，所有Frame共用一个 
-    static PinholeCamera::Ptr   _camera;
+    static PinholeCamera*   _camera;
     
     // 格子，可以用来提取关键点，有很多用途
     vector<int> _grid;        // grid occupancy 

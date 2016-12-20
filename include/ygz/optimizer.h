@@ -31,7 +31,7 @@ void TwoViewBACeres (
 // pose only BA
 // 在普通帧寻找匹配点之后调用
 void OptimizePoseCeres(
-    const Frame::Ptr& current,
+    Frame* current,
     bool robust = false
 );
 
@@ -46,7 +46,7 @@ public:
     // 用稀疏直接法计算两个图像的运动，结果是T_21
     // 输入两个帧的指针以及金字塔的层数
     void SparseImageAlignmentCeres (
-        Frame::Ptr frame1, Frame::Ptr frame2,
+        Frame* frame1, Frame* frame2,
         const int& pyramid_level
     );
     
@@ -66,7 +66,7 @@ protected:
     vector<PixelPattern> _patterns_ref;
     int _pyramid_level;
     double _scale;
-    Frame::Ptr _frame1 =nullptr, _frame2=nullptr;
+    Frame* _frame1 =nullptr, _frame2=nullptr;
     SE3 _TCR;   // estimated pose 
 };
 
@@ -134,15 +134,15 @@ public:
     
     
     /// Add frame to the queue to be processed.
-    void AddFrame ( Frame::Ptr frame );
+    void AddFrame ( Frame* frame );
 
     /// Add new keyframe to the queue
-    void AddKeyframe ( Frame::Ptr frame, double depth_mean, double depth_min );
+    void AddKeyframe ( Frame* frame, double depth_mean, double depth_min );
 
     /// Remove all seeds which are initialized from the specified keyframe. This
     /// function is used to make sure that no seeds points to a non-existent frame
     /// when a frame is removed from the map.
-    void RemoveKeyframe ( Frame::Ptr frame );
+    void RemoveKeyframe ( Frame* frame );
 
     // 一些平凡的函数
     /// If the map is reset, call this function such that we don't have pointers
@@ -153,7 +153,7 @@ public:
     /// Can be used to compute the Next-Best-View in parallel.
     /// IMPORTANT! Make sure you hold a valid reference counting pointer to frame
     /// so it is not being deleted while you use it.
-    void GetSeedsCopy ( const Frame::Ptr& frame, std::list<Seed>& seeds );
+    void GetSeedsCopy ( Frame* frame, std::list<Seed>& seeds );
 
     /// Return a reference to the seeds. This is NOT THREAD SAFE!
     std::list<Seed, Eigen::aligned_allocator<Seed> >& GetSeeds() {
@@ -178,7 +178,7 @@ protected:
     double _new_keyframe_min_depth =0.0;       //!< Minimum depth in the new keyframe. Used for range in new seeds.
     double _new_keyframe_mean_depth=0.0;      //!< Maximum depth in the new keyframe. Used for range in new seeds.
     bool _new_keyframe_set =false;
-    deque<Frame::Ptr>   _frame_queue;    // 帧队列，在多线程中有用
+    deque<Frame*>   _frame_queue;    // 帧队列，在多线程中有用
     LocalMapping* _local_mapping =nullptr;
     
     /// Initialize new seeds from a frame.

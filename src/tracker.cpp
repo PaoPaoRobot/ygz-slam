@@ -1,9 +1,13 @@
-#include "ygz/tracker.h"
 #include <opencv2/video/video.hpp>
+
+#include "ygz/config.h"
+#include "ygz/tracker.h"
+#include "ygz/feature_detector.h"
+#include "ygz/map_point.h"
 
 namespace ygz {
     
-Tracker::Tracker( shared_ptr<FeatureDetector> detector ) : 
+Tracker::Tracker( FeatureDetector* detector ) : 
 _detector( detector )
 {
     // read the params from config 
@@ -28,14 +32,13 @@ void Tracker::SetReference(Frame::Ptr ref)
     _status = TRACK_GOOD;
     
     // set the tracked pts in ref 
-    for ( MapPoint p: _ref->_map_point_candidates ) {
-        Vector2d px = p._obs.begin()->second.head<2>();
-        _px_ref.push_back( cv::Point2f(px[0], px[1]) );
+    for ( cv::KeyPoint& p: _ref->_map_point_candidates ) {
+        _px_ref.push_back( p.pt );
     }
     _px_curr = _px_ref;
 }
 
-void Tracker::Track(Frame::Ptr curr)
+void Tracker::Track(Frame* curr)
 {
     if ( _status == TRACK_NOT_READY ) {
         LOG(WARNING) << "reference is not ready, please set reference first! " << endl;
@@ -48,7 +51,6 @@ void Tracker::Track(Frame::Ptr curr)
     _curr = curr; 
     TrackKLT();
     LOG(INFO) << "Pixels in current: " << _px_curr.size();
-    
     
     if ( _px_curr.size() < 5 ) {
         // considered as track lost 
@@ -72,10 +74,12 @@ void Tracker::TrackKLT()
     for ( cv::Point2f& p: _px_ref )  {
         pt_ref.push_back( p );
     }
+    
     vector<cv::Point2f> pt_curr; 
     for ( cv::Point2f& p: _px_curr )  {
         pt_curr.push_back( p );
     }
+    
     cv::calcOpticalFlowPyrLK ( _ref->_pyramid[0], _curr->_pyramid[0],
                                pt_ref, pt_curr,
                                status, error,

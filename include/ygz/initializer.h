@@ -11,40 +11,27 @@ namespace ygz {
  * it is stored in visual odometry class, used when initialing
  * note that in RGB-D or stereo mode, we do not need this step.
  * ***********************************/
-struct HomographyDecomposition
-{
-    Eigen::Vector3d t;
-    Eigen::Matrix3d R;
-    Eigen::Vector3d n;
-    double   d;
-
-    // Resolved  Composition
-    SE3 T;
-    int score;
-};
 
 // 初始化
 // 根据特征点跟踪的结果，分解E或H获得初始化结果
 class Initializer {
-    
-private:
-    // params
-    int _max_iterations;
-    float _min_disparity;
-    int _min_inliers;
-    float _pose_init_thresh;
-
-    // data
-    Frame::Ptr _frame;
-    vector<cv::Point2f> _px1, _px2;
-    vector<cv::Point2f> _pt1, _pt2;
-    Mat _H_estimated, _E_estimated;
-    SE3 _T21;
-
-    vector<bool> _inliers;
-    
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    struct HomographyDecomposition
+    {
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+        Eigen::Vector3d t;
+        Eigen::Matrix3d R;
+        Eigen::Vector3d n;
+        double   d;
+
+        // Resolved  Composition
+        SE3 T;
+        int score;
+    };
+
+    typedef vector<HomographyDecomposition, Eigen::aligned_allocator<HomographyDecomposition>> HomographyDecs;
+    
     Initializer();
 
     // try to initialize, given two sets of pixels, return the recovered motion and structure
@@ -52,8 +39,8 @@ public:
     bool TryInitialize(
         const vector<Vector2d>& px1,
         const vector<Vector2d>& px2,
-        Frame::Ptr& ref,
-        Frame::Ptr& curr
+        Frame* ref,
+        Frame* curr
     );
 
     // 测试是否可以初始化，期望平均视差大于阈值
@@ -75,10 +62,10 @@ protected:
     bool TestEssential();
 
     // decompose H
-    vector<HomographyDecomposition> DecomposeHomography();
+    HomographyDecs DecomposeHomography();
     
     // find best decompostion 
-    void FindBestDecomposition( vector<HomographyDecomposition>& decomp );
+    void FindBestDecomposition( HomographyDecs& decomp );
 
     double SampSonusError( 
         const cv::Point2f& v2Dash, 
@@ -92,23 +79,22 @@ protected:
     // rescale the map, return the map 
     double RescaleMap( vector<Vector3d>&pts );
     
+private:
+    // params
+    int _max_iterations;
+    float _min_disparity;
+    int _min_inliers;
+    float _pose_init_thresh;
 
+    // data
+    Frame* _frame;
+    vector<cv::Point2f> _px1, _px2;
+    vector<cv::Point2f> _pt1, _pt2;
+    Mat _H_estimated, _E_estimated;
+    SE3 _T21;
+
+    vector<bool> _inliers;
 };
-
-// useful tools 
-Vector3d TriangulateFeatureNonLin( 
-    const SE3& T, 
-    const Vector3d& feature1, 
-    const Vector3d& feature2 
-); 
-
-inline Vector2d project( const Vector3d& v ) {
-    return Vector2d( v[0]/v[2], v[1]/v[2] );
-}
-    
-inline Vector3d projectHomo( const Vector3d& v ) {
-    return v/v[2];
-}
 
 }
 

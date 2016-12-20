@@ -8,11 +8,15 @@
 #include "ygz/optimizer.h"
 #include "ygz/memory.h"
 #include "ygz/ORB/ORBextractor.h"
+#include "ygz/tracker.h"
+#include "ygz/feature_detector.h"
+#include "ygz/initializer.h"
+#include "ygz/local_mapping.h"
 
 namespace ygz {
     
 VisualOdometry::VisualOdometry ( System* system )
-    :  _system(system), _detector(new FeatureDetector)
+    :  _system(system)
 {
     int pyramid = Config::get<int>("frame.pyramid");
     _align.resize( pyramid );
@@ -22,19 +26,26 @@ VisualOdometry::VisualOdometry ( System* system )
     _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
     
     _depth_filter = new opti::DepthFilter( &_local_mapping );
-    _tracker = make_shared<Tracker>(_detector);
-    
+    _detector = new FeatureDetector();
+    _tracker = new Tracker(_detector);
+    _local_mapping = new LocalMapping();
 }
 
 VisualOdometry::~VisualOdometry()
 {
     if ( _depth_filter )
         delete _depth_filter;
+    if ( _detector ) 
+        delete _detector;
+    if ( _tracker )
+        delete _tracker;
+    if ( _local_mapping )
+        delete _local_mapping;
 }
 
     
 // 整体接口，逻辑有点复杂，参照orb-slam2设计
-bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
+bool VisualOdometry::AddFrame( Frame* frame )
 {
     if ( _status == VO_NOT_READY ) {
         _ref_frame = frame;
@@ -81,7 +92,8 @@ bool VisualOdometry::AddFrame(const Frame::Ptr& frame)
                 
                 // plot the currernt image 
                 Mat img_show = _curr_frame->_color.clone();
-                for ( Vector3d& obs: _curr_frame->_observations ) {
+                for ( auto& obs_pair: _curr_frame->_obs ) {
+                    Vector3d obs = obs_pair.second;
                     cv::rectangle( img_show, cv::Point2f( obs[0]-5, obs[1]-5), cv::Point2f( obs[0]+5, obs[1]+5), cv::Scalar(0,250,0), 2 );
                     cv::rectangle( img_show, cv::Point2f( obs[0]-1, obs[1]-1), cv::Point2f( obs[0]+1, obs[1]+1), cv::Scalar(0,250,0), 1 );
                 }
@@ -113,7 +125,7 @@ void VisualOdometry::MonocularInitialization()
         _tracker->PlotTrackedPoints();
 
         // try intialize, check mean disparity
-        if ( !_init.Ready( _tracker->MeanDisparity()) ) {
+        if ( !_init->Ready( _tracker->MeanDisparity()) ) {
             // too small disparity, quit
             return;
         }
@@ -211,7 +223,7 @@ void VisualOdometry::MonocularInitialization()
     }
 }
 
-void VisualOdometry::SetKeyframe ( Frame::Ptr& frame, bool initializing )
+void VisualOdometry::SetKeyframe ( Frame* frame, bool initializing )
 {
     frame->_is_keyframe = true; 
     Memory::PrintInfo();
@@ -224,8 +236,8 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr& frame, bool initializing )
     if ( initializing == false ) {
         // 在新的关键帧中，提取新的特征点
         
-        _detector->SetExistingFeatures( frame.get() );
-        _detector->Detect( frame.get(), false );
+        _detector->SetExistingFeatures( frame );
+        _detector->Detect( frame, false );
         
         // 向 depth filter 中加入新的关键帧
         double mean_depth=0, min_depth=0; 
@@ -234,27 +246,10 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr& frame, bool initializing )
         // LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
         _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
         
-        // set the observation of map points 
-        auto iter_mp = frame->_map_point.begin();
-        auto iter_obs = frame->_observations.begin();
-        for ( ; iter_mp != frame->_map_point.end(); iter_mp++, iter_obs++ ) {
-            MapPoint::Ptr mp = Memory::GetMapPoint( *iter_mp );
-            mp->_obs[frame->_id] = *iter_obs;
+        for ( auto& obs_pair: frame->_obs ) {
+            MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+            mp->_obs[frame->_id] = obs_pair.second;
         }
-        
-        // draw the candidate 
-        cv::Mat img_show = frame->_color.clone();
-        for ( MapPoint& point: frame->_map_point_candidates ) {
-            Vector2d px = point._obs.begin()->second.head<2>();
-            cv::circle( img_show, cv::Point2f(px[0], px[1]), 5, cv::Scalar(0,250,250),2 );
-        }
-        
-        for ( Vector3d& obs: frame->_observations ) {
-            cv::circle( img_show, cv::Point2f(obs[0], obs[1]), 5, cv::Scalar(0,250,0),2 );
-        }
-        
-        cv::imshow("new features", img_show );
-        cv::waitKey(1);
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
@@ -269,7 +264,7 @@ void VisualOdometry::SetKeyframe ( Frame::Ptr& frame, bool initializing )
     }
     */
     
-    _local_mapping.AddKeyFrame( frame );
+    _local_mapping->AddKeyFrame( frame );
     _last_key_frame = frame; 
     
     /*

@@ -2,7 +2,6 @@
 #define TRACKER_H_
 
 #include "ygz/frame.h"
-#include "ygz/feature_detector.h"
 
 namespace ygz {
     
@@ -10,6 +9,8 @@ namespace ygz {
 // 用来跟踪特征点
 // Tracker 一般只计算两个帧的匹配关系，它默认使用光流跟踪
 // 如果使用特征点的活，也可以匹配特征点的描述 
+    
+class FeatureDetector;
     
 class Tracker {
 public:
@@ -20,22 +21,8 @@ public:
         TRACK_LOST
     };
     
-private:
-    Frame::Ptr _ref =nullptr;            // reference 
-    Frame::Ptr _curr =nullptr;           // current  
-    
-    list<cv::Point2f> _px_ref;            // pixels in ref, lost features will be deleted 
-    list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted 
-    
-    TrackerStatusType _status =TRACK_NOT_READY;
-    shared_ptr<FeatureDetector> _detector =nullptr; 
-    
-    // parameters 
-    int _min_features_initializing; 
-    
 public:
-    
-    Tracker( shared_ptr<FeatureDetector> detector );
+    Tracker( FeatureDetector* detector );
     
     // set the reference to track 
     void SetReference( Frame::Ptr ref );
@@ -65,9 +52,21 @@ public:
     list<cv::Point2f> GetPxRef() const { return _px_ref; }
     list<cv::Point2f> GetPxCurr() const { return _px_curr; }
     
-protected:
+private:
     void TrackKLT( );
     
+private:
+    Frame* _ref =nullptr;            // reference 
+    Frame* _curr =nullptr;           // current  
+    
+    list<cv::Point2f> _px_ref;            // pixels in ref, lost features will be deleted 
+    list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted 
+    
+    TrackerStatusType _status =TRACK_NOT_READY;
+    FeatureDetector* _detector =nullptr; 
+    
+    // parameters 
+    int _min_features_initializing; 
 };
 
 }

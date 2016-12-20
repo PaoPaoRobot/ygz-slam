@@ -10,7 +10,6 @@ namespace ygz
 class PinholeCamera
 {
 public:
-    typedef shared_ptr<PinholeCamera> Ptr;
     PinholeCamera( ) {
         _fx = Config::get<float> ( "camera.fx" );
         _fy = Config::get<float> ( "camera.fy" );
@@ -54,13 +53,6 @@ public:
                );
     }
     
-    // used in ceres 
-    template<typename T>
-    inline void Camera2Pixel( const T* const p_c, T* p_x ) {
-        p_x[0] =  (T) _fx * p_c[0] / p_c[2] + _cx;
-        p_x[1] =  (T) _fy * p_c[1] / p_c[2] + _cy;
-    }
-
     inline Vector3d Pixel2Camera ( const Vector2d& p_p, double depth=1 ) {
         return Vector3d (
                    ( p_p ( 0,0 )-_cx ) *depth/_fx,

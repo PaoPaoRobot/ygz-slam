@@ -21,22 +21,22 @@ class LocalMapping {
 public:
     LocalMapping();
     // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
-    void AddKeyFrame( Frame::Ptr keyframe );
+    void AddKeyFrame( Frame* keyframe );
     
     // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计，如果匹配顺利，进一步优化当前帧的 pose
-    bool TrackLocalMap( Frame::Ptr current );
+    bool TrackLocalMap( Frame* current );
     
     // 新增一个路标点
     void AddMapPoint( const unsigned long& map_point_id );
     
 private:
     // 测试某个点是否可以和当前帧匹配上
-    bool TestDirectMatch( Frame::Ptr current, const MatchPointCandidate& candidate, Vector2d& px_curr );
+    bool TestDirectMatch( Frame* current, const MatchPointCandidate& candidate, Vector2d& px_curr );
     
     // Local Bundle Adjustment 
     // 这里只修改current的pose，以及与current关联的路标点，不会修改其他的路标点和帧的位姿
     // 用于刚加入新的普通帧时的优化
-    void LocalBA( Frame::Ptr current ); 
+    void LocalBA( Frame* current ); 
     
     // 相邻关键帧和地图点，以ID形式标出
     set<unsigned long> _local_keyframes;        // 关键帧
@@ -58,8 +58,6 @@ private:
     
     // 这个网格目前还没用上
     vector<vector<MatchPointCandidate>> _grid;  // 候选点网格,每个格点有一串的候选点
-    
-
 };
 }
 

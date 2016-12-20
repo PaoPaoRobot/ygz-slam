@@ -30,19 +30,15 @@ Viewer::Viewer( )
     _current = nullptr;
 }
 
-    /*
 void Viewer::Draw()
 {
-    if (_current) {
-        LOG(INFO) << "current id = " << _current->_id << endl;
-        LOG(INFO) << "this = " << this << endl;
-    }
+
     glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     _dcam.Activate ( _scam );
     glClearColor ( 1.0f, 1.0f, 1.0f, 1.0f );
+    
     // draw the key-frames and map points in memory
-
-    for ( auto frame: Memory::_frames )
+    for ( auto& frame: Memory::_frames )
     {
         DrawPose ( frame.second->_T_c_w, 1.0, 0, 0 );
     }
@@ -56,7 +52,7 @@ void Viewer::Draw()
     }
     
     // draw the map points
-    for ( auto point : Memory::_points )
+    for ( auto& point : Memory::_points )
     {
         if ( point.second->_converged ) {
             glPointSize ( 3 );
@@ -91,7 +87,6 @@ void Viewer::Draw()
     pangolin::FinishFrame();
     usleep ( 1000 );
 }
-    */
 
 void Viewer::DrawPose ( const SE3& T_c_w, float r, float g, float b )
 {
@@ -99,7 +94,6 @@ void Viewer::DrawPose ( const SE3& T_c_w, float r, float g, float b )
     const static float h = w*0.75;
     const static float z = w*0.6;
     pangolin::OpenGlMatrix m;
-    LOG(INFO) << "TCW = \n"<<T_c_w.matrix()<<endl;
     SE3 Twc = T_c_w.inverse();
     Eigen::Matrix4d T = Twc.matrix();
     m.m[0] = T ( 0,0 );

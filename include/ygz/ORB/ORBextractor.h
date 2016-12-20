@@ -1,4 +1,3 @@
-#pragma once 
 #ifndef YGZ_ORB_EXTRACTOR_H
 #define YGZ_ORB_EXTRACTOR_H
 
@@ -20,8 +19,6 @@ float IC_Angle(
     const Mat& image, cv::Point2f pt,  
     const vector<int> & u_max
 );
-    
-    
     
 class ORBExtractor {
     

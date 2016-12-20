@@ -17,8 +17,8 @@ Initializer::Initializer()
 bool Initializer::TryInitialize(
     const vector< Vector2d >& px1,
     const vector< Vector2d >& px2,
-    Frame::Ptr& ref,
-    Frame::Ptr& curr
+    Frame* ref,
+    Frame* curr
 )
 {
     _frame = curr;
@@ -60,7 +60,7 @@ bool Initializer::TryInitialize(
     
     if (retH == true ) {
         // decompose the H
-        vector<HomographyDecomposition> decompose = DecomposeHomography();
+        HomographyDecs decompose = DecomposeHomography();
         if ( !decompose.empty() ) {
             // doesnot degenerate
             FindBestDecomposition( decompose );
@@ -75,7 +75,8 @@ bool Initializer::TryInitialize(
     // initialization success, triangulate the tracked points
     // select from E and H
     // TODO compare the result of H and E, now we only select E
-    vector<Vector3d> features3d_curr;
+    VecVector3d features3d_curr;
+    
     if ( retE == false && retH == false )
         return false;
     if ( retE == true ) {
@@ -102,7 +103,7 @@ bool Initializer::TryInitialize(
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i]) && features3d_curr[i][2]>0 ) {
                 Vector3d pos = T_w_c * ( features3d_curr[i]/scale );
                 
-                MapPoint::Ptr map_point = Memory::CreateMapPoint();
+                MapPoint* map_point = Memory::CreateMapPoint();
                 map_point->_pos_world = pos;
                 map_point->_bad = false;
                 
@@ -130,7 +131,7 @@ bool Initializer::TryInitialize(
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i], 10) && features3d_curr[i][2]>0 ) {
                 Vector3d pos = T_w_c * ( features3d_curr[i]*1.0/scale );
                 
-                MapPoint::Ptr map_point = Memory::CreateMapPoint();
+                MapPoint* map_point = Memory::CreateMapPoint();
                 map_point->_pos_world = pos;
                 map_point->_bad = false;
                 
@@ -156,11 +157,11 @@ void Initializer::Triangulate(const SE3& T21, vector< Vector3d >& pts_triangulat
         Vector3d p1 = Vector3d( _pt1[i].x, _pt1[i].y, 1);
         Vector3d p2 = Vector3d( _pt2[i].x, _pt2[i].y, 1 );
 
-        Vector3d p = TriangulateFeatureNonLin( T21, p2, p1 );
+        Vector3d p = utils::TriangulateFeatureNonLin( T21, p2, p1 );
         pts_triangulated.push_back( p );
         // compute the reprojection error to remove the outlier
-        double error1 = (p2 - projectHomo(p) ).norm();
-        double error2 = (p1 - projectHomo(T21.inverse()*p) ).norm();
+        double error1 = (p2 - utils::ProjectHomo(p) ).norm();
+        double error2 = (p1 - utils::ProjectHomo(T21.inverse()*p) ).norm();
         if ( error1 > _pose_init_thresh || error2 > _pose_init_thresh ) {
             // set as outlier
             _inliers[i] = false;
@@ -197,11 +198,9 @@ bool Initializer::TestHomography()
     // test the H
     Mat res = (cv::Mat_<double>(3,1) << _pt2[0].x, _pt2[0].y, 1) - H *
               (cv::Mat_<double>(3,1) << _pt1[0].x, _pt1[0].y, 1 );
-    LOG(INFO) << "res = " << res <<endl;
 
     Mat res2 = (cv::Mat_<double>(3,1) << _pt1[0].x, _pt1[0].y, 1) - H *
                (cv::Mat_<double>(3,1) << _pt2[0].x, _pt2[0].y, 1 );
-    LOG(INFO) << "res2 = " << res2 <<endl;
 
     // count the inliers
     int cnt_inliers(0);
@@ -215,9 +214,7 @@ bool Initializer::TestHomography()
         }
     }
 
-    LOG(INFO) << "number of inliers: " << cnt_inliers << endl;
     if ( cnt_inliers < _min_inliers ) {
-        LOG(INFO) << "Too small inliers when finding H" << endl;
         return false;
     }
 
@@ -248,9 +245,7 @@ bool Initializer::TestEssential()
         }
     }
 
-    LOG(INFO) << "number of inliers: " << cnt_inliers << endl;
     if ( cnt_inliers < _min_inliers ) {
-        LOG(INFO) << "Too small inliers when finding H" << endl;
         return false;
     }
 
@@ -259,7 +254,7 @@ bool Initializer::TestEssential()
     return true;
 }
 
-vector< HomographyDecomposition > Initializer::DecomposeHomography()
+HomographyDecs Initializer::DecomposeHomography()
 {
     // OpenCV's homography decomposition seems still not work, we directly use SVD
     // from SVO, I think case 2 and case 3 will not happen because we are using double matricies
@@ -375,7 +370,7 @@ vector< HomographyDecomposition > Initializer::DecomposeHomography()
     return decompositions;
 }
 
-void Initializer::FindBestDecomposition( vector< HomographyDecomposition >& decomp )
+void Initializer::FindBestDecomposition( HomographyDecs& decomp )
 {
     assert( decomp.size() == 8 );
     for ( size_t i=0; i<decomp.size(); i++ ) {
@@ -424,12 +419,6 @@ void Initializer::FindBestDecomposition( vector< HomographyDecomposition >& deco
     });
     decomp.resize(2);
 
-    for ( HomographyDecomposition& d: decomp ) {
-        LOG(INFO) << "selected T: \n"<<d.T.matrix()<<endl;
-        LOG(INFO) << "score: "<<d.score<<endl;
-
-    }
-
     double dRatio = (double) decomp[1].score / (double) decomp[0].score;
 
     if(dRatio < 0.9) // no ambiguity!
@@ -454,8 +443,6 @@ void Initializer::FindBestDecomposition( vector< HomographyDecomposition >& deco
             adSampsonusScores[i] = dSumError;
         }
 
-        LOG(INFO) << "score: "<<adSampsonusScores[0]<<", "<<adSampsonusScores[1] << endl;
-
         if(adSampsonusScores[0] <= adSampsonusScores[1])
             decomp.erase(decomp.begin() + 1);
         else
@@ -478,23 +465,6 @@ double Initializer::SampSonusError(
     Vector2d fv3Slice = fv3.head<2>();
     Vector2d fTv3DashSlice = fTv3Dash.head<2>();
     return (dError * dError / (fv3Slice.dot(fv3Slice) + fTv3DashSlice.dot(fTv3DashSlice)));
-}
-
-Vector3d TriangulateFeatureNonLin(const SE3& T, const Vector3d& feature1, const Vector3d& feature2)
-{
-    Vector3d f2 = T.rotation_matrix() * feature2;
-    Vector2d b;
-    b[0] = T.translation().dot(feature1);
-    b[1] = T.translation().dot(f2);
-    Eigen::Matrix2d A;
-    A(0,0) = feature1.dot(feature1);
-    A(1,0) = feature1.dot(f2);
-    A(0,1) = -A(1,0);
-    A(1,1) = -f2.dot(f2);
-    Vector2d lambda = A.inverse() * b;
-    Vector3d xm = lambda[0] * feature1;
-    Vector3d xn = T.translation() + lambda[1] * f2;
-    return ( xm + xn )/2;
 }
 
 

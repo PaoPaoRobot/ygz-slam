@@ -126,6 +126,7 @@ protected:
 class CeresReprojSparseDirectError: public ceres::SizedCostFunction<PATTERN_SIZE,6>
 {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     CeresReprojSparseDirectError ( 
         cv::Mat& curr_img, 
         PixelPattern& ref_pattern,
@@ -194,43 +195,11 @@ public:
             }
             return true;
         }
-    /*
-    template<typename T>
-    bool operator() (
-        const T* const pose_TCR,
-        T* residuals 
-    ) const {
-        T p[3];
-        T rot[3];
-        for ( size_t i=0; i<3; i++ )
-            rot[i] = pose_TCR[i+3];
-        T pt_ref[3];
-        for ( size_t i=0; i<3; i++ )
-            pt_ref[i] = _pt_ref[i];
-        ceres::AngleAxisRotatePoint<T>( rot, pt_ref, p );
-        p[0] += pose_TCR[0]; 
-        p[1] += pose_TCR[1]; 
-        p[2] += pose_TCR[2]; 
-        
-        T px[2];
-        _cam->Camera2Pixel<T>(p,px);
-        
-        T res = 0; 
-        for ( int i=0; i<PATTERN_SIZE; i++ ) {
-            T u = px[0] + PATTERN_DX[i];
-            T v = px[1] + PATTERN_DY[i];
-            res += _ref_pattern[i] - utils::getBilateralInterp(u,v,_curr_img);
-        }
-        residuals[0] = res;
-        return true; 
-    }
-    */
-    
 protected:
     cv::Mat& _curr_img; 
     PixelPattern& _ref_pattern;
     Vector3d _pt_ref;
-    PinholeCamera::Ptr _cam =nullptr;
+    PinholeCamera* _cam =nullptr;
     double _scale;
 };
 

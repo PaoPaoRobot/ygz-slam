@@ -20,28 +20,7 @@ struct ExtraObservation {
     
 struct MapPoint {
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    typedef shared_ptr<MapPoint> Ptr; 
     MapPoint()  {}
-    unsigned long   _id =0; 
-    int             _pyramid_level =0;
-    Vector3d        _pos_world =Vector3d(0,0,0); 
-    unsigned long   _first_observed_frame =0; // 第一次被观测到的帧
-    
-    map<unsigned long, Vector3d> _obs;   // observations, first=frame ID, second=(pixel coordinate, depth), depth by default is 1 
-    
-    // 除了记录被关键帧看到的信息之外，还需要记录该点被普通帧看到的情况，否则一个地图点的位置非常不稳定
-    vector<ExtraObservation> _extra_obs;
-    
-    bool            _bad=false;        // bad 说的是这个点是不是很少被看到
-    bool            _converged=false;  // 深度值是否收敛？
-    
-    // ORB feature 
-    cv::Mat         _descriptor;        // 描述子
-    cv::KeyPoint    _keypoint;          // 关键点
-    
-public:
-    
     // 获得某个观测的相机坐标值
     Vector3d GetObservedPt( const unsigned long& keyframe_id );
     
@@ -54,6 +33,27 @@ public:
             LOG(INFO) << "from frame "<<obs.first << ", pixel pos = " << obs.second.transpose() << endl;
         }
     }
+    
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    unsigned long   _id =0;                     // 全局id
+    int             _pyramid_level =0;          // 所在的金字塔层数
+    Vector3d        _pos_world =Vector3d(0,0,0);        // 世界坐标
+    unsigned long   _first_observed_frame =0;           // 第一次被观测到的帧
+    
+    // observations, first=frame ID, second=(pixel coordinate, depth), depth by default is 1 
+    map<unsigned long, Vector3d, less<unsigned long>, Eigen::aligned_allocator<Vector3d>> _obs;   
+    
+    // 除了记录被关键帧看到的信息之外，还需要记录该点被普通帧看到的情况，否则一个地图点的位置非常不稳定
+    vector<ExtraObservation> _extra_obs;
+    
+    bool            _bad=false;        // bad 说的是这个点是不是很少被看到
+    bool            _converged=false;  // 深度值是否收敛？
+    
+    // ORB feature 
+    cv::Mat         _descriptor;        // 描述子
+    cv::KeyPoint    _keypoint;          // 关键点
+    
 }; 
 }
 
