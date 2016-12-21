@@ -53,7 +53,6 @@ bool VisualOdometry::AddFrame( Frame* frame )
         _ref_frame = frame;
         SetKeyframe(_ref_frame, true);
         _status = VO_INITING;
-        return false;
     }
 
     _curr_frame = frame;
@@ -126,7 +125,6 @@ void VisualOdometry::MonocularInitialization()
     } else if ( _tracker->Status() == Tracker::TRACK_GOOD ) {
         // track the current frame
         _tracker->Track( _curr_frame );
-        _tracker->PlotTrackedPoints();
 
         // try intialize, check mean disparity
         if ( !_init->Ready( _tracker->MeanDisparity()) ) {
@@ -141,24 +139,31 @@ void VisualOdometry::MonocularInitialization()
 
         // _tracker->GetTrackedPointsNormalPlane( pt1, pt2 );
         _tracker->GetTrackedPixel( pt1, pt2 );
+        
         bool init_success = _init->TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // init succeeds, set VO as normal tracking
             
             LOG(INFO) << "ref pose = \n" <<_ref_frame->_T_c_w.matrix()<<endl;
             LOG(INFO) << "current pose = \n"<< _curr_frame->_T_c_w.matrix()<<endl;
+            LOG(INFO) << "initialized map points: " << Memory::GetAllPoints().size() << endl;
+            
+            // show the tracked points 
+            _tracker->PlotTrackedPoints();
             
             // two view BA to minimize the reprojection error 
             // use g2o or ceres or what you want 
             // opti::TwoViewBAG2O( _ref_frame->_id, _curr_frame->_id );
             
-            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id );
+            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id, true );
+            LOG(INFO) << "total map points: " << Memory::GetAllPoints().size() << endl;
+            
             // reproject the map points in these two views 
             // 这步会删掉深度值不对的那些点
             ReprojectMapPointsInInitializaion();
             
             // 去掉外点后再优化一次
-            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id ); 
+            opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id, false ); 
             
             // 重置观测以及map scale 
             ResetCurrentObservation();
@@ -170,11 +175,23 @@ void VisualOdometry::MonocularInitialization()
             SetKeyframe( _curr_frame );
             _status = VO_GOOD;
             
+            LOG(INFO) << "tracked points: " << pt1.size() << endl;
+            LOG(INFO) << "obs: " << _curr_frame->_obs.size() << endl;
+            LOG(INFO) << "total map points: " << Memory::GetAllPoints().size() << endl;
+            
 #ifdef DEBUG_VIZ
             // 画出初始化点在两个图像中的投影
             Mat img_ref=  _ref_frame->_color.clone();
             Mat img_curr=  _curr_frame->_color.clone();
             
+            /*
+            for ( size_t i=0; i<pt1.size(); i++ ) {
+                cv::circle( img_ref, cv::Point2f(pt1[i][0], pt1[i][1]),5, cv::Scalar(0,0,250),1 );
+                cv::circle( img_curr, cv::Point2f(pt2[i][0], pt2[i][1]),5, cv::Scalar(0,0,250),1 );
+            }
+            */
+            
+            int cntBad = 0;
             for ( auto& map_point_pair : Memory::_points ) {
                 Vector2d px_ref = _ref_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _ref_frame->_T_c_w );
                 Vector2d px_curr = _curr_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _curr_frame->_T_c_w );
@@ -183,31 +200,32 @@ void VisualOdometry::MonocularInitialization()
                 Vector2d obs_curr = map_point_pair.second->_obs[_curr_frame->_id].head<2>();
                 
                 if ( map_point_pair.second->_bad ) {
-                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),5, cv::Scalar(0,0,250) );
-                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),5, cv::Scalar(0,0,250) );
+                    cntBad++;
+                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),2, cv::Scalar(0,0,250),2 );
+                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),2, cv::Scalar(0,0,250),2 );
                     
-                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),5, cv::Scalar(0,0,250) );
-                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),5, cv::Scalar(0,0,250) );
+                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),2, cv::Scalar(0,0,250),2 );
+                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),2, cv::Scalar(0,0,250),2 );
                     
                     cv::line( img_ref, cv::Point2f(px_ref[0], px_ref[1]), cv::Point2f(obs_ref[0], obs_ref[1]), cv::Scalar(0,0,250) );
                     cv::line( img_curr, cv::Point2f(px_curr[0], px_curr[1]), cv::Point2f(obs_curr[0], obs_curr[1]), cv::Scalar(0,0,250) );
+                } else { 
+                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),2, cv::Scalar(0,250,0),2 );
+                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),2, cv::Scalar(0,250,0),2 );
                     
-                } else {
-                    cv::circle( img_ref, cv::Point2f(px_ref[0], px_ref[1]),5, cv::Scalar(0,250,0) );
-                    cv::circle( img_curr, cv::Point2f(px_curr[0], px_curr[1]),5, cv::Scalar(0,250,0) );
-                    
-                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),5, cv::Scalar(0,250,0) );
-                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),5, cv::Scalar(0,250,0) );
+                    cv::circle( img_ref, cv::Point2f(obs_ref[0], obs_ref[1]),2, cv::Scalar(0,250,0),2 );
+                    cv::circle( img_curr, cv::Point2f(obs_curr[0], obs_curr[1]),2, cv::Scalar(0,250,0),2 );
                     
                     cv::line( img_ref, cv::Point2f(px_ref[0], px_ref[1]), cv::Point2f(obs_ref[0], obs_ref[1]), cv::Scalar(0,250,0), 3);
                     cv::line( img_curr, cv::Point2f(px_curr[0], px_curr[1]), cv::Point2f(obs_curr[0], obs_curr[1]), cv::Scalar(0,250,0), 3 );
                 }
-                
             }
+            LOG(INFO) << "bad map points: " << cntBad << endl;
+            
             
             cv::imshow("ref", img_ref);
             cv::imshow("curr", img_curr);
-            cv::waitKey(1);
+            cv::waitKey(0);
 #endif 
             
             _ref_frame = _curr_frame;
@@ -349,42 +367,64 @@ bool VisualOdometry::TrackLocalMap()
 void VisualOdometry::ReprojectMapPointsInInitializaion()
 {
     // 遍历地图中的3D点
+    SE3 T12 = _ref_frame->_T_c_w*_curr_frame->_T_c_w.inverse();
     for ( auto iter = Memory::_points.begin(); iter!=Memory::_points.end();) {
         MapPoint* map_point = iter->second;
-        bool badpoint = false;
+        bool bad_reproj = false, bad_depth = false;
         for ( auto& observation: map_point->_obs ) {
             Frame* frame = Memory::GetFrame(observation.first);
             Vector3d pt = frame->_camera->World2Camera( map_point->_pos_world, frame->_T_c_w );
             Vector2d px = frame->_camera->Camera2Pixel( pt );
             double reproj_error = (px - observation.second.head<2>()).norm();
             
-            LOG(INFO) << "pt[2] = " << pt[2]<<endl;
+            // LOG(INFO) << "pt[2] = " << pt[2]<<endl;
             
-            if ( reproj_error > _options.init_reproj_error_th ) // 重投影误差超过阈值
+            if ( reproj_error > _options.init_reproj_error_th ) // 重投影误差超过阈值,说明是误匹配
             {
-                badpoint = true;
-                LOG(INFO) << "rejected because reprojection error = "<<reproj_error<<endl;
+                LOG(INFO) << "bad reprojection error = "<<reproj_error<<endl;
+                bad_reproj = true;
+                
+                /*
+                Mat ref_img = _ref_frame->_color.clone();
+                Mat curr_img = _curr_frame->_color.clone();
+                cv::circle( ref_img, cv::Point2f( map_point->_obs[0][0], map_point->_obs[0][1]), 2, cv::Scalar(0,0,250), 2);
+                cv::circle( curr_img, cv::Point2f( map_point->_obs[1][0], map_point->_obs[1][1]), 2, cv::Scalar(0,0,250), 2);
+                cv::imshow("wrong point ref", ref_img);
+                cv::imshow("wrong point curr", curr_img);
+                cv::waitKey(0);
+                */
                 break;
             }
             
             if ( pt[2] < 0.001 || pt[2] > 20 ) {
-                // 距离太近或太远，通常来自误匹配
-                LOG(INFO) << "remove point with depth = "<<pt[2]<<endl;
-                badpoint = true; 
+                // 距离太近或太远，可能原因是两条射线平行
+                LOG(INFO) << "bad depth = "<<pt[2]<<" in frame "<<observation.first<<", reproj = "<<reproj_error<<endl;
+                bad_depth = true;
+                
+                /*
+                // plot the bad one 
+                Mat ref_img = _ref_frame->_color.clone();
+                Mat curr_img = _curr_frame->_color.clone();
+                cv::circle( ref_img, cv::Point2f( map_point->_obs[0][0], map_point->_obs[0][1]), 2, cv::Scalar(0,0,250), 2);
+                cv::circle( curr_img, cv::Point2f( map_point->_obs[1][0], map_point->_obs[1][1]), 2, cv::Scalar(0,0,250), 2);
+                cv::imshow("wrong point ref", ref_img);
+                cv::imshow("wrong point curr", curr_img);
+                cv::waitKey(0);
+                */
+                
                 break;
             }
-            // observation.second = Vector3d( px[0], px[1], pt[2]); // reset the observed posiiton 
         }
         
-        if ( badpoint == true ) {
-            // set this point as a bad one, require the memory to remove it 
-            iter = Memory::_points.erase(iter); // erase the bad one 
+        if ( bad_reproj == true ) {
+            iter = Memory::_points.erase( iter );
+        } else if ( bad_depth ) {
+            iter->second->_bad = true;
+            iter++;
         } else {
             iter++;
         }
-        
     }
-    
 }
 
 bool VisualOdometry::NeedNewKeyFrame()
@@ -415,37 +455,39 @@ void VisualOdometry::ResetCurrentObservation()
     int cnt = 0;
     auto& all_points = Memory::GetAllPoints();
     for ( auto iter = all_points.begin(); iter!=all_points.end(); ) {
+        
         MapPoint* map_point = iter->second;
         Vector3d pt_ref = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
         Vector3d pt_curr = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
         
         if ( pt_ref[2] <0 || pt_ref[2]>20 || pt_curr[2] <0 || pt_curr[2]>20 ) {
-            iter = all_points.erase( iter );
+            LOG(INFO) << "bad depth, pt_ref[2] = " << pt_ref[2] <<" and pt_curr[2] = " << pt_curr[2] <<endl;
+            iter->second->_bad = true;
+            iter++;
             continue; 
+        } else {
+            iter->second->_bad = false;
+            iter++;
+            mean_depth += pt_ref[2];
+            cnt++;
+            mean_depth += pt_curr[2];
+            cnt++;
         }
-        
-        mean_depth += pt_ref[2];
-        cnt++;
-        // LOG(INFO) << "pt_ref[2] = " << pt_ref[2];
-        mean_depth += pt_curr[2];
-        cnt++;
-        // LOG(INFO) << "pt_curr[2] = " << pt_curr[2];
-        iter++;
     }
+    
     mean_depth /= cnt;
     LOG(INFO) << "mean depth = " << mean_depth << endl;
     double scale = 1.0 / mean_depth;
     
-    LOG(INFO) << "current pose = \n"<<_curr_frame->_T_c_w.matrix()<<endl;
     Vector3d t = _curr_frame->_T_c_w.translation();
     _curr_frame->_T_c_w.translation() = t*scale;
-    LOG(INFO) << "current pose = \n"<<_curr_frame->_T_c_w.matrix()<<endl;
     
     for ( auto& map_point_pair: Memory::GetAllPoints() ) {
         MapPoint* map_point = map_point_pair.second;
         map_point->_pos_world = map_point->_pos_world * scale;
     }
     
+    // set the observation to reprojected point 
     for ( auto& map_point_pair: Memory::GetAllPoints() ) {
         MapPoint* map_point = map_point_pair.second;
         for ( auto& obs_pair:map_point->_obs ) {
@@ -453,12 +495,12 @@ void VisualOdometry::ResetCurrentObservation()
                 Vector3d pt = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
                 Vector2d px = _ref_frame->_camera->World2Pixel( map_point->_pos_world, _ref_frame->_T_c_w );
                 _ref_frame->_obs[ map_point_pair.first ] = Vector3d( px[0], px[1], pt[2] );
-                obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
+                // obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             } else {
                 Vector3d pt = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
                 Vector2d px = _curr_frame->_camera->World2Pixel( map_point->_pos_world, _curr_frame->_T_c_w );
                 _curr_frame->_obs[ map_point_pair.first ] = Vector3d( px[0], px[1], pt[2] );
-                obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
+                // obs_pair.second = Vector3d(px[0], px[1], pt[2]) ;
             }
         }
     }

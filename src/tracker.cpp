@@ -127,17 +127,17 @@ void Tracker::PlotTrackedPoints() const
     LOG(INFO) << "ref pts: "<<_px_ref.size()<<", curr pts: "<<_px_curr.size();
     for ( ; curr_it != _px_curr.end(); ++ref_it, ++curr_it ) {
         cv::circle( img_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
-        cv::circle( img_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
-        cv::line( img_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
+        // cv::circle( img_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
+        // cv::line( img_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
         
-        cv::circle( ref_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
+        // cv::circle( ref_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
         cv::circle( ref_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
-        cv::line( ref_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
+        // cv::line( ref_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
     }
-    
+   
     cv::imshow( "tracked points in curr", img_show );
-    // cv::imshow( "tracked points in ref", ref_show );
-    cv::waitKey(1);
+    cv::imshow( "tracked points in ref", ref_show );
+    cv::waitKey(0);
 }
 
 float Tracker::MeanDisparity() const

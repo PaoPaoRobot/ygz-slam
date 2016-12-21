@@ -41,7 +41,7 @@ bool Frame::GetMeanAndMinDepth ( double& mean_depth, double& min_depth )
             continue; 
         cnt_valid_points ++ ;
         mean_depth += depth;
-        LOG(INFO) << "depth = " << depth << endl;
+        // LOG(INFO) << "depth = " << depth << endl;
         if ( depth < min_depth ) 
             min_depth = depth;
     }

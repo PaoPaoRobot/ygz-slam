@@ -140,11 +140,10 @@ void TwoViewBAG2O (
 // 日，Ceres会修改scale……
 void TwoViewBACeres (
     const long unsigned int& frameID1,
-    const long unsigned int& frameID2
+    const long unsigned int& frameID2, 
+    bool robust
 )
 {
-    assert ( Memory::GetFrame ( frameID1 ) != nullptr && Memory::GetFrame ( frameID2 ) != nullptr );
-
     Frame* frame1 = Memory::GetFrame ( frameID1 );
     Frame* frame2 = Memory::GetFrame ( frameID2 );
 
@@ -161,22 +160,22 @@ void TwoViewBACeres (
         for ( auto obs:map_point->_obs )
         {
             if ( obs.first == frame1->_id ) {
-                Vector2d px = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );
+                Vector2d pt = frame1->_camera->Pixel2Camera2D ( obs.second.head<2>() );
                 // 不想要改第一帧的位姿
                 problem.AddResidualBlock (
                     new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
-                        new CeresReprojectionErrorPointOnly ( px, frame1->_T_c_w )
+                        new CeresReprojectionErrorPointOnly ( pt, frame1->_T_c_w )
                     ),
-                    nullptr,
+                    robust? new ceres::HuberLoss(5):nullptr,
                     map_point->_pos_world.data()
                 );
             } else {
-                Vector2d px = frame2->_camera->Pixel2Camera2D ( obs.second.head<2>() );
+                Vector2d pt = frame2->_camera->Pixel2Camera2D ( obs.second.head<2>() );
                 problem.AddResidualBlock (
                     new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
-                        new CeresReprojectionError( px )
+                        new CeresReprojectionError( pt )
                     ),
-                    nullptr,
+                    robust? new ceres::HuberLoss(5):nullptr,
                     pose2.data(),
                     map_point->_pos_world.data()
                 );
@@ -186,22 +185,16 @@ void TwoViewBACeres (
     
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    // options.minimizer_progress_to_stdout = true;
+    options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    // cout<< summary.FullReport() << endl;
+    cout<< summary.FullReport() << endl;
 
     // set the value of the second frame
     frame2->_T_c_w = SE3 (
                          SO3::exp ( pose2.tail<3>() ), pose2.head<3>()
                      );
-    
-    /*
-    for ( auto& all_points: Memory::GetAllPoints() ) {
-        all_points.second->PrintInfo();
-    }
-    */
     
     // check the depth in the two views 
     /*

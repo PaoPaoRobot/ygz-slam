@@ -37,7 +37,7 @@ init.min_inliers: 40
 
 # 特征提取参数
 feature.cell: 20
-feature.detection_threshold: 20.0
+feature.detection_threshold: 30.0
 
 # 关键帧参数
 vo.keyframe.min_rot: 0.1

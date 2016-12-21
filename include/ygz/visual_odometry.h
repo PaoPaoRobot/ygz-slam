@@ -25,7 +25,7 @@ public:
     };
     
     struct Option {
-        double init_reproj_error_th =5; // 初始化时判断内点的最大重投影误差
+        double init_reproj_error_th =4; // 初始化时判断内点的最大重投影误差
     } _options;
     
     VisualOdometry( System* system );

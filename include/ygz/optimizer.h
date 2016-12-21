@@ -25,7 +25,8 @@ void TwoViewBAG2O (
 // two view BA, used in intialization 
 void TwoViewBACeres (
     const unsigned long& frameID1,
-    const unsigned long& frameID2
+    const unsigned long& frameID2, 
+    bool robust = false
 );
 
 // pose only BA
