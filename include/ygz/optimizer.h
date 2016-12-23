@@ -72,7 +72,6 @@ protected:
     SE3 _TCR;   // estimated pose 
 };
 
-
 // Depth Filter 
 // 想了半天，还是先用着，要是不好用再改别的
 // Depth filter是一个高斯－均匀混合滤波器，与单纯高斯分布，可以区分 inlier 和 outlier
@@ -95,7 +94,7 @@ struct Seed {
     Seed ( const unsigned long& frame, cv::KeyPoint& keypoint, float depth_mean, float depth_min );
     
     inline void PrintInfo() {
-        LOG(INFO) << " mu = " << mu << ", sigma2 = "<< sigma2 << sigma2 << ", a = "<<a<<", b = "<<b <<endl;
+        LOG(INFO) << "seed "<<id<<", mu = " << mu << ", sigma2 = "<< sigma2 << sigma2 << ", a = "<<a<<", b = "<<b <<endl;
     }
 };
 
@@ -127,9 +126,9 @@ public:
               epi_search_1d ( false ),
               verbose ( false ),
               use_photometric_disparity_error ( false ),
-              max_n_kfs ( 3 ),
+              max_n_kfs ( 5 ),
               sigma_i_sq ( 5e-4 ),
-              seed_convergence_sigma2_thresh ( 200.0 )
+              seed_convergence_sigma2_thresh ( 100.0 )
         {}
     } _options;
     
@@ -194,6 +193,7 @@ protected:
     /// A thread that is continuously updating the seeds.
     void UpdateSeedsLoop();
 };
+
 
 }
 }

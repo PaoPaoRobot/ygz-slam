@@ -47,8 +47,8 @@ void GetWarpAffineMatrix (
     Vector3d pt_ref_world = ref->_camera->Camera2World ( pt_ref, ref->_T_c_w );
 
     // 偏移之后的3d点，深度取成和pt_ref一致
-    Vector3d pt_du_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( WarpHalfPatchSize, 0 ), ref->_T_c_w, pt_ref[2] );
-    Vector3d pt_dv_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( 0, WarpHalfPatchSize ), ref->_T_c_w, pt_ref[2] );
+    Vector3d pt_du_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( WarpHalfPatchSize, 0 ) * ( 1<<level ), ref->_T_c_w, pt_ref[2] );
+    Vector3d pt_dv_ref = ref->_camera->Pixel2World ( px_ref + Vector2d ( 0, WarpHalfPatchSize ) * ( 1<<level ), ref->_T_c_w, pt_ref[2] );
 
     const Vector2d px_cur = curr->_camera->World2Pixel ( pt_ref_world, curr->_T_c_w );
     const Vector2d px_du = curr->_camera->World2Pixel ( pt_du_ref, curr->_T_c_w );
@@ -104,16 +104,19 @@ bool Align2D (
     uint8_t* ref_patch,
     const int n_iter,
     Vector2d& cur_px_estimate,
-    bool no_simd )
+    bool convergence_condition )
 {
     const int halfpatch_size_ = 4;
     const int patch_size_ = 8;
     const int patch_area_ = 64;
     bool converged=false;
+    Vector2d first_estimate = cur_px_estimate;
 
     // compute derivative of template and prepare inverse compositional
     float __attribute__ ( ( __aligned__ ( 16 ) ) ) ref_patch_dx[patch_area_];
     float __attribute__ ( ( __aligned__ ( 16 ) ) ) ref_patch_dy[patch_area_];
+
+    // Hessian should be estimated at current instead of ref?
     Matrix3f H;
     H.setZero();
 
@@ -150,7 +153,9 @@ bool Align2D (
     Eigen::Vector3f update;
     update.setZero();
     int iter = 0;
-    vector<float> chi2_vec; 
+    vector<float> chi2_vec;
+
+    bool error_increased = false;
     for ( ; iter<n_iter; ++iter )
     {
         float chi2 = 0;
@@ -192,56 +197,75 @@ bool Align2D (
                 Jres[0] -= res* ( *it_ref_dx );
                 Jres[1] -= res* ( *it_ref_dy );
                 Jres[2] -= res;
-                
+
                 chi2 += res*res;
             }
         }
-        
+
         update = Hinv * Jres;
         u += update[0];
         v += update[1];
         mean_diff += update[2];
-        
-        if ( iter>0 && chi2 > chi2_vec.back() ) // error increased 
+
+        if ( iter>0 && chi2 > chi2_vec.back() ) // error increased
         {
+            error_increased = true;
             break;
         }
-        
-        chi2_vec.push_back( chi2 );
-        
+
+        chi2_vec.push_back ( chi2 );
+
         if ( update[0]*update[0]+update[1]*update[1] < min_update_squared )
         {
+            first_estimate<<u,v;
             converged=true;
             break;
         }
     }
 
     cur_px_estimate << u, v;
-    // return converged; 
-    if ( converged == true ) { 
+
+    // LOG(INFO) << update.transpose() << endl;
+    if ( convergence_condition )
+        return converged;
+
+    if ( converged == true )
+    {
         // LOG(INFO) << "accepted, converged."<<endl;
         return true;
     }
-    if ( converged == false ) {
-        // return false; 
+    if ( converged == false )
+    {
+        // return false;
         // LOG(INFO) << "iter = "<<iter<<", update = " << update.transpose()<<endl;
         // for ( float& c: chi2_vec )
-            // LOG(INFO) << c ;
-        
+        // LOG(INFO) << c ;
+
         // 没有收敛，可能出现误差上升，或者达到最大迭代次数
-        // 我们认为迭代后误差小于一开始的误差的一半，就认为配准是对的？—— TODO check G-N的收敛判定
-        if ( chi2_vec.empty() ) {
-            //LOG(INFO) << "rejected because u,v runs outside."<<endl;
+        if ( chi2_vec.empty() )
+        {
+            // LOG ( INFO ) << "rejected because u,v runs outside."<<endl;
             return false;
         }
-        if ( chi2_vec.back()/chi2_vec.front() < 0.5 && chi2_vec.back()<15000 ) {
-             //LOG(INFO) << "accepted, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
+        /*
+        LOG ( INFO ) << "chi2 = " ;
+        for ( auto chi2:chi2_vec )
+            LOG ( INFO ) << chi2;
+        */
+
+        if ( error_increased )
+        {
+            if ( chi2_vec.back() <15000 )
+            {
+                cur_px_estimate = first_estimate;
+                return true;
+            }
+            return false;
+        }
+
+        if ( chi2_vec.back() <15000 )
             return true;
-        }
-        else {
-            //LOG(INFO) << "rejected, error = " << chi2_vec.back() << ", "<< chi2_vec.front() << endl;
-            return false;
-        }
+        return false;
     }
     return false;
 }
@@ -253,7 +277,7 @@ bool FindEpipolarMatchDirect (
     const double& d_estimate,
     const double& d_min,
     const double& d_max,
-    double& depth, 
+    double& depth,
     Vector2d& matched_px
 )
 {
@@ -265,7 +289,7 @@ bool FindEpipolarMatchDirect (
     Vector2d uv_best;
 
     // Compute start and end of epipolar line in old_kf for match search, on unit plane!
-    Vector3d pt_ref = ref_frame->_camera->Pixel2Camera( utils::Cv2Eigen(ref_ftr.pt) );
+    Vector3d pt_ref = ref_frame->_camera->Pixel2Camera ( utils::Cv2Eigen ( ref_ftr.pt ) );
     Vector2d A = Project2d ( T_cur_ref * ( pt_ref*d_min ) );    // 相机坐标
     Vector2d B = Project2d ( T_cur_ref * ( pt_ref*d_max ) );
     Vector2d ep_dir = A - B; // epipolar direction
@@ -273,12 +297,14 @@ bool FindEpipolarMatchDirect (
     // Compute affine warp matrix
     Eigen::Matrix2d A_cur_ref;
     utils::GetWarpAffineMatrix (
-        ref_frame, cur_frame, utils::Cv2Eigen(ref_ftr.pt), pt_ref*d_estimate, ref_ftr.octave, T_cur_ref,  A_cur_ref
+        ref_frame, cur_frame, utils::Cv2Eigen ( ref_ftr.pt ), pt_ref*d_estimate, ref_ftr.octave, T_cur_ref,  A_cur_ref
     );
+
+    // LOG ( INFO ) << "A_c_r = " << A_cur_ref << endl;
 
     // feature pre-selection
     bool reject = false;
-    
+
     /* 现在没有 edgelet
     if ( ref_ftr.type == Feature::EDGELET && options_.epi_search_edgelet_filtering )
     {
@@ -293,6 +319,8 @@ bool FindEpipolarMatchDirect (
     */
 
     int search_level = GetBestSearchLevel ( A_cur_ref, 2 );
+    // LOG ( INFO ) <<"feature level = " << ref_ftr.octave << endl;
+    // LOG ( INFO ) <<"searched level = " << search_level << endl;
 
     // 匹配局部地图用的 patch
     uchar patch[halfpatch_size*halfpatch_size];
@@ -304,24 +332,51 @@ bool FindEpipolarMatchDirect (
     Vector2d px_B ( cur_frame->_camera->Camera2Pixel ( Vector3d ( B[0], B[1], 1 ) ) );
     double epi_length = ( px_A-px_B ).norm() / ( 1<<search_level );
 
-    Vector2d px_ref = utils::Cv2Eigen( ref_ftr.pt );
-    
+    Vector2d px_ref = utils::Cv2Eigen ( ref_ftr.pt );
+
     /*
-    // show the epipolar line in current 
+    // show the epipolar line in current
     cv::Mat curr_show = cur_frame->_color.clone();
     cv::Mat ref_show = ref_frame->_color.clone();
-    
+
     cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2 );
     cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 2 );
-    
+
     cv::imshow("px in ref", ref_show );
     cv::imshow("epi line in curr", curr_show );
     cv::waitKey(1);
     */
-    
+
     // Warp reference patch at ref_level
     WarpAffine ( A_cur_ref, ref_frame->_pyramid[ref_ftr.octave], px_ref,
                  ref_ftr.octave, search_level, halfpatch_size+1, patch_with_border );
+
+    /*
+    cv::Mat ref_patch ( WarpPatchSize+2, WarpPatchSize+2, CV_8UC1 );
+    for ( size_t i=0; i<WarpPatchSize+2; i++ )
+        for ( size_t j=0; j<WarpPatchSize+2; j++ )
+        {
+            ref_patch.ptr<uchar> ( i ) [j] = patch_with_border[ i* ( WarpPatchSize+2 ) + j];
+        }
+
+    cv::namedWindow ( "warpped ref patch", CV_WINDOW_NORMAL );
+    cv::imshow ( "warpped ref patch", ref_patch );
+    cv::resizeWindow ( "warpped ref patch", 500, 500 );
+
+    cv::Rect2d rect_ref (
+        ref_ftr.pt.x/ ( 1<<ref_ftr.octave ) -WarpHalfPatchSize,
+        ref_ftr.pt.y/ ( 1<<ref_ftr.octave )-WarpHalfPatchSize,
+        WarpPatchSize,
+        WarpPatchSize
+    );
+    cv::Mat real_ref_patch = ref_frame->_pyramid[ref_ftr.octave] ( rect_ref ).clone();
+    cv::namedWindow ( "real ref patch", CV_WINDOW_NORMAL );
+    cv::imshow ( "real ref patch", real_ref_patch );
+    cv::resizeWindow ( "real ref patch", 500, 500 );
+
+    cv::waitKey ( 0 );
+    */
+    
     uint8_t* ref_patch_ptr = patch;
 
     for ( int y=1; y<patch_size+1; ++y, ref_patch_ptr += patch_size )
@@ -341,19 +396,26 @@ bool FindEpipolarMatchDirect (
         px_cur = ( px_A+px_B ) /2.0;
         Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
         bool res;
-        /*
-        cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
-        cv::imshow("epi line in curr", curr_show );
-        cv::waitKey(1);
-        if ( options.align_1d )
-            res = feature_alignment::align1D (
-                      cur_frame.img_pyr_[search_level_], ( px_A-px_B ).cast<float>().normalized(),
-                      patch_with_border_, patch_, options_.align_max_iter, px_scaled, h_inv_ );
-        else
-        */
+        // LOG ( INFO ) << "epipolar line is short! " << endl;
         res = Align2D (
                   cur_frame->_pyramid[search_level], patch_with_border, patch,
-                  15, px_scaled );
+                  10, px_scaled, false );
+
+        /*
+        cv::Rect2d rect (
+            px_scaled[0] -WarpHalfPatchSize,
+            px_scaled[1] -WarpHalfPatchSize,
+            WarpPatchSize,
+            WarpPatchSize
+        );
+
+        cv::Mat matched_patch = cur_frame->_pyramid[search_level] ( rect ).clone();
+        cv::namedWindow ( "curr patch", CV_WINDOW_NORMAL );
+        cv::imshow ( "curr patch", matched_patch );
+        cv::resizeWindow ( "curr patch", 500, 500 );
+        cv::waitKey ( 0 );
+        */
+
         if ( res )
         {
             //LOG(INFO) << "align 2d succeed"<<endl;
@@ -362,31 +424,34 @@ bool FindEpipolarMatchDirect (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
-                // LOG(INFO) << "epipolar line is short! " << endl;
                 /*
-                if ( depth > 10 ) {
-                    cv::Mat curr_show = cur_frame->_color.clone();
-                    cv::Mat ref_show = ref_frame->_color.clone();
-                    
-                    LOG(INFO) << "stange depth from align2D = " << depth << endl;
-                    
-                    cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0), 1 );
-                    cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 1 );
-                    cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 3, cv::Scalar(0,250,0), 1 );
-                    cv::imshow("epi line in curr", curr_show );
-                    cv::imshow("epi line in ref", ref_show );
-                    
-                    cv::waitKey(0);
-                }
+                LOG(INFO) << "estimated depth = " << depth <<endl;
+
+                cv::Mat curr_show = cur_frame->_color.clone();
+                cv::Mat ref_show = ref_frame->_color.clone();
+
+                LOG(INFO) << "stange depth from align2D = " << depth << endl;
+
+                cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0), 1 );
+                cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 1 );
+                cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 3, cv::Scalar(0,250,0), 1 );
+                cv::imshow("epi line in curr", curr_show );
+                cv::imshow("epi line in ref", ref_show );
+
+                cv::waitKey(0);
                 */
-                
+
                 matched_px = px_cur;
                 return true;
             }
-            //LOG(INFO) << "rejected by triagulation"<<endl;
+            matched_px = px_cur;
+            // LOG ( INFO ) << "rejected by triagulation"<<endl;
             return false;
-        } else {
-            //LOG(INFO) << "rejected by align 2d"<<endl;
+        }
+        else
+        {
+            matched_px = px_cur;
+            // LOG ( INFO ) << "rejected by align 2d"<<endl;
             return false;
         }
     }
@@ -412,7 +477,7 @@ bool FindEpipolarMatchDirect (
     ++n_steps;
     for ( size_t i=0; i<n_steps; ++i, uv+=step )
     {
-        Vector2d px ( cur_frame->_camera->Camera2Pixel ( Vector3d(uv[0],uv[1],1) ) );
+        Vector2d px ( cur_frame->_camera->Camera2Pixel ( Vector3d ( uv[0],uv[1],1 ) ) );
         Eigen::Vector2i pxi ( px[0]/ ( 1<<search_level ) +0.5,
                               px[1]/ ( 1<<search_level ) +0.5 ); // +0.5 to round to closest int
         if ( pxi == last_checked_pxi )
@@ -442,13 +507,13 @@ bool FindEpipolarMatchDirect (
 
     if ( zmssd_best < PatchScore::threshold() )
     {
-        px_cur = cur_frame->_camera->Camera2Pixel ( Vector3d(uv_best[0], uv_best[1], 1) );
+        px_cur = cur_frame->_camera->Camera2Pixel ( Vector3d ( uv_best[0], uv_best[1], 1 ) );
         /*
         cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
         cv::imshow("epi line in curr", curr_show );
         cv::waitKey(1);
         */
-        
+
         // bool res;
         /*
         if ( options_.align_1d )
@@ -456,26 +521,43 @@ bool FindEpipolarMatchDirect (
                       cur_frame.img_pyr_[search_level_], ( px_A-px_B ).cast<float>().normalized(),
                       patch_with_border_, patch_, options_.align_max_iter, px_scaled, h_inv_ );
         */
-        
+
         // 居然又align一遍，别align了行不？
+        // LOG ( INFO ) << "epipolar line is long!"<<endl;
         Vector2d px_scaled ( px_cur/ ( 1<<search_level ) );
         bool res = Align2D (
-                  cur_frame->_pyramid[search_level], patch_with_border, patch,
-                  15, px_scaled );
+                       cur_frame->_pyramid[search_level], patch_with_border, patch,
+                       10, px_scaled, false );
+
+        /*
+        cv::Rect2d rect (
+            px_scaled[0] -WarpHalfPatchSize,
+            px_scaled[1] -WarpHalfPatchSize,
+            WarpPatchSize,
+            WarpPatchSize
+        );
+
+        cv::Mat matched_patch = cur_frame->_pyramid[search_level] ( rect ).clone();
+        cv::namedWindow ( "curr patch", CV_WINDOW_NORMAL );
+        cv::imshow ( "curr patch", matched_patch );
+        cv::resizeWindow ( "curr patch", 500, 500 );
+        cv::waitKey ( 0 );
+        */
+
         if ( res )
         {
-            // px_cur = px_scaled* ( 1<<search_level );
-            //LOG(INFO) << "align 2d succeed"<<endl;
-            
+            px_cur = px_scaled* ( 1<<search_level );
+
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
-                if ( depth > 10 ) {
+                if ( depth > 10 )
+                {
                     /*
                     cv::Mat curr_show = cur_frame->_color.clone();
                     cv::Mat ref_show = ref_frame->_color.clone();
-                    
+
                     LOG(INFO) << "stange depth = " << depth << endl;
                     cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 3, cv::Scalar(0,250,0), 1 );
                     cv::line( curr_show, cv::Point2f(px_A[0], px_A[1]), cv::Point2f(px_B[0], px_B[1]), cv::Scalar(0,250,0), 1 );
@@ -485,25 +567,33 @@ bool FindEpipolarMatchDirect (
                     cv::waitKey(0);
                     */
                 }
+                // LOG ( INFO ) << "epipolar search succeed"<<endl;
+                // LOG ( INFO ) << "estimated depth = " << depth << endl;
                 /*
-                LOG(INFO) << "epipolar search succeed"<<endl;
-                cv::Mat ref_show = ref_frame->_color.clone();        
-                cv::Mat curr_show = cur_frame->_color.clone();        
-                cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2 );
-                cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 5, cv::Scalar(0,250,0), 2 );
+
+                cv::Mat ref_show = ref_frame->_color.clone();
+                cv::Mat curr_show = cur_frame->_color.clone();
+                cv::circle( ref_show, cv::Point2f(px_ref[0], px_ref[1]), 2, cv::Scalar(0,250,0), 2 );
+                cv::circle( curr_show, cv::Point2f(px_cur[0], px_cur[1]), 2, cv::Scalar(0,250,0), 2 );
                 cv::imshow("depth filter ref", ref_show );
                 cv::imshow("depth filter curr", curr_show );
-                cv::waitKey(1);
+                cv::waitKey(0);
                 */
-        
+
                 matched_px = px_cur;
                 return true;
             }
-            // LOG(INFO) << "rejected by triagulation"<<endl;
+            // LOG ( INFO ) << "rejected by triagulation"<<endl;
+            matched_px = px_cur;
+            return false;
         }
-        // LOG(INFO) << "rejected by align 2d"<<endl;
+        // LOG ( INFO ) << "rejected by align 2d"<<endl;
+        matched_px = px_cur;
         return false;
     }
+
+    // LOG ( INFO ) << "reject because no best matched patch. "<<endl;
+    matched_px = px_cur;
     return false;
 }
 

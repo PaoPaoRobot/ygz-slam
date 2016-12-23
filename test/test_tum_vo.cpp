@@ -47,6 +47,8 @@ int main( int argc, char** argv )
     
     for ( size_t i=0; i<rgbFiles.size(); i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
+        if ( color.data == nullptr ) 
+            continue;
         Frame* pf = new Frame ;
         pf->_color = color.clone(); 
         pf->InitFrame();

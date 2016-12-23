@@ -199,13 +199,14 @@ inline int GetBestSearchLevel (
 // copy from SVO feature_alignment
 // 注解：这个Align2D实现的有点问题，用g-n迭代，但是H矩阵是固定在ref的梯度上的，不会随着每次迭代更新
 // 如果离正确匹配的距离较远，很可能有非凸性问题
+// 最后一项参数用以判断是否根据收敛情况判断是否成功
 bool Align2D (
     const cv::Mat& cur_img,
     uint8_t* ref_patch_with_border,
     uint8_t* ref_patch,
     const int n_iter,
     Vector2d& cur_px_estimate,
-    bool no_simd = false
+    bool convergence_condiiton = true
 );
 
 // Find a match by searching along the epipolar line without using any features.
@@ -229,12 +230,27 @@ inline bool DepthFromTriangulation (
     double& depth )
 {
     Eigen::Matrix<double,3,2> A;
-    A << T_search_ref.rotation_matrix() * f_ref, f_cur;
+    A << T_search_ref.rotation_matrix() * f_ref, -f_cur;
+    
     const Eigen::Matrix2d AtA = A.transpose() *A;
-    if ( AtA.determinant() < 0.000001 ) {
+    
+    // LOG(INFO) << "AtA determinant = " << AtA.determinant()<<endl;
+    if ( AtA.determinant() < 1e-4 ) {
+        // 行列式太小说明该方程解不稳定
         return false;
     }
-    const Vector2d depth2 = - AtA.inverse() *A.transpose() *T_search_ref.translation();
+    
+    // LOG(INFO) << "A=\n"<<A<<endl;
+    // LOG(INFO) << "TCR = \n" << T_search_ref.matrix()<<endl;
+    // LOG(INFO) << "f_ref="<<f_ref.transpose()<<endl;
+    // LOG(INFO) << "f_cur="<<f_cur.transpose()<<endl;
+    
+    // LOG(INFO) << "AtA = \n"<<AtA<<endl;
+    
+    Vector2d depth2 = - AtA.inverse() *A.transpose() *T_search_ref.translation();
+    // LOG(INFO) << "depth2 = " << depth2.transpose() << endl;
+    // Vector3d r = A*depth2;
+    // LOG(INFO) << "Ad = " << r.transpose() << endl;
     depth = fabs ( depth2[0] );
     return true;
 }

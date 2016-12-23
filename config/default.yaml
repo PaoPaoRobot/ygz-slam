@@ -20,11 +20,16 @@ system.loopclosing: yes
 
 # Camera Intrinsics 
 ## TUM fr1
-camera.fx: 517.3
-camera.fy: 516.5
-camera.cx: 318.6
-camera.cy: 255.3
+# camera.fx: 517.3
+# camera.fy: 516.5
+# camera.cx: 318.6
+# camera.cy: 255.3
 
+## TUM fr2
+camera.fx: 520.9
+camera.fy: 521.0
+camera.cx: 325.1
+camera.cy: 249.7
 
 # detailed parameters, if you are an expert, adjust them
 # 金字塔层数
@@ -40,9 +45,9 @@ feature.cell: 20
 feature.detection_threshold: 30.0
 
 # 关键帧参数
-vo.keyframe.min_rot: 0.1
-vo.keyframe.min_trans: 0.1 
-vo.keyframe.min_features: 50
+vo.keyframe.min_rot: 0.2
+vo.keyframe.min_trans: 0.2
+vo.keyframe.min_features: 30
 
 LocalMapping.local_keyframes: 3
 LocalMapping.local_mappoints: 500

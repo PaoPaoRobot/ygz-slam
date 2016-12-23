@@ -62,11 +62,13 @@ public:
     void optimizeMemory(); 
     void clean();
     
+    /*
     static void PrintInfo() { 
         for ( auto& frame_pair: _frames) {
             LOG(INFO) << "frame "<<frame_pair.first<<endl;
         }
     }
+    */
         
     
 private:

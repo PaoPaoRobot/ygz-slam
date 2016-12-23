@@ -185,11 +185,11 @@ void TwoViewBACeres (
     
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
+    // options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    cout<< summary.FullReport() << endl;
+    // cout<< summary.FullReport() << endl;
 
     // set the value of the second frame
     frame2->_T_c_w = SE3 (
@@ -249,6 +249,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     for ( auto it=_frame1->_obs.begin(); it!=_frame1->_obs.end(); it++, index++ )
     {
         // camera coordinates in ref
+        if ( Memory::GetMapPoint(it->first)->_bad == true ) continue;
+        
         Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->second.head<2>() ,it->second[2]) ; // 我日，之前忘乘了深度，怪不得怎么算都不对
         problem.AddResidualBlock (
             new CeresReprojSparseDirectError (
@@ -258,8 +260,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
                 _frame1->_camera,
                 _scale
             ),
-            new ceres::HuberLoss(10), // TODO do I need Loss Function?
-            // nullptr,
+            // new ceres::HuberLoss(10), // TODO do I need Loss Function?
+            nullptr,
             pose2.data()
         );
     }
@@ -312,8 +314,11 @@ void SparseImgAlign::PrecomputeReferencePatches()
 
     cv::Mat& ref_img = _frame1->_pyramid[_pyramid_level];
     int i=0;
+    int scale = 1<<_pyramid_level;
     for( auto it_obs = _frame1->_obs.begin(); it_obs != _frame1->_obs.end(); it_obs++, i++ ) {
-        Vector2d px_ref = it_obs->second.head<2>();
+        MapPoint* mp = Memory::GetMapPoint( it_obs->first );
+        if ( mp->_bad ) continue; 
+        Vector2d px_ref = it_obs->second.head<2>() * 1.0/scale;
         PixelPattern pattern_ref;
         for ( int k=0; k<PATTERN_SIZE; k++ )
         {
@@ -513,6 +518,12 @@ void DepthFilter::UpdateSeeds ( Frame* frame )
             it = _seeds.erase ( it );
             continue;
         }
+        /*
+        if ( it->b > 25 ) {
+            it = _seeds.erase( it );
+            continue; 
+        }
+        */
 
         // check if point is visible in the current image
         Frame* first_frame = Memory::GetFrame ( it->frame_id );
@@ -539,20 +550,41 @@ void DepthFilter::UpdateSeeds ( Frame* frame )
         // we are using inverse depth coordinates
         float z_inv_min = it->mu + sqrt ( it->sigma2 );
         float z_inv_max = max ( it->mu - sqrt ( it->sigma2 ), 0.00000001f );
-        double z;
+        double z=0;
         Vector2d matched_px;
-        if ( !FindEpipolarMatchDirect ( first_frame, frame, it->kp, 0.8/it->mu, 1.2/z_inv_min, 1.0/z_inv_max, z, matched_px) ) // 稍微扩大一点搜索范围试试
+        if ( !FindEpipolarMatchDirect ( first_frame, frame, it->kp, 0.9/it->mu, 1.1/z_inv_min, 1.0/z_inv_max, z, matched_px) ) // 稍微扩大一点搜索范围试试
         {
             // 挂了
             // LOG(INFO) << "find epipolar match failed"<<endl;
-            it->b++;
+            /*
+            Mat ref_show = first_frame->_color.clone();
+            Mat curr_show = frame->_color.clone();
+            cv::circle( ref_show, it->kp.pt, 2, cv::Scalar(0,0,250), 2 );
+            cv::circle( curr_show, cv::Point2f(matched_px[0], matched_px[1]), 2, cv::Scalar(0,0,250), 2 );
+            cv::imshow("wrong seed ref", ref_show);
+            cv::imshow("wrong seed curr", curr_show);
+            cv::waitKey(0);
+            */
+            // it->b++;
             ++it;
             ++n_failed_matches;
             cntFailed++;
             continue;
         }
+        else {
+            /*
+            LOG(INFO) << "find epipolar match success"<<endl;
+            LOG(INFO) << "depth changed from " << 1.0/it->mu << " to " << z << endl;
+            Mat ref_show = first_frame->_color.clone();
+            Mat curr_show = frame->_color.clone();
+            cv::circle( ref_show, it->kp.pt, 2, cv::Scalar(0,250,0), 2 );
+            cv::circle( curr_show, cv::Point2f(matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2 );
+            cv::imshow("correct seed ref", ref_show);
+            cv::imshow("correct seed curr", curr_show);
+            cv::waitKey(0);
+            */
+        }
 
-        // LOG(INFO) << "find epipolar match success"<<endl;
         cntSucceed ++;
         // compute tau
         double tau = ComputeTau ( T_ref_cur, pt_ref, z, px_error_angle );
@@ -566,6 +598,9 @@ void DepthFilter::UpdateSeeds ( Frame* frame )
         if ( sqrt ( it->sigma2 ) < it->z_range/_options.seed_convergence_sigma2_thresh )
         {
             // 向 Memory 注册一个新的 Map Point，并且添加到 Local Map 中
+            
+            it->PrintInfo();
+            
             MapPoint* mp = Memory::CreateMapPoint();
             Vector3d xyz_world ( frame->_T_c_w.inverse() * ( pt_ref * ( 1.0/it->mu ) ) );
             
@@ -579,7 +614,7 @@ void DepthFilter::UpdateSeeds ( Frame* frame )
             mp->_bad = false;
             
             LOG(INFO) << "seed "<< mp->_id <<" from key-frame " << it->frame_id <<" has converged, depth = "<< 1.0/it->mu 
-                << ", pos = "<<xyz_world.transpose()<<endl;
+                << ", pos = "<<xyz_world.transpose()<<", as map point "<<mp->_id<<endl;
                 
             Mat ref_show = first_frame->_color.clone();
             Mat curr_show = frame->_color.clone();
@@ -615,7 +650,7 @@ void DepthFilter::UpdateSeed (
     {
         return;
     }
-    //seed->PrintInfo();
+    // seed->PrintInfo();
     boost::math::normal_distribution<float> nd ( seed->mu, norm_scale );
     float s2 = 1./ ( 1./seed->sigma2 + 1./tau2 );
     float m = s2* ( seed->mu/seed->sigma2 + x/tau2 );

@@ -7,7 +7,7 @@
 #include "ygz/visual_odometry.h"
 #include "ygz/optimizer.h"
 #include "ygz/memory.h"
-#include "ygz/ORB/ORBextractor.h"
+#include "ygz/ORB/ORBExtractor.h"
 #include "ygz/tracker.h"
 #include "ygz/feature_detector.h"
 #include "ygz/initializer.h"
@@ -44,7 +44,6 @@ VisualOdometry::~VisualOdometry()
     if ( _local_mapping )
         delete _local_mapping;
 }
-
     
 // 整体接口，逻辑有点复杂，参照orb-slam2设计
 bool VisualOdometry::AddFrame( Frame* frame )
@@ -245,8 +244,9 @@ void VisualOdometry::MonocularInitialization()
 void VisualOdometry::SetKeyframe ( Frame* frame, bool initializing )
 {
     frame->_is_keyframe = true; 
-    Memory::PrintInfo();
+    // Memory::PrintInfo();
     if ( frame->_id != 0 ) { // 已经注册了，就不要重复注册一遍
+        
     } else {
         frame = Memory::RegisterFrame( frame );  // 未注册，则注册新的关键帧
     }
@@ -308,9 +308,25 @@ bool VisualOdometry::TrackRefFrame()
     _TCR_estimated = SE3();
     SE3 TCR = _TCR_estimated; 
     for ( int level = _curr_frame->_pyramid.size()-1; level>=0; level -- ) {
+        
         _align[level].SetTCR(TCR);
         _align[level].SparseImageAlignmentCeres( _ref_frame, _curr_frame, level );
         TCR = _align[level].GetEstimatedT21();
+        
+        /*
+        Mat ref_img = _ref_frame->_color.clone();
+        Mat curr_img = _curr_frame->_color.clone();
+        
+        for ( auto& obs_pair: _ref_frame->_obs ) {
+            Vector3d pt_ref = _ref_frame->_camera->Pixel2Camera( obs_pair.second.head<2>(), obs_pair.second[2] );
+            Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( TCR * pt_ref );
+            cv::circle( ref_img, cv::Point2f( obs_pair.second[0], obs_pair.second[1]), 2, cv::Scalar(0,250,0), 2);
+            cv::circle( curr_img, cv::Point2f(px_curr[0], px_curr[1]), 2, cv::Scalar(0,250,0), 2);
+        }
+        cv::imshow("alignment ref", ref_img);
+        cv::imshow("alignment curr", curr_img);
+        cv::waitKey(0);
+        */
     }
     
     // TODO validate the result obtained by sparse image alignment 
@@ -318,26 +334,6 @@ bool VisualOdometry::TrackRefFrame()
     
     // set the pose of current frame 
     _curr_frame->_T_c_w = _TCR_estimated * _ref_frame->_T_c_w;
-    
-    // 我有点怀疑这里的结果对不对，让我们测试一下
-    // 所有地图点在参考帧和当前帧的投影
-    
-    /*
-    Mat ref_img = _ref_frame->_color.clone();
-    Mat curr_img = _curr_frame->_color.clone();
-    
-    for ( unsigned long& map_point_id: _ref_frame->_map_point ) {
-        MapPoint::Ptr point = Memory::GetMapPoint( map_point_id );
-        Vector2d px_ref = _ref_frame->_camera->World2Pixel( point->_pos_world, _ref_frame->_T_c_w);
-        Vector2d px_curr = _curr_frame->_camera->World2Pixel( point->_pos_world, _curr_frame->_T_c_w );
-        
-        cv::circle( ref_img, cv::Point2f(px_ref[0], px_ref[1]), 5, cv::Scalar(0,250,0), 2);
-        cv::circle( curr_img, cv::Point2f(px_curr[0], px_curr[1]), 5, cv::Scalar(0,250,0), 2);
-    }
-    cv::imshow("ref frame", ref_img);
-    cv::imshow("current frame", curr_img);
-    cv::waitKey(0);
-    */
     
     return true; 
 }

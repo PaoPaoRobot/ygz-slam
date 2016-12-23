@@ -6,10 +6,7 @@
 
 #include "ygz/common_include.h"
 
-
-
 namespace ygz {
-    
     
 const int PATCH_SIZE = 31;
 const int HALF_PATCH_SIZE = 15;

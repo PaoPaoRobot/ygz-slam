@@ -75,8 +75,9 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     int cntCandidate =0;
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
         MapPoint* map_point = Memory::GetMapPoint( *it );
-        if ( map_point->_bad == true )
-            continue;
+        // if ( map_point->_bad == true )
+            // continue;
+        
         // 检查这个地图点是否可见
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         if ( pt_curr[2] < 0 ) // 在相机后面
@@ -96,8 +97,6 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                     candidate._map_point = map_point->_id;
                     candidate._keyframe_pixel = obs_pair.second.head<2>();
                     candidate._projected_pixel = px_curr;
-                    // break;
-                    
                     int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
                                 + static_cast<int> ( px_curr[0]/_cell_size );
                     cntCandidate ++;
@@ -121,33 +120,37 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
             // 类似于光流的匹配 
             MatchPointCandidate candidate = _grid[i][j];
             Vector2d matched_px = candidate._projected_pixel; 
+            Vector2d projected_px = matched_px;
             bool success = TestDirectMatch( current, candidate, matched_px );
             if ( !success ) {  // 没有匹配到
-                
                 /*
                 // 我要看一下怎么样的匹配才算失败
                 Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
                 Mat img_curr = current->_color.clone();
-                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,0,250), 2);
-                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,0,250), 2);
+                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,0,250), 2);
+                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,0,250), 2);
+                cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
                 cv::imshow("wrong match ref", img_ref );
                 cv::imshow("wrong match curr", img_curr );
                 cv::waitKey(0);
                 */
-                
                 cntFailed++;
                 continue;
             } 
+            else 
+            {
+                /*
+                Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
+                Mat img_curr = current->_color.clone();
+                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
+                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
+                cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
+                cv::imshow("correct match ref", img_ref );
+                cv::imshow("correct match curr", img_curr );
+                cv::waitKey(0);
+                */
+            }
             
-            /*
-            Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
-            Mat img_curr = current->_color.clone();
-            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 5, cv::Scalar(0,250,0), 2);
-            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 5, cv::Scalar(0,250,0), 2);
-            cv::imshow("correct match ref", img_ref );
-            cv::imshow("correct match curr", img_curr );
-            cv::waitKey(0);
-            */
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
@@ -156,6 +159,9 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
                 break; // 如果这个map point已经被匹配过了，就没必要再匹配了
+            } else {
+                // 这个地图点已经匹配过了
+                break;
             }
         }
     } 
@@ -181,7 +187,6 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         Vector2d px = current->_camera->Camera2Pixel( pt );
         Vector2d obs = iter->second.head<2>();
         double error = (px-obs).norm();
-        // LOG(INFO) << "reprojection error = "<< error << endl;
         
         if ( error > 10 ) { // magic number again! 
             // 重投影误差太大，认为这是个外点
@@ -191,6 +196,8 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
             
             // reset 也有点问题，可能把本该看不见的东西变成可见了？
             // 由于被遮挡，该点的深度就会发生改变，导致和其他特征点出现不一致
+            
+            LOG(INFO) << "rejected because reproj error = " << error << endl;            
             
             iter = current->_obs.erase( iter );
             // (*iter_obs) [2] = -1;
@@ -222,10 +229,10 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
         
-        Vector3d pt_obs = current->_camera->Pixel2Camera( iter->second.head<2>() );
+        Vector3d pt_obs = current->_camera->Pixel2Camera( px );
         
-        cv::circle( img_show, cv::Point2f( (iter->second)[0], (iter->second)[1] ), 5, cv::Scalar(0,0,250), 2 );
-        cv::circle( img_show, cv::Point2f( px[0], px[1] ), 5, cv::Scalar(0,250,0), 2 );
+        cv::circle( img_show, cv::Point2f( (iter->second)[0], (iter->second)[1] ), 2, cv::Scalar(0,0,250), 2 );
+        cv::circle( img_show, cv::Point2f( px[0], px[1] ), 2, cv::Scalar(0,250,0), 2 );
         
         iter->second.head<2>() = px;
         
@@ -235,7 +242,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         iter->second[2] = pt[2]; // 只重设一下距离试试？
     }
     cv::imshow("obs vs reproj" , img_show);
-    cv::waitKey(1);
+    cv::waitKey(0);
     
     LOG(INFO) << "final observations: "<<current->_obs.size()<<endl;
     
@@ -329,9 +336,10 @@ void LocalMapping::LocalBA ( Frame* current )
         if ( mp->_extra_obs.size() < 5 ) 
             continue; 
         double update = (mp->_pos_world - backup_pair.second).norm();
-        // LOG(INFO) << "update = "<<update;
-        if ( update < 0.01 ) 
+        if ( update < 0.01 ) {
+            mp->_bad = false;
             mp->_converged = true; 
+        }
         if ( update > 20 ) {
             LOG(WARNING)<< "map point "<<mp->_id <<" changed from "<<backup_pair.second.transpose()<<" to "<<
                 mp->_pos_world.transpose()<<endl;
@@ -417,8 +425,9 @@ bool LocalMapping::TestDirectMatch (
         current->_pyramid[search_level], 
         _patch_with_border,
         _patch,
-        15,
-        px_scaled
+        10,
+        px_scaled,
+        false
     );
     
     px_curr = px_scaled*(1<<search_level);

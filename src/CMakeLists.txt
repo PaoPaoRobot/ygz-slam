@@ -13,5 +13,6 @@ add_library( ygz-slam SHARED
     utils.cpp
     viewer.cpp
     
-    ORB/ORBextractor.cpp 
+    ORB/ORBExtractor.cpp 
+    ORB/ORBMatcher.cpp
 )
