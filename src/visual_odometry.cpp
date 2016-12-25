@@ -13,6 +13,8 @@
 #include "ygz/initializer.h"
 #include "ygz/local_mapping.h"
 #include "ygz/camera.h"
+#include "ygz/ORB/ORBExtractor.h"
+#include "ygz/ORB/ORBMatcher.h"
 
 namespace ygz {
     
@@ -26,11 +28,15 @@ VisualOdometry::VisualOdometry ( System* system )
     _min_keyframe_trans = Config::get<double>("vo.keyframe.min_trans");
     _min_keyframe_features = Config::get<int>("vo.keyframe.min_features");
     
+    // TODO 为了调试方便所以在这里写new，但最后需要挪到system里面管理
     _init = new Initializer();
     _detector = new FeatureDetector();
     _tracker = new Tracker(_detector);
     _local_mapping = new LocalMapping();
     _depth_filter = new opti::DepthFilter( _local_mapping );
+    
+    _orb_extractor = new ORBExtractor();
+    _orb_matcher = new ORBMatcher();
 }
 
 VisualOdometry::~VisualOdometry()
@@ -43,6 +49,12 @@ VisualOdometry::~VisualOdometry()
         delete _tracker;
     if ( _local_mapping )
         delete _local_mapping;
+    if ( _init )
+        delete _init;
+    if ( _orb_extractor ) 
+        delete _orb_extractor;
+    if ( _orb_matcher ) 
+        delete _orb_matcher;
 }
     
 // 整体接口，逻辑有点复杂，参照orb-slam2设计
@@ -141,14 +153,25 @@ void VisualOdometry::MonocularInitialization()
         
         bool init_success = _init->TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
-            // init succeeds, set VO as normal tracking
+            // 初始化算法认为初始化通过，但可能会有outlier和误跟踪
+            // 光流在跟踪之后不能保证仍是角点
             
-            LOG(INFO) << "ref pose = \n" <<_ref_frame->_T_c_w.matrix()<<endl;
-            LOG(INFO) << "current pose = \n"<< _curr_frame->_T_c_w.matrix()<<endl;
-            LOG(INFO) << "initialized map points: " << Memory::GetAllPoints().size() << endl;
+            _tracker->PlotTrackedPoints(); 
+            
+            int i = 0;
+            LOG(INFO) <<pt1.size()<<","<<pt2.size()<<endl;
+            for ( auto iter = _ref_frame->_map_point_candidates.begin(); iter!=_ref_frame->_map_point_candidates.end(); iter++, i++ ) {
+                LOG(INFO) << pt2[i].transpose() << endl;
+                _curr_frame->_map_point_candidates.push_back(
+                    cv::KeyPoint( pt2[i][0], pt2[i][1], iter->size )
+                );
+            }
+            
+            // 计算 ref 和 current 之间的描述子，依照描述子检测匹配是否正确
+            CheckInitializationByDescriptors();
             
             // show the tracked points 
-            _tracker->PlotTrackedPoints();
+            // _tracker->PlotTrackedPoints();
             
             // two view BA to minimize the reprojection error 
             // use g2o or ceres or what you want 
@@ -501,6 +524,42 @@ void VisualOdometry::ResetCurrentObservation()
         }
     }
 }
+
+bool VisualOdometry::CheckInitializationByDescriptors()
+{
+    // 计算两个帧中特征点的描述
+    _orb_extractor->Compute( _ref_frame );
+    _orb_extractor->Compute( _curr_frame );
+    
+    
+    LOG(INFO) << _ref_frame->_map_point_candidates.size()<<","<<_curr_frame->_map_point_candidates.size()<<endl;
+    vector<bool> inliers( _ref_frame->_map_point_candidates.size(), false ); 
+    _orb_matcher->CheckFrameDescriptors( _ref_frame, _curr_frame, inliers ); 
+    
+    // show the inliers 
+    Mat show(_ref_frame->_color.rows, 2*_ref_frame->_color.cols, CV_8UC3);
+    _ref_frame->_color.copyTo( show(cv::Rect(0,0,show.cols/2, show.rows )));
+    _curr_frame->_color.copyTo( show(cv::Rect(show.cols/2,0, show.cols/2, show.rows)));
+    // Mat ref_img = _ref_frame->_color.clone();
+    // Mat curr_img = _curr_frame->_color.clone();
+    auto iter1 = _ref_frame->_map_point_candidates.begin();
+    auto iter2 = _curr_frame->_map_point_candidates.begin();
+    for ( int i=0; iter1!=_ref_frame->_map_point_candidates.end(); iter1++, iter2++,i++ ) {
+        if ( inliers[i] == true ) {
+            cv::circle( show, iter1->pt, 2, cv::Scalar(0,250,0),2 );
+            cv::circle( show, iter2->pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,250,0),2 );
+            // cv::line( show, iter1->pt, iter2->pt+cv::Point2f(show.cols/2, 0), cv::Scalar(0,250,0) );
+        } else {
+            cv::circle( show, iter1->pt, 2, cv::Scalar(0,0,250),2 );
+            cv::circle( show, iter2->pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,0,250),2 );
+            // cv::line( show, iter1->pt, iter2->pt+cv::Point2f(show.cols/2, 0), cv::Scalar(0,0,250) );
+        }
+    }
+    
+    cv::imshow("feature match", show);
+    cv::waitKey(0);
+}
+
 
     
 

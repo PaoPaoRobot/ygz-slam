@@ -49,7 +49,6 @@ public:
     // accessors 
     TrackerStatusType Status() const { return _status; }
     
-    list<cv::Point2f> GetPxRef() const { return _px_ref; }
     list<cv::Point2f> GetPxCurr() const { return _px_curr; }
     
 private:
@@ -59,8 +58,7 @@ private:
     Frame* _ref =nullptr;            // reference 
     Frame* _curr =nullptr;           // current  
     
-    list<cv::Point2f> _px_ref;            // pixels in ref, lost features will be deleted 
-    list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted 
+    list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted from reference 
     
     TrackerStatusType _status =TRACK_NOT_READY;
     FeatureDetector* _detector =nullptr; 

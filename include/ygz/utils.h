@@ -232,7 +232,7 @@ inline bool DepthFromTriangulation (
     Eigen::Matrix<double,3,2> A;
     A << T_search_ref.rotation_matrix() * f_ref, -f_cur;
     
-    const Eigen::Matrix2d AtA = A.transpose() *A;
+    Eigen::Matrix2d AtA = A.transpose() *A;
     
     // LOG(INFO) << "AtA determinant = " << AtA.determinant()<<endl;
     if ( AtA.determinant() < 1e-4 ) {
@@ -248,7 +248,7 @@ inline bool DepthFromTriangulation (
     // LOG(INFO) << "AtA = \n"<<AtA<<endl;
     
     Vector2d depth2 = - AtA.inverse() *A.transpose() *T_search_ref.translation();
-    // LOG(INFO) << "depth2 = " << depth2.transpose() << endl;
+    LOG(INFO) << "depth2 = " << depth2.transpose() << endl;
     // Vector3d r = A*depth2;
     // LOG(INFO) << "Ad = " << r.transpose() << endl;
     depth = fabs ( depth2[0] );

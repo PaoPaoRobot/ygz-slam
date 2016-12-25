@@ -19,7 +19,6 @@ void Tracker::SetReference(Frame* ref)
 {
     // detect the features in reference 
     _detector->Detect( ref );
-    LOG(INFO) << "Keypoints detected: "<< ref->_map_point_candidates.size() <<endl;
     
     if ( ref->_map_point_candidates.size() < _min_features_initializing ) {
         LOG(WARNING) << "Init frame has few features, try moving in more textured environment. " << endl;
@@ -34,9 +33,8 @@ void Tracker::SetReference(Frame* ref)
     
     // set the tracked pts in ref 
     for ( cv::KeyPoint& p: _ref->_map_point_candidates ) {
-        _px_ref.push_back( p.pt );
+        _px_curr.push_back( p.pt );
     }
-    _px_curr = _px_ref;
 }
 
 void Tracker::Track(Frame* curr)
@@ -69,11 +67,10 @@ void Tracker::TrackKLT()
     vector<float> min_eig_vec;
     cv::TermCriteria termcrit ( cv::TermCriteria::COUNT+cv::TermCriteria::EPS, klt_max_iter, klt_eps );
     
-    LOG(INFO) << "pts to be tracked: "<< _px_ref.size() <<endl;
     // convert the list to vector 
     vector<cv::Point2f> pt_ref; 
-    for ( cv::Point2f& p: _px_ref )  {
-        pt_ref.push_back( p );
+    for ( cv::KeyPoint& p: _ref->_map_point_candidates )  {
+        pt_ref.push_back( p.pt );
     }
     
     vector<cv::Point2f> pt_curr; 
@@ -87,18 +84,16 @@ void Tracker::TrackKLT()
                                cv::Size2i ( klt_win_size, klt_win_size ),
                                4, termcrit, cv::OPTFLOW_USE_INITIAL_FLOW );
     
-    LOG(INFO) << "KLT: ref pts = "<<_px_ref.size()<<", curr pts = "<<pt_curr.size()<<endl;
-    
-    auto px_ref_it = _px_ref.begin();
+    auto px_ref_it = _ref->_map_point_candidates.begin();
     auto pt_cur_it = pt_curr.begin();
     
     _px_curr.clear();
     // copy the tracked ones and remove the lost ones
-    for ( size_t i=0; px_ref_it != _px_ref.end(); ++i, ++pt_cur_it )
+    for ( size_t i=0; px_ref_it != _ref->_map_point_candidates.end(); ++i, ++pt_cur_it )
     {
         if ( !status[i] || ! _curr->InFrame( *pt_cur_it) )
         {
-            px_ref_it = _px_ref.erase( px_ref_it );
+            px_ref_it = _ref->_map_point_candidates.erase( px_ref_it );
             continue;
         }
         // LOG(INFO) << "error = "<<error[i]<<endl;
@@ -121,17 +116,18 @@ void Tracker::PlotTrackedPoints() const
     
     Mat ref_show = _ref->_color.clone();
     
-    auto ref_it = _px_ref.begin();
+    auto ref_it = _ref->_map_point_candidates.begin();
     auto curr_it = _px_curr.begin();
     
-    LOG(INFO) << "ref pts: "<<_px_ref.size()<<", curr pts: "<<_px_curr.size();
     for ( ; curr_it != _px_curr.end(); ++ref_it, ++curr_it ) {
+        // LOG(INFO) << *curr_it << endl;
         cv::circle( img_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
         // cv::circle( img_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
         // cv::line( img_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
         
+        // LOG(INFO) << *ref_it << endl;
         // cv::circle( ref_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
-        cv::circle( ref_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
+        cv::circle( ref_show, ref_it->pt, 2, cv::Scalar(250,0,0), 2 );
         // cv::line( ref_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
     }
    
@@ -142,22 +138,22 @@ void Tracker::PlotTrackedPoints() const
 
 float Tracker::MeanDisparity() const
 {
-    auto ref_it = _px_ref.begin();
+    auto ref_it = _ref->_map_point_candidates.begin();
     auto curr_it = _px_curr.begin();
     
     double mean_disparity =0; 
-    for ( auto ref_it_end = _px_ref.end(); ref_it!=ref_it_end; ref_it++, curr_it++ ) {
-        mean_disparity += Vector2d(ref_it->x-curr_it->x, ref_it->y - curr_it->y).norm();
+    for ( auto ref_it_end = _ref->_map_point_candidates.end(); ref_it!=ref_it_end; ref_it++, curr_it++ ) {
+        mean_disparity += Vector2d(ref_it->pt.x-curr_it->x, ref_it->pt.y - curr_it->y).norm();
     }
-    return (float) mean_disparity/_px_ref.size();
+    return (float) mean_disparity/_ref->_map_point_candidates.size();
 }
 
 void Tracker::GetTrackedPointsNormalPlane(
     vector< Vector2d >& pt1, 
     vector< Vector2d >& pt2) const
 {
-    for ( auto& px:_px_ref ) {
-        Vector2d v(px.x, px.y);
+    for ( auto& px:_ref->_map_point_candidates ) {
+        Vector2d v(px.pt.x, px.pt.y);
         pt1.push_back(_ref->_camera->Pixel2Camera( v ).head<2>() );
     }
     for ( auto& px:_px_curr ) {
@@ -170,12 +166,10 @@ void Tracker::GetTrackedPixel(
     vector< Vector2d >& px1, 
     vector< Vector2d >& px2) const
 {
-    for ( auto& px:_px_ref ) {
-        Vector2d v(px.x, px.y);
-        px1.push_back( Vector2d(px.x, px.y) );
+    for ( auto& px:_ref->_map_point_candidates ) {
+        px1.push_back( Vector2d(px.pt.x, px.pt.y) );
     }
     for ( auto& px:_px_curr ) {
-        Vector2d v(px.x, px.y);
         px2.push_back( Vector2d(px.x, px.y) );
     }
 }

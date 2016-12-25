@@ -12,6 +12,8 @@ class Tracker;
 class Initializer;
 class FeatureDetector;
 class LocalMapping;
+class ORBExtractor;
+class ORBMatcher;
     
 class VisualOdometry {
     friend class Memory;
@@ -56,6 +58,9 @@ protected:
     // 重置当前帧中的观测信息
     void ResetCurrentObservation(); 
     
+    // 初始化中，根据描述子检测两个帧跟踪的点是否成立
+    bool CheckInitializationByDescriptors(); 
+    
 private:
     Status _status =VO_NOT_READY;       // current status 
     Status _last_status;                        // last status 
@@ -75,6 +80,9 @@ private:
     opti::DepthFilter* _depth_filter =nullptr;  // depth filter 
     
     FeatureDetector* _detector=nullptr;         // feature detection 
+    
+    ORBExtractor* _orb_extractor =nullptr;      // ORB 提取
+    ORBMatcher* _orb_matcher =nullptr;          // ORB 比较
     
     SE3 _TCR_estimated;                 // estimated transform from ref to current 
     

@@ -155,6 +155,7 @@ bool Align2D (
     int iter = 0;
     vector<float> chi2_vec;
 
+    LOG(INFO)<<"start interation ... "<<endl;
     bool error_increased = false;
     for ( ; iter<n_iter; ++iter )
     {
@@ -225,13 +226,13 @@ bool Align2D (
 
     cur_px_estimate << u, v;
 
-    // LOG(INFO) << update.transpose() << endl;
+    LOG(INFO) << update.transpose() << endl;
     if ( convergence_condition )
         return converged;
 
     if ( converged == true )
     {
-        // LOG(INFO) << "accepted, converged."<<endl;
+        LOG(INFO) << "accepted, converged."<<endl;
         return true;
     }
     if ( converged == false )
@@ -244,7 +245,7 @@ bool Align2D (
         // 没有收敛，可能出现误差上升，或者达到最大迭代次数
         if ( chi2_vec.empty() )
         {
-            // LOG ( INFO ) << "rejected because u,v runs outside."<<endl;
+            LOG ( INFO ) << "rejected because u,v runs outside."<<endl;
             return false;
         }
         /*
@@ -258,15 +259,21 @@ bool Align2D (
             if ( chi2_vec.back() <15000 )
             {
                 cur_px_estimate = first_estimate;
+                LOG(INFO)<<"return true"<<endl;
                 return true;
             }
             return false;
         }
 
-        if ( chi2_vec.back() <15000 )
+        if ( chi2_vec.back() <15000 ) {
+            LOG(INFO) << "return true" << endl;
             return true;
+        }
+        
+        LOG(INFO) << "return false"<<endl;
         return false;
     }
+    LOG(INFO)<<"return false"<<endl;
     return false;
 }
 
@@ -418,15 +425,15 @@ bool FindEpipolarMatchDirect (
 
         if ( res )
         {
-            //LOG(INFO) << "align 2d succeed"<<endl;
+            LOG(INFO) << "align 2d succeed"<<endl;
             px_cur = px_scaled* ( 1<<search_level );
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
                         cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
             {
-                /*
                 LOG(INFO) << "estimated depth = " << depth <<endl;
 
+                /*
                 cv::Mat curr_show = cur_frame->_color.clone();
                 cv::Mat ref_show = ref_frame->_color.clone();
 
@@ -442,6 +449,7 @@ bool FindEpipolarMatchDirect (
                 */
 
                 matched_px = px_cur;
+                LOG(INFO) << "return true." <<endl;
                 return true;
             }
             matched_px = px_cur;
@@ -451,7 +459,7 @@ bool FindEpipolarMatchDirect (
         else
         {
             matched_px = px_cur;
-            // LOG ( INFO ) << "rejected by align 2d"<<endl;
+            LOG ( INFO ) << "rejected by align 2d"<<endl;
             return false;
         }
     }
@@ -567,7 +575,7 @@ bool FindEpipolarMatchDirect (
                     cv::waitKey(0);
                     */
                 }
-                // LOG ( INFO ) << "epipolar search succeed"<<endl;
+                LOG ( INFO ) << "epipolar search succeed"<<endl;
                 // LOG ( INFO ) << "estimated depth = " << depth << endl;
                 /*
 
@@ -583,11 +591,11 @@ bool FindEpipolarMatchDirect (
                 matched_px = px_cur;
                 return true;
             }
-            // LOG ( INFO ) << "rejected by triagulation"<<endl;
+            LOG ( INFO ) << "rejected by triagulation"<<endl;
             matched_px = px_cur;
             return false;
         }
-        // LOG ( INFO ) << "rejected by align 2d"<<endl;
+        LOG ( INFO ) << "rejected by align 2d"<<endl;
         matched_px = px_cur;
         return false;
     }

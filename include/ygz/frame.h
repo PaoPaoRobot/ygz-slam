@@ -7,7 +7,6 @@
 namespace ygz {
     
 // 前置声明
-class Frame;
 class PinholeCamera; 
 
 // Frame，帧
@@ -84,7 +83,8 @@ public:
     bool    _is_keyframe    =false;     // 标识是否是关键帧
     
     // 2D特征点，由特征提取算法给出
-    vector<cv::KeyPoint>    _map_point_candidates; 
+    list<cv::KeyPoint>    _map_point_candidates; 
+    list<Mat>             _descriptors;       // 每个特征点的描述，由ORB计算
     
     // 观测
     // observations 与_map_point对应，即每个 map point 在这个帧上的投影位置
