@@ -2,6 +2,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "ygz/local_mapping.h"
+#include "ygz/map_point.h"
+#include "ygz/frame.h"
 #include "ygz/memory.h"
 #include "ygz/utils.h"
 #include "ygz/optimizer.h"
@@ -72,36 +74,63 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     _grid.clear();
     _grid.resize( _grid_rows*_grid_cols );
     
+    // 当前帧根据 sparse alignment 的结果呢，自带一些observation，它们肯定在视野中
+    // 但是 alignement 只优化 pose，observation是重投影来的，不一定对
+    
+    for ( auto& obs_pair: current->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        // 检测该顶点的 observation 里，有没有在相邻关键帧的
+        // 该点已经匹配过了，所以不要再投影一遍
+        mp->_track_in_view = true; 
+        Vector2d px_curr = obs_pair.second.head<2>(); // 当前帧中的投影（按pose计算的重投影）
+        
+        // 遍历该点的观测，看哪些观测存在于 local keyframe 中
+        // 位于local keyframes 中的才参与比较
+        for ( auto& obs_pair: mp->_obs ) {
+            Frame* frame = Memory::GetFrame( obs_pair.first );
+            if ( _local_keyframes.find( frame )!=_local_keyframes.end() ) {
+                MatchPointCandidate candidate;
+                candidate._observed_keyframe = obs_pair.first;
+                candidate._map_point = mp->_id;
+                candidate._keyframe_pixel = obs_pair.second.head<2>();
+                candidate._projected_pixel = obs_pair.head<2>();
+                int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
+                            + static_cast<int> ( px_curr[0]/_cell_size );
+                _grid[k].push_back( candidate );
+            }
+        }
+    }
+    
+    // 遍历local map points，寻找在当前帧视野范围内，而且能匹配上patch的那些点
     int cntCandidate =0;
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
         MapPoint* map_point = Memory::GetMapPoint( *it );
-        // if ( map_point->_bad == true )
-            // continue;
+        
+        if ( map_point->_bad == true )
+            continue;
+        if ( map_point->_track_in_view == true ) // 已经在视野里了
+            continue;
         
         // 检查这个地图点是否可见
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
-        if ( pt_curr[2] < 0 ) // 在相机后面
-            continue; 
         Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
-        if ( !current->InFrame(px_curr) )  // 不在图像中
-            continue; 
+        if ( pt_curr[2] < 0 || !current->InFrame(px_curr) ) { // 在相机后面或不在视野内 
+            map_point->_track_in_view = false;
+            continue;
+        }
         
         // 检测该顶点的 observation 里，有没有在相邻关键帧的
-        MatchPointCandidate candidate;
-        
         for ( auto& obs_pair: map_point->_obs ) {
-            unsigned long keyframe_id = obs_pair.first;
-            for ( auto it=_local_keyframes.begin(); it!=_local_keyframes.end(); it++ ) {
-                if ( *it == keyframe_id ) {
-                    candidate._observed_keyframe = *it;
-                    candidate._map_point = map_point->_id;
-                    candidate._keyframe_pixel = obs_pair.second.head<2>();
-                    candidate._projected_pixel = px_curr;
-                    int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
-                                + static_cast<int> ( px_curr[0]/_cell_size );
-                    cntCandidate ++;
-                    _grid[k].push_back( candidate );
-                }
+            Frame* frame = Memory::GetFrame( obs_pair.first );
+            if ( _local_keyframes.find( frame )!=_local_keyframes.end() ) {
+                MatchPointCandidate candidate;
+                candidate._observed_keyframe = obs_pair.first;
+                candidate._map_point = map_point->_id;
+                candidate._keyframe_pixel = obs_pair.second.head<2>();
+                candidate._projected_pixel = obs_pair.head<2>();
+                int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
+                            + static_cast<int> ( px_curr[0]/_cell_size );
+                _grid[k].push_back( candidate );
             }
         }
     }
@@ -109,7 +138,8 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     LOG(INFO) << "Find total "<<cntCandidate <<" candidates."<<endl;
     
     // Step 2 
-    // 寻找每个候选点和当前帧的匹配
+    // 计算每个候选点和当前帧能否匹配上
+    // 要使用到候选点的参考图像以及当前帧的图像
     
     int cntSuccess = 0;
     int cntFailed = 0;
@@ -137,20 +167,17 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 cntFailed++;
                 continue;
             } 
-            else 
-            {
-                /*
-                Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
-                Mat img_curr = current->_color.clone();
-                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
-                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
-                cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
-                cv::imshow("correct match ref", img_ref );
-                cv::imshow("correct match curr", img_curr );
-                cv::waitKey(0);
-                */
-            }
             
+            /*
+            Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
+            Mat img_curr = current->_color.clone();
+            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
+            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
+            cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
+            cv::imshow("correct match ref", img_ref );
+            cv::imshow("correct match curr", img_curr );
+            cv::waitKey(0);
+            */
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
@@ -167,53 +194,41 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     } 
     
     LOG(INFO) << "success = " << cntSuccess << ", failed = "<<cntFailed << endl; 
-    
     if ( current->_obs.size() < 10 ) { // TODO magic number, adjust it!
         // 匹配不够
         LOG(WARNING) << "insufficient matched pixels, abort this frame ... "<< endl;
         return false;
     }
+    
+    // 至此，current->_obs中已经记录了正确的地图点匹配信息
         
     // Step 3
-    // 根据前面的匹配信息，计算当前帧的Pose，以及优化这些地图点的位姿
-    // Call Local bundle adjustment to optimize the current pose and map point 
-    opti::OptimizePoseCeres( current, true );
-    // remove the outliers by reprojection 
+    // optimize the current pose
+    map<unsigned long, bool> outlier;
+    opti::OptimizePoseCeres( current, outlier );
     
-    int cnt_outlier = 0;
+    // remove the outliers by reprojection 
+    int cntInliers = 0;
     for ( auto iter = current->_obs.begin(); iter!=current->_obs.end();) {
-        MapPoint* map_point = Memory::GetMapPoint( iter->first );
-        Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w);
-        Vector2d px = current->_camera->Camera2Pixel( pt );
-        Vector2d obs = iter->second.head<2>();
-        double error = (px-obs).norm();
-        
-        if ( error > 10 ) { // magic number again! 
-            // 重投影误差太大，认为这是个外点
-            // TODO 想清楚这里是直接去掉呢，还是按照重投影来计算？
-            // 如果计算重投影，那么由于该点被遮挡，它的纹理可能和map point处的纹理非常不同，这会使得local mapping在匹配模板时失败
-            // 但是，直接去掉的话，又可能导致当前帧观测的数量太少，后一帧跟不上？
-            
-            // reset 也有点问题，可能把本该看不见的东西变成可见了？
-            // 由于被遮挡，该点的深度就会发生改变，导致和其他特征点出现不一致
-            
-            LOG(INFO) << "rejected because reproj error = " << error << endl;            
-            
+        if ( outlier[iter->first] ) {
             iter = current->_obs.erase( iter );
-            // (*iter_obs) [2] = -1;
-            // iter_obs++;
-            // iter_pt++;
-            
-            cnt_outlier++;
-            continue; 
         } else {
+            MapPoint* mp = Memory::GetMapPoint( iter->first );
+            Vector3d pt = current->_camera->World2Camera( mp->_pos_world, current->_T_c_w);
             iter->second[2] = pt[2];
+            // 更新地图点的统计量
+            mp->_cnt_visible++;
+            cntInliers++;
             iter++;
         }
     }
     
-    LOG(INFO) << "outliers = " << cnt_outlier << endl;
+    LOG(INFO) << "inliers: "<<cntInliers<<endl;
+    if ( cntInliers < _options.min_track_localmap_inliers ) 
+        return false;
+    return true;
     
+    /*
     // Step 4
     // 现在当前帧应该全是内点了吧，再优化一次以求更精确
     // 这里需要使用局部地图的 ba 
@@ -245,6 +260,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     cv::waitKey(0);
     
     LOG(INFO) << "final observations: "<<current->_obs.size()<<endl;
+    */
     
     return true;
 }
@@ -484,5 +500,72 @@ bool LocalMapping::TestDirectMatch (
     
     return success;
 }
+
+// 更新局部关键帧: _local_keyframes 
+// 寻找与当前帧的地图点有较好共视关系的那些关键帧
+void LocalMapping::UpdateLocalKeyframes ( Frame* current )
+{
+    _local_keyframes.clear();
+    map<Frame*,int> keyframeCounter;
+    for ( auto& obs_pair: current->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        if ( mp->_bad == true ) 
+            continue; 
+        for ( auto& obs_map : mp->_obs ) {
+            Frame* frame = Memory::GetFrame( obs_map.first );
+            keyframeCounter[frame] ++ ;
+        }
+    }
+    
+    if ( keyframeCounter.empty() )
+        return; 
+    int max = 0;
+    Frame* kfmax = nullptr;
+    
+    // 策略1：能观测到当前帧 mappoint 的关键帧作为局部关键帧
+    // 计算共视观测最多的帧
+    for( auto& keyframe_pair: keyframeCounter ) {
+        if ( keyframe_pair.first->IsBad() ) 
+            continue;
+        if ( keyframe_pair.second > max ) {
+            max = keyframe_pair.second;
+            kfmax = keyframe_pair.first;
+        }
+        
+        _local_keyframes.insert( keyframe_pair.first );
+    }
+    
+    // 策略2：和上次结果中共视程度很高的关键帧也作为局部关键帧
+    for ( Frame* frame: _local_keyframes ) {
+        vector<Frame*> neighbour = frame->GetBestCovisibilityKeyframes(10);
+        for ( Frame* neighbour_kf: neighbour ) {
+            if ( neighbour_kf->IsBad() ) 
+                continue;
+            _local_keyframes.insert( neighbour_kf );
+        }
+    }
+    
+    if ( kfmax ) {
+        current->_ref_keyframe = kfmax; 
+    }
+}
+
+// 更新与当前帧有关的地图点
+void LocalMapping::UpdateLocalMapPoints ( Frame* current )
+{
+    _local_map_points.clear();
+    // 将局部关键帧中的地图点添加到局部地图中
+    
+    for ( Frame* frame: _local_keyframes ) {
+        for ( auto& obs_pair: frame->_obs ) {
+            MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+            if ( mp->_bad )
+                continue;
+            _local_map_points.insert( mp );
+        }
+    }
+}
+
+
     
 }

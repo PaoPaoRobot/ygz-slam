@@ -30,10 +30,10 @@ void TwoViewBACeres (
 );
 
 // pose only BA
-// 在普通帧寻找匹配点之后调用
+// 在普通帧寻找匹配点之后调用，给出每次观测是否被认为是 outlier
 void OptimizePoseCeres(
     Frame* current,
-    bool robust = false
+    map<unsigned long, bool>& outlier
 );
 
 // sparse image alignment, using ceres 

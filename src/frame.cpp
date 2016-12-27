@@ -56,6 +56,14 @@ bool Frame::GetMeanAndMinDepth ( double& mean_depth, double& min_depth )
     return true; 
 }
 
+std::vector< Frame* > Frame::GetBestCovisibilityKeyframes ( const int& N )
+{
+    if ( _cov_keyframes.size() < N ) 
+        return _cov_keyframes;
+    return vector<Frame*>( _cov_keyframes.begin(), _cov_keyframes.begin()+N );
+}
+
+
 PinholeCamera* Frame::_camera = nullptr;
 
 }

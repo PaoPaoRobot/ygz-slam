@@ -2,9 +2,9 @@
 #define LOCAL_MAPPING_H
 
 #include "ygz/common_include.h"
+#include "ygz/utils.h"
 #include "ygz/frame.h"
 #include "ygz/map_point.h"
-#include "ygz/utils.h"
 
 using namespace ygz::utils;
 
@@ -18,6 +18,13 @@ namespace ygz {
 
 class LocalMapping {
     
+//class Frame;
+// class MapPoint;
+    
+    struct Options {
+        int min_track_localmap_inliers = 50;
+    } _options;
+    
 public:
     LocalMapping();
     // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
@@ -29,6 +36,13 @@ public:
     // 新增一个路标点
     void AddMapPoint( const unsigned long& map_point_id );
     
+    // 更新局部关键帧
+    void UpdateLocalKeyframes( Frame* current ); 
+    
+    // 更新局部地图点
+    void UpdateLocalMapPoints( Frame* current );
+    
+    
 private:
     // 测试某个点是否可以和当前帧匹配上
     bool TestDirectMatch( Frame* current, const MatchPointCandidate& candidate, Vector2d& px_curr );
@@ -38,9 +52,9 @@ private:
     // 用于刚加入新的普通帧时的优化
     void LocalBA( Frame* current ); 
     
-    // 相邻关键帧和地图点，以ID形式标出
-    set<unsigned long> _local_keyframes;        // 关键帧
-    set<unsigned long> _local_map_points;       // 地图点
+    // 局部关键帧和地图点
+    set<Frame*> _local_keyframes;        
+    set<MapPoint*> _local_map_points;   
     
     // 匹配局部地图用的 patch
     uchar _patch[WarpPatchSize*WarpPatchSize];
@@ -56,7 +70,6 @@ private:
     int _grid_rows=0, _grid_cols=0;
     int _pyramid_level=0;
     
-    // 这个网格目前还没用上
     vector<vector<MatchPointCandidate>> _grid;  // 候选点网格,每个格点有一串的候选点
 };
 }

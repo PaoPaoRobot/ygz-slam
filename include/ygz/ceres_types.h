@@ -45,13 +45,18 @@ protected:
 };
 
 // 只有位姿的重投影
+// 加一个使能，可以定义这条误差是否参与计算
 class CeresReprojectionErrorPoseOnly
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW 
     CeresReprojectionErrorPoseOnly( 
-        const Vector2d& pt_cam, const Vector3d& pt_world
-    ): _pt_cam(pt_cam), _pt_world(pt_world) { }
+        const Vector2d& pt_cam, const Vector3d& pt_world, bool enable = true
+    ): _pt_cam(pt_cam), _pt_world(pt_world), _enable(enable) { }
+    
+    void SetEnable( bool enable = true ) {
+        _enable = enable;
+    }
     
     // cost = z - (Rp+t), note the first three components in the pose are translation 
     template< typename T > 
@@ -59,6 +64,11 @@ public:
         const T* const pose_TCW, 
         T* residuals
     ) const {
+        if ( _enable == false ) {
+            residuals[0] = residuals[1] = 0;
+            return true;
+        }
+        
         T p[3];
         T pw[3];
         T rot[3];
@@ -79,6 +89,7 @@ public:
 protected:
     Vector2d _pt_cam; // observation: normalized camera coordinate 
     Vector3d _pt_world; // 3D point in world frame 
+    bool _enable; 
 };
 
 // 反之，只有点的重投影

@@ -11,6 +11,8 @@ class PinholeCamera;
 
 // Frame，帧
 // 帧是一种数据对象，所以本身使用Struct，成员都使用public
+
+// TODO 关键帧的spanning tree
 struct Frame {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -65,8 +67,19 @@ public:
             && pixel[1]/(1<<level) >= boarder && pixel[1]/(1<<level) < _color.rows - boarder;
     }
     
+    // 是否坏帧
+    bool IsBad() const {
+        return _bad;
+    }
+    
     // 计算观测到的地图点的平均深度和最小深度
     bool GetMeanAndMinDepth( double& mean_depth, double& min_depth ); 
+    
+    // 得到共视关键最好的N个帧
+    vector<Frame*> GetBestCovisibilityKeyframes( const int & N );
+    
+    // 判断某个地图点的投影是否在视野内，同时检查其夹角
+    bool IsInFrustum( MapPoint* mp, float viewingCosLimit=0.5 );
     
 public:
     // data 
@@ -107,6 +120,14 @@ public:
     
     // 格子，可以用来提取关键点，有很多用途
     vector<int> _grid;        // grid occupancy 
+    
+    // 参考的关键帧
+    Frame* _ref_keyframe   =nullptr; 
+    
+    bool _bad=false;  // bad flag 
+    
+    // 共视的关键帧
+    vector<Frame*> _cov_keyframes; 
     
 public:
     // inner functions 

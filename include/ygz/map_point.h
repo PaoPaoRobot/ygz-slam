@@ -54,6 +54,11 @@ public:
     cv::Mat         _descriptor;        // 描述子
     cv::KeyPoint    _keypoint;          // 关键点
     
+    unsigned long   _last_seen =0;      // 最后一次看到的关键帧
+    int             _cnt_visible =0;    // 被看到的次数
+    bool            _track_in_view =false; // 是否在视野中 
+    
+    
 }; 
 }
 

@@ -331,59 +331,72 @@ void SparseImgAlign::PrecomputeReferencePatches()
     _have_ref_patch = true;
 }
 
-void OptimizePoseCeres ( Frame* current, bool robust )
+void OptimizePoseCeres(
+    Frame* current,
+    map<unsigned long, bool>& outlier
+)
 {
     Vector6d pose;
     Vector3d r = current->_T_c_w.so3().log(), t = current->_T_c_w.translation();
     pose.head<3>() = t;
     pose.tail<3>() = r;
+    
+    // 标识每次观测是否为 outlier
+    const float chi2Mono = 5.991;
+    
+    map<unsigned long, CeresReprojectionErrorPoseOnly*> blocks;
 
     ceres::Problem problem;
     for ( auto iter = current->_obs.begin(); iter!=current->_obs.end(); iter++ )
     {
         MapPoint* map_point = Memory::GetMapPoint ( iter->first );
-        if ( iter->second[2] < 0 )
-        {
-            continue;
-        }
-        if ( robust ) {
-            problem.AddResidualBlock (
-                new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
-                    new CeresReprojectionErrorPoseOnly (
+        CeresReprojectionErrorPoseOnly* cost = new CeresReprojectionErrorPoseOnly (
                         current->_camera->Pixel2Camera2D ( iter->second.head<2>() ),
                         map_point->_pos_world
-                    )
-                ),
-                new ceres::HuberLoss ( 5 ),
-                pose.data()
-            );
-        } else {
-            problem.AddResidualBlock (
-                new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> (
-                    new CeresReprojectionErrorPoseOnly (
-                        current->_camera->Pixel2Camera2D ( iter->second.head<2>() ),
-                        map_point->_pos_world
-                    )
-                ),
-                nullptr,
-                pose.data()
-            );
-            
-        }
+        );
+        problem.AddResidualBlock (
+            new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> ( cost ),
+            nullptr, 
+            pose.data()
+        );
+        blocks[iter->first] = cost;
     }
-
+    
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    // options.minimizer_progress_to_stdout = true;
-
     ceres::Solver::Summary summary;
-    ceres::Solve ( options, &problem, &summary );
-    // cout<< summary.FullReport() << endl;
-
+    
+    Vector6d pose_backup = pose;
+    for ( size_t it =0; it<4; it++ ) {
+        int cntInlier = 0;
+        pose = pose_backup;
+        ceres::Solve ( options, &problem, &summary );
+        
+        SE3 TCW = SE3( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
+        for ( auto& curr_obs: current->_obs ) {
+            Vector3d reprojection = current->_camera->World2Camera( Memory::GetMapPoint(curr_obs.first)->_pos_world, TCW);
+            reprojection *= 1/reprojection[2];
+            Vector3d pt_obs = current->_camera->Pixel2Camera( curr_obs.second.head<2>() );
+            Vector3d delta = reprojection - pt_obs;
+            if ( delta.dot(delta) > chi2Mono ) {
+                // regard this as an outlier 
+                blocks[curr_obs.first]->SetEnable( false );
+                outlier[curr_obs.first] = true;
+            } else {
+                blocks[curr_obs.first]->SetEnable( true );
+                outlier[curr_obs.first] = false;
+                cntInlier++;
+            }
+        }
+        
+        if ( cntInlier< 10 )
+            break;
+    }
+    
     // set the pose of current
     current->_T_c_w = SE3 (
-                          SO3::exp ( pose.tail<3>() ), pose.head<3>()
-                      );
+        SO3::exp ( pose.tail<3>() ), pose.head<3>()
+    );
 }
 
 /***************************************************

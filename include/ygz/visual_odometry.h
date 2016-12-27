@@ -28,6 +28,7 @@ public:
     
     struct Option {
         double init_reproj_error_th =4; // 初始化时判断内点的最大重投影误差
+        double max_sparse_align_motion=0.5; // sparse alignment最大运动，避免出错
     } _options;
     
     VisualOdometry( System* system );
@@ -66,7 +67,7 @@ private:
     Status _last_status;                        // last status 
     
     Frame*  _curr_frame=nullptr;                // current 
-    Frame*  _ref_frame=nullptr;                 // reference 
+    Frame*  _ref_frame=nullptr;                 // reference,通常是上一个帧，和当前帧最相似 
 
     System* _system=nullptr;                    // point to full system 
     Tracker*  _tracker=nullptr;                 // tracker, most LK flow

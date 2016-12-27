@@ -352,7 +352,11 @@ bool VisualOdometry::TrackRefFrame()
         */
     }
     
-    // TODO validate the result obtained by sparse image alignment 
+    if ( TCR.log().norm() > _options.max_sparse_align_motion ) {
+        LOG(WARNING)<<"relative motion is too large, discard this frame. "<<endl;
+        return false;
+    }
+    
     _TCR_estimated = TCR;
     
     // set the pose of current frame 
@@ -365,6 +369,20 @@ bool VisualOdometry::TrackLocalMap()
 {
     // Track Local Map 还是有点微妙的
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
+    
+    // 根据 sparse align 的结果，把参考帧中的地图点投影到当毅前上
+    for ( auto& obs_pair: _ref_frame->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        Vector3d pt_curr = _curr_frame->_camera->World2Camera( mp->_pos_world, _curr_frame->_T_c_w );
+        Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( pt_curr );
+        _curr_frame->_obs[ obs_pair.first ] = Vector3d( px_curr[0], px_curr[1], pt_curr[2]);
+    }
+    
+    // 更新局部地图中的关键帧和地图点
+    _local_mapping->UpdateLocalKeyframes( _curr_frame );
+    _local_mapping->UpdateLocalMapPoints( _curr_frame );
+    
+    // 在局部地图中搜索可能的匹配点
     bool success = _local_mapping->TrackLocalMap( _curr_frame );
     
     /*
