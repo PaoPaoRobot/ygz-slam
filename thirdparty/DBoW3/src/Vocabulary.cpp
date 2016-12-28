@@ -1073,6 +1073,55 @@ void Vocabulary::load ( const cv::FileStorage &fs,
 }
 
 // --------------------------------------------------------------------------
+bool Vocabulary::loadFromBinaryFile ( const std::__cxx11::string& filename )
+{
+    const int L = 32; // descriptor length 
+    std::fstream f;
+    f.open ( filename.c_str(), std::ios_base::in|std::ios::binary );
+    unsigned int nb_nodes, size_node;
+    f.read ( ( char* ) &nb_nodes, sizeof ( nb_nodes ) );
+    f.read ( ( char* ) &size_node, sizeof ( size_node ) );
+    f.read ( ( char* ) &m_k, sizeof ( m_k ) );
+    f.read ( ( char* ) &m_L, sizeof ( m_L ) );
+    f.read ( ( char* ) &m_scoring, sizeof ( m_scoring ) );
+    f.read ( ( char* ) &m_weighting, sizeof ( m_weighting ) );
+    createScoringObject();
+
+    m_words.clear();
+    m_words.reserve ( pow ( ( double ) m_k, ( double ) m_L + 1 ) );
+    m_nodes.clear();
+    m_nodes.resize ( nb_nodes+1 );
+    m_nodes[0].id = 0;
+    char buf[size_node];
+    int nid = 1;
+    while ( !f.eof() )
+    {
+        f.read ( buf, size_node );
+        m_nodes[nid].id = nid;
+        const int* ptr= ( int* ) buf;
+        m_nodes[nid].parent = *ptr;
+        //m_nodes[nid].parent = *(const int*)buf;
+        m_nodes[m_nodes[nid].parent].children.push_back ( nid );
+        m_nodes[nid].descriptor = cv::Mat ( 1, L, CV_8U );
+        memcpy ( m_nodes[nid].descriptor.data, buf+4, L );
+        m_nodes[nid].weight = * ( float* ) ( buf+4+L );
+        if ( buf[8+L] ) // is leaf
+        {
+            int wid = m_words.size();
+            m_words.resize ( wid+1 );
+            m_nodes[nid].word_id = wid;
+            m_words[wid] = &m_nodes[nid];
+        }
+        else
+            m_nodes[nid].children.reserve ( m_k );
+        nid+=1;
+    }
+    f.close();
+    return true;
+}
+
+
+// --------------------------------------------------------------------------
 
 /**
  * Writes printable information of the vocabulary

@@ -25,9 +25,9 @@ public:
         _mat = ( cv::Mat_<double> ( 3,3 ) <<  _fx, 0, _cx, 0, _fy, _cy, 0, 0, 1 );
     }
 
-    inline Eigen::Matrix3f GetCameraMatrix() const {
-        Eigen::Matrix3f m;
-        m <<    _fx, 0, _cx,
+    inline Eigen::Matrix3d GetCameraMatrix() const {
+        Eigen::Matrix3d m;
+        m << _fx, 0, _cx,
           0, _fy, _cy,
           0, 0, 1;
         return m;

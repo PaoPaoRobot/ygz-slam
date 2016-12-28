@@ -63,6 +63,93 @@ std::vector< Frame* > Frame::GetBestCovisibilityKeyframes ( const int& N )
     return vector<Frame*>( _cov_keyframes.begin(), _cov_keyframes.begin()+N );
 }
 
+bool Frame::IsInFrustum ( MapPoint* mp, float viewingCosLimit )
+{
+    // 判断是否在可见范围内
+    return true;
+}
+
+void Frame::UpdateConnections()
+{
+    map<Frame*, int> kfCounter;
+    for ( auto& obs_pair: _obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        if ( mp->_bad ) 
+            continue;
+        for ( auto& obs_mp: mp->_obs ) {
+            if ( obs_mp.first == _id )  // 自己和自己不算共视
+                continue; 
+            kfCounter[obs_mp.first] ++;
+        }
+    }
+    
+    if ( kfCounter.empty() ) 
+        return; 
+    
+    int nmax = 0;
+    Frame* kfmax = nullptr;
+    int th = 15;
+    vector<pair<int, Frame*> > pairs; 
+    pairs.reserve( kfCounter.size() );
+    
+    // 寻找共视程度最好的帧
+    for ( auto& kf_pair: kfCounter ) {
+        if ( kf_pair.second > nmax ) {
+            nmax = kf_pair.second; 
+            kfmax = kf_pair.first;
+        }
+        if ( kf_pair.second>=th ) {
+            // 共视点大于阈值
+            pairs.push_back( make_pair(kf_pair.first, kf_pair.second) );
+            kf_pair->AddConnection(); 
+        }
+    }
+    
+    if ( pairs.empty() ) {
+        // 没有超过阈值的共视帧，以最大的为准
+        pairs.push_back( make_pair(nmax, kfmax ));
+        kfmax->AddConnection( this, nmax );
+    }
+    
+    sort( pairs.begin(), pairs.end() );
+    list<Frame*> lKFs;
+    list<int> lWs;
+    for ( size_t i=0; i<pairs.size(); i++ ) {
+        lKFs.push_front( pairs[i].second );
+        lWs.push_front( pairs[i].first );
+    }
+    
+    // 更新 cov 和 essential 
+    _connected_keyframe_weights = kfCounter;
+    _cov_keyframes = vector<Frame*> (lKFs.begin(), lKFs.end());
+    _cov_weights = vector<int>( lWs.begin(), lWs.end() );
+    
+    // Essential 待议
+}
+
+void Frame::AddConnection ( Frame* kf, const int& weight )
+{
+    if ( !_connected_keyframe_weights.count(kf) )
+        _connected_keyframe_weights[kf] = weight;
+    else
+        _connected_keyframe_weights[kf] = weight;
+}
+
+void Frame::UpdateBestCovisibles()
+{
+    vector<pair<int, Frame*>> pairs; 
+    pairs.reserve( _connected_keyframe_weights.size() );
+    
+    for ( auto& kf_weights: _connected_keyframe_weights ) 
+        pairs.push_back( make_pair(kf_weights.second, kf_weights.first ) );
+    sort( pairs.begin(), pairs.end() );
+    
+    for ( auto riter = pairs.rbegin(); riter!=pairs.rend(); riter++ ) {
+        _cov_keyframes.push_back( riter->second );
+        _cov_weights.push_back( riter->first );
+    }
+}
+
 
 PinholeCamera* Frame::_camera = nullptr;
 

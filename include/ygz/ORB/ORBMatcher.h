@@ -16,15 +16,24 @@ public:
     struct Options {
         int th_high = 100;
         int th_low = 30;
-        int histo_length = 30;
         float ratio = 3.5;
     } _options;
+    
+    static const int HISTO_LENGTH = 30;
     
     // Constructor 
     ORBMatcher(float nnratio=0.6, bool checkOri=true);
     
     // Computes the Hamming distance between two ORB descriptors
     static int DescriptorDistance(const cv::Mat &a, const cv::Mat &b);
+    
+    // 匹配特征点以建立三角化结果
+    // 给定两帧之间的Fundamental，计算 matched points 
+    int SearchForTriangulation( 
+        Frame* kf1, Frame* kf2, const Matrix3d& F12, 
+        vector< pair<size_t, size_t> >& matched_points, 
+        const bool& onlyStereo = false
+    );
     
     // 在Keyframe之间搜索匹配情况
     // int SearchByBoW( Frame * kf1, Frame* kf2 );

@@ -59,6 +59,8 @@ find_package( Pangolin REQUIRED )
 include_directories( ${Pangolin_INCLUDE_DIRS} )
 
 # TODO: add gtsam and other libs you will use
+# dbow3 
+include_directories( ${PROJECT_SOURCE_DIR}/thirdparty/DBoW3/src )
 
 set( THIRD_PARTY_LIBS 
     ${OpenCV_LIBS}
@@ -72,6 +74,8 @@ set( THIRD_PARTY_LIBS
     ${CSPARSE_LIBRARY}
     ${CERES_LIBRARIES}
     ${Pangolin_LIBRARIES}
+    
+    ${PROJECT_SOURCE_DIR}/thirdparty/DBoW3/build/src/libDBoW3.so
 )
 
 ############### executable ######################

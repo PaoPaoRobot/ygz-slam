@@ -7,6 +7,9 @@
 #include "ygz/memory.h"
 #include "ygz/utils.h"
 #include "ygz/optimizer.h"
+#include "ygz/feature_detector.h"
+#include "ygz/ORB/ORBExtractor.h"
+#include "ygz/ORB/ORBMatcher.h"
 
 using namespace ygz::utils;
 
@@ -22,15 +25,21 @@ LocalMapping::LocalMapping()
     _grid_rows = ceil(double(_image_height)/_cell_size);
     _grid_cols = ceil(double(_image_width)/_cell_size);
     _pyramid_level = Config::get<int>("frame.pyramid");
+    
+    _detector = new FeatureDetector();
+    _orb_extractor = new ORBExtractor();
 }
 
 void LocalMapping::AddKeyFrame ( Frame* keyframe )
 {
     assert( keyframe->_is_keyframe==true );
+    _new_keyframes.push_back( keyframe );
+    
     // _local_keyframes.push_back( keyframe->_id );
-    _local_keyframes.insert( keyframe->_id );
+    // _local_keyframes.insert( keyframe->_id );
     
     // TODO 考虑把新增的keyframe中的地图点存储起来，并去掉视野外的点
+    /*
     for ( auto& obs: keyframe->_obs ) {
         MapPoint* map_point = Memory::GetMapPoint( obs.first );
         if ( map_point->_bad ) continue;
@@ -51,6 +60,7 @@ void LocalMapping::AddKeyFrame ( Frame* keyframe )
     
     // call Local Bundle Adjustment
     // LocalBA( keyframe );
+    */
 }
 
 void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
@@ -58,7 +68,6 @@ void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
     assert( Memory::GetMapPoint(map_point_id) != nullptr );
     _local_map_points.insert( map_point_id );
 }
-
 
 // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计
 // 这一步有点像光流
@@ -566,6 +575,110 @@ void LocalMapping::UpdateLocalMapPoints ( Frame* current )
     }
 }
 
+void LocalMapping::Run()
+{
+    // 调通之后改成多线程形式
+    if ( _new_keyframes.size() != 0 ) {
+        // 将关键帧插入 memory 并处理共视关系
+        ProcessNewKeyFrame(); 
+        
+        // 剔除不合格的 map points 
+        MapPointCulling();
+        
+        // 通过相邻帧间的特征匹配新建一些地图点
+        CreateNewMapPoints();
+    }
+}
+
+void LocalMapping::ProcessNewKeyFrame()
+{
+    _current_kf = _new_keyframes.front();
+    _new_keyframes.pop_front();
+    
+    // 提取该帧的特征点
+    _detector->SetExistingFeatures( _current_kf );
+    _detector->Detect( _current_kf, false );
+    
+    // 计算特征点描述，因为在关键帧层级上计算所以计算量不大
+    _orb_extractor->Compute( _current_kf );
+    
+    // 更新此关键帧观测到的地图点
+    for ( auto& obs_pair: _current_kf->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        if ( mp->_bad )
+            continue;
+        // 查看此地图点的观测中是否含有此关键帧
+        if ( mp->_obs.find(_current_kf->_id) == mp->_obs.end()) {
+            // 没有此关键帧的观测数据
+            mp->_obs[_current_kf->_id] = obs_pair.second;
+            // TODO 更新特征点方向和最佳描述子
+        } else {
+            // 新的特征点？
+            // 但是只在双目和rgbd模式才能单帧生成新的特征点
+        }
+    }
+    
+    // 更新关键帧之间的连接关系：covisibility 和 essential 
+    // Essential 现在还没实现，因为主要在loop closure里用
+    _current_kf->UpdateConnections();
+}
+
+void LocalMapping::MapPointCulling()
+{
+    auto it = _recent_mappoints.begin();
+    int th_obs = 2;
+    
+    while( it!=_recent_mappoints.end() ) {
+        if ( it->_bad ) {
+            it = _recent_mappoints.erase( it );
+        } else if ( it->GetFoundRatio() < 0.25 ) {
+            // 观测程度不够
+            it->_bad = true; 
+            it = _recent_mappoints.erase( it );
+        } else if ( _current_kf->_id - it->_first_observed_frame >= 2 && it->_cnt_found <= th_obs ) {
+            // 从2个帧前拿到，但观测数量太少
+            it->_bad = true; 
+            it = _recent_mappoints.erase( it );
+        } else if ( _current_kf->_id - it->_first_observed_frame >= 2 ) {
+            // 从三个帧前拿到但被没有剔除，认为是较好的点，但不再追踪
+            it = _recent_mappoints.erase( it );
+        } else {
+            it++;
+        }
+    }
+}
+
+void LocalMapping::CreateNewMapPoints()
+{
+    int nn = 20;
+    vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
+    ORBMatcher matcher(0.6, false);
+    
+    Vector3d cam_current = _current_kf->GetCamCenter();
+    Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();
+    
+    // 计算当前关键帧和别的关键帧之间的特征匹配关系
+    for ( size_t i=0; i<neighbour_kf.size(); i++ ) {
+        
+        Frame* f2 = neighbour_kf[i];
+        Vector3d baseline = cam_current - f2->GetCamCenter();
+        double mean_depth, min_depth; 
+        f2->GetMeanAndMinDepth( mean_depth, min_depth );
+        double ratio_baseline_meandepth = baseline/mean_depth;
+        if ( ratio_baseline_meandepth < 0.01 ) // 特别远？
+            continue;
+        
+        // 通过极线去计算匹配关系
+        // Fundamental 矩阵
+        SE3 T12 = _current_kf->_T_c_w * f2->_T_c_w.inverse(); 
+        // F12 = K^{-T} t_12^x R_12 K^{-1} 
+        Eigen::Matrix3d F12 = K_inv.transpose() * SO3::hat( T12.translation() )*T12.rotation_matrix() * K_inv;
+        
+        matcher.SearchForTriangulation();
+        
+    }
+    
+}
 
     
 }

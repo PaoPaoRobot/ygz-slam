@@ -15,7 +15,8 @@ namespace ygz {
  * 以及在当前帧视野范围内的地图点
  * 请注意可能有一些候选的地图点，它们的三维位置尚未确定，但二维位置由某个关键帧给出
  ****************************************************************/
-
+class FeatureDetector;
+class ORBExtractor;
 class LocalMapping {
     
 //class Frame;
@@ -27,6 +28,7 @@ class LocalMapping {
     
 public:
     LocalMapping();
+    
     // 向局部地图增加一个关键帧，同时向局部地图中添加此关键帧关联的地图点
     void AddKeyFrame( Frame* keyframe );
     
@@ -42,6 +44,17 @@ public:
     // 更新局部地图点
     void UpdateLocalMapPoints( Frame* current );
     
+    // local mapping 优化线程
+    void Run();
+    
+    // 处理新的关键帧
+    void ProcessNewKeyFrame(); 
+    
+    // 删除追踪不好的地图点
+    void MapPointCulling(); 
+    
+    // 新建一些地图点
+    void CreateNewMapPoints(); 
     
 private:
     // 测试某个点是否可以和当前帧匹配上
@@ -52,9 +65,19 @@ private:
     // 用于刚加入新的普通帧时的优化
     void LocalBA( Frame* current ); 
     
-    // 局部关键帧和地图点
+    // 局部关键帧和地图点，用于tracking
     set<Frame*> _local_keyframes;        
     set<MapPoint*> _local_map_points;   
+    
+    // 局部关键帧和地图点，用于优化
+    list<Frame*> _new_keyframes;
+    list<MapPoint*> _new_mappoints;
+    
+    // 当前正在处理的关键帧
+    Frame* _current_kf;
+    
+    // 新增的一些地图点
+    list<MapPoint*> _recent_mappoints;
     
     // 匹配局部地图用的 patch
     uchar _patch[WarpPatchSize*WarpPatchSize];
@@ -70,6 +93,10 @@ private:
     int _grid_rows=0, _grid_cols=0;
     int _pyramid_level=0;
     
+    FeatureDetector* _detector=nullptr;         // feature detection 
+    ORBExtractor* _orb_extractor =nullptr;      // ORB 提取
+    
+    // 这个网格目前还没用上
     vector<vector<MatchPointCandidate>> _grid;  // 候选点网格,每个格点有一串的候选点
 };
 }

@@ -1,5 +1,6 @@
 #include "ygz/ORB/ORBMatcher.h"
 #include "ygz/frame.h"
+#include <ygz/camera.h>
 
 namespace ygz {
     
@@ -49,6 +50,50 @@ bool ORBMatcher::CheckFrameDescriptors (
             inliers[i] = true;
         else 
             inliers[i] = false;
+    }
+}
+
+int ORBMatcher::SearchForTriangulation ( 
+    Frame* kf1, 
+    Frame* kf2, 
+    const Matrix3d& F12, 
+    vector< pair< size_t, size_t > >& matched_points, 
+    const bool& onlyStereo )
+{
+    DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
+    DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
+    
+    // 极点像素坐标
+    Vector3d c2_px = kf2->_camera->World2Pixel( kf1->GetCamCenter(), kf2->_T_c_w );
+
+    // 计算匹配
+    int matches = 0;
+    vector<bool> matched2( kf2->_map_point_candidates.size(), false ); 
+    vector<int> matches12( kf1->_map_point_candidates.size(), -1 );
+    vector<int> rotHist[ HISTO_LENGTH ];
+    for ( int i=0; i<HISTO_LENGTH; i++ ) {
+        rotHist[i].reserve(500);
+    }
+    const float factor = 1.0f/HISTO_LENGTH;
+    
+    // 将属于同一层的ORB进行匹配，利用字典加速
+    DBoW3::FeatureVector::const_iterator f1it = fv1.begin();
+    DBoW3::FeatureVector::const_iterator f2it = fv2.begin();
+    DBoW3::FeatureVector::const_iterator f1end = fv1.end();
+    DBoW3::FeatureVector::const_iterator f2end = fv2.end();
+    
+    while( f1it!=f1end && f2it!=f2end ) {
+        if ( f1it->first == f2it->first ) {
+            // 同属一个节点
+            for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
+                const size_t idx1 = f1it->second[i1]; 
+                // 这里略绕，稍微放一放，等我把特征点的描述搞定
+            }
+        } else if ( f1it->first < f2it->first ) {
+            f1it = fv1.lower_bound( f2it->first );
+        } else {
+            f2it = fv2.lower_bound( f1it->first );
+        }
     }
 }
 

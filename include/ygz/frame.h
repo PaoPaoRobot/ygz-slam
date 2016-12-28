@@ -1,13 +1,17 @@
 #ifndef YGZ_FRAME_H
 #define YGZ_FRAME_H
 
-
 #include "ygz/common_include.h"
+
+// for DBoW3 
+#include "BowVector.h"
+#include "FeatureVector.h"
 
 namespace ygz {
     
 // 前置声明
 class PinholeCamera; 
+class MapPoint;
 
 // Frame，帧
 // 帧是一种数据对象，所以本身使用Struct，成员都使用public
@@ -75,11 +79,26 @@ public:
     // 计算观测到的地图点的平均深度和最小深度
     bool GetMeanAndMinDepth( double& mean_depth, double& min_depth ); 
     
+    // 获得相机中心
+    Vector3d GetCamCenter() const {
+        return _T_c_w.inverse().translation();
+    }
+    
     // 得到共视关键最好的N个帧
     vector<Frame*> GetBestCovisibilityKeyframes( const int & N );
     
     // 判断某个地图点的投影是否在视野内，同时检查其夹角
     bool IsInFrustum( MapPoint* mp, float viewingCosLimit=0.5 );
+    
+    // 添加 Covisibility 连接
+    // 权重为共视点数量
+    void AddConnection( Frame* kf, const int& weight );
+    
+    // 更新 Covisibility 和 Essential 关系
+    void UpdateConnections(); 
+    
+    // 更新共视帧的情况，根据 _connected_keyframe_weights 计算
+    void UpdateBestCovisibles(); 
     
 public:
     // data 
@@ -127,7 +146,14 @@ public:
     bool _bad=false;  // bad flag 
     
     // 共视的关键帧
-    vector<Frame*> _cov_keyframes; 
+    map<Frame*, int> _connected_keyframe_weights;
+    // 排序后的结果，从大到小
+    vector<Frame*> _cov_keyframes;      // 按照权重排序后的关键帧
+    vector<int> _cov_weights;           // 排序后的权重
+    
+    // DBoW 
+    DBoW3::BowVector _bow_vec;
+    DBow3::FeatureVector _feature_vec;
     
 public:
     // inner functions 

@@ -21,8 +21,15 @@ struct ExtraObservation {
 struct MapPoint {
 public:
     MapPoint()  {}
+    
     // 获得某个观测的相机坐标值
     Vector3d GetObservedPt( const unsigned long& keyframe_id );
+    
+    // 获得匹配到/看到的比例
+    float GetFoundRatio() const {
+        return (float) _cnt_found/_cnt_visible;
+    }
+        
     
     // for debug use
     void PrintInfo() {
@@ -56,6 +63,7 @@ public:
     
     unsigned long   _last_seen =0;      // 最后一次看到的关键帧
     int             _cnt_visible =0;    // 被看到的次数
+    int             _cnt_found =0;      // 被匹配到的次数
     bool            _track_in_view =false; // 是否在视野中 
     
     

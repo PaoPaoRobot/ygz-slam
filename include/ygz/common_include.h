@@ -25,6 +25,9 @@ using Eigen::Vector3d;
 using Eigen::Matrix2f;
 using Eigen::Matrix3f;
 using Eigen::Matrix4f;
+using Eigen::Matrix2d;
+using Eigen::Matrix3d;
+using Eigen::Matrix4d;
 // other things I need in optimiztion 
 typedef Eigen::Matrix<double, 6, 1> Vector6d; 
 
