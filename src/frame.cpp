@@ -77,9 +77,10 @@ void Frame::UpdateConnections()
         if ( mp->_bad ) 
             continue;
         for ( auto& obs_mp: mp->_obs ) {
-            if ( obs_mp.first == _id )  // 自己和自己不算共视
+            // 自己和自己不算共视
+            if ( obs_mp.first == _id )  
                 continue; 
-            kfCounter[obs_mp.first] ++;
+            kfCounter[ Memory::GetFrame(obs_mp.first) ] ++;
         }
     }
     
@@ -100,8 +101,8 @@ void Frame::UpdateConnections()
         }
         if ( kf_pair.second>=th ) {
             // 共视点大于阈值
-            pairs.push_back( make_pair(kf_pair.first, kf_pair.second) );
-            kf_pair->AddConnection(); 
+            pairs.push_back( make_pair(kf_pair.second, kf_pair.first) );
+            // kf_pair.AddConnection(); 
         }
     }
     

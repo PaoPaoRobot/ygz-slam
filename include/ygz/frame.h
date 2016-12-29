@@ -153,7 +153,7 @@ public:
     
     // DBoW 
     DBoW3::BowVector _bow_vec;
-    DBow3::FeatureVector _feature_vec;
+    DBoW3::FeatureVector _feature_vec;
     
 public:
     // inner functions 

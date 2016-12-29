@@ -34,6 +34,7 @@ public:
         const vector<int> & u_max
     );
     
+private:
     void ComputeOrbDescriptor(
         const cv::KeyPoint& kpt,
         const Mat& img, 
@@ -43,7 +44,6 @@ public:
     
 protected:
     std::vector<int> _umax;
-    // cv::Ptr<cv::ORB> _orb ;
     vector<cv::Point> pattern;
 };
 

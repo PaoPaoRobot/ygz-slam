@@ -66,7 +66,7 @@ void LocalMapping::AddKeyFrame ( Frame* keyframe )
 void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
 {
     assert( Memory::GetMapPoint(map_point_id) != nullptr );
-    _local_map_points.insert( map_point_id );
+    _local_map_points.insert( Memory::GetMapPoint(map_point_id) );
 }
 
 // 寻找地图与当前帧之间的匹配，当前帧需要有位姿的粗略估计
@@ -102,7 +102,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 candidate._observed_keyframe = obs_pair.first;
                 candidate._map_point = mp->_id;
                 candidate._keyframe_pixel = obs_pair.second.head<2>();
-                candidate._projected_pixel = obs_pair.head<2>();
+                candidate._projected_pixel = obs_pair.second.head<2>();
                 int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
                             + static_cast<int> ( px_curr[0]/_cell_size );
                 _grid[k].push_back( candidate );
@@ -113,7 +113,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     // 遍历local map points，寻找在当前帧视野范围内，而且能匹配上patch的那些点
     int cntCandidate =0;
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
-        MapPoint* map_point = Memory::GetMapPoint( *it );
+        MapPoint* map_point = *it;
         
         if ( map_point->_bad == true )
             continue;
@@ -136,7 +136,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 candidate._observed_keyframe = obs_pair.first;
                 candidate._map_point = map_point->_id;
                 candidate._keyframe_pixel = obs_pair.second.head<2>();
-                candidate._projected_pixel = obs_pair.head<2>();
+                candidate._projected_pixel = obs_pair.second.head<2>();
                 int k = static_cast<int> ( px_curr[1]/_cell_size ) *_grid_cols
                             + static_cast<int> ( px_curr[0]/_cell_size );
                 _grid[k].push_back( candidate );
@@ -629,17 +629,17 @@ void LocalMapping::MapPointCulling()
     int th_obs = 2;
     
     while( it!=_recent_mappoints.end() ) {
-        if ( it->_bad ) {
+        if ( (*it)->_bad ) {
             it = _recent_mappoints.erase( it );
-        } else if ( it->GetFoundRatio() < 0.25 ) {
+        } else if ( (*it)->GetFoundRatio() < 0.25 ) {
             // 观测程度不够
-            it->_bad = true; 
+            (*it)->_bad = true; 
             it = _recent_mappoints.erase( it );
-        } else if ( _current_kf->_id - it->_first_observed_frame >= 2 && it->_cnt_found <= th_obs ) {
+        } else if ( _current_kf->_id - (*it)->_first_observed_frame >= 2 && (*it)->_cnt_found <= th_obs ) {
             // 从2个帧前拿到，但观测数量太少
-            it->_bad = true; 
+            (*it)->_bad = true; 
             it = _recent_mappoints.erase( it );
-        } else if ( _current_kf->_id - it->_first_observed_frame >= 2 ) {
+        } else if ( _current_kf->_id - (*it)->_first_observed_frame >= 2 ) {
             // 从三个帧前拿到但被没有剔除，认为是较好的点，但不再追踪
             it = _recent_mappoints.erase( it );
         } else {
@@ -664,7 +664,7 @@ void LocalMapping::CreateNewMapPoints()
         Vector3d baseline = cam_current - f2->GetCamCenter();
         double mean_depth, min_depth; 
         f2->GetMeanAndMinDepth( mean_depth, min_depth );
-        double ratio_baseline_meandepth = baseline/mean_depth;
+        double ratio_baseline_meandepth = baseline.norm()/mean_depth;
         if ( ratio_baseline_meandepth < 0.01 ) // 特别远？
             continue;
         
@@ -674,7 +674,7 @@ void LocalMapping::CreateNewMapPoints()
         // F12 = K^{-T} t_12^x R_12 K^{-1} 
         Eigen::Matrix3d F12 = K_inv.transpose() * SO3::hat( T12.translation() )*T12.rotation_matrix() * K_inv;
         
-        matcher.SearchForTriangulation();
+        // matcher.SearchForTriangulation();
         
     }
     

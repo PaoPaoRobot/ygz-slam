@@ -64,7 +64,7 @@ int ORBMatcher::SearchForTriangulation (
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
     
     // 极点像素坐标
-    Vector3d c2_px = kf2->_camera->World2Pixel( kf1->GetCamCenter(), kf2->_T_c_w );
+    Vector2d c2_px = kf2->_camera->World2Pixel( kf1->GetCamCenter(), kf2->_T_c_w );
 
     // 计算匹配
     int matches = 0;
