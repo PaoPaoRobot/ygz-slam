@@ -7,6 +7,7 @@
 #include "ygz/feature_detector.h"
 
 #include <opencv2/features2d/features2d.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std; 
 using namespace cv; 
@@ -35,69 +36,90 @@ int main ( int argc, char** argv )
     
     ygz::Config::setParameterFile("./config/default.yaml");
     
-    int index = 1;
-    Mat color = imread( string(argv[1])+string("/")+rgbFiles[index] );
+    int index1 = 3;
+    int index2 = 4;
     
-    // original orb 
-    Ptr<ORB> orb_cv = ORB::create( 500, 2.0f, 3 );
-    vector<KeyPoint> keypoints_cv;
-    Mat descriptors_cv; 
-    orb_cv->detectAndCompute( color, Mat(), keypoints_cv, descriptors_cv );
-    // orb_cv->descriptorSize();
-    // (*orb_cv)( color, Mat(), keypoints_cv );
+    Mat color1 = imread( string(argv[1])+string("/")+rgbFiles[index1] );
+    Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index2] );
     
-    // changed orb
-    ygz::Frame frame; 
-    frame._color = color;
-    frame.InitFrame();
+    ygz::ORBExtractor orb;
+    ygz::Frame frame1, frame2;
+    frame1._color = color1;
+    frame2._color = color2;
+    frame1.InitFrame();
+    frame2.InitFrame();
     
     ygz::FeatureDetector detector;
-    detector.Detect( &frame );
-    ygz::ORBExtractor orb_ygz; 
-    orb_ygz.Compute( &frame );
+    detector.Detect( &frame1 );
+    detector.Detect( &frame2 );
     
-    Mat features_cv, features_ygz;
-    cv::drawKeypoints( frame._color, keypoints_cv, features_cv );
-    vector<KeyPoint> kp_ygz; 
-    for ( KeyPoint& kp: frame._map_point_candidates )
-        kp_ygz.push_back( kp );
+    orb.Compute( &frame1 );
+    orb.Compute( &frame2 );
     
-    cv::drawKeypoints( frame._color, kp_ygz, features_ygz );
+    // call bf matcher to match them 
+    Mat desp1, desp2; 
+    desp1 = frame1.GetAllDescriptors();
+    desp2 = frame2.GetAllDescriptors();
     
-    // cout<<descriptors_cv<<endl;
-    Mat desp_ygz( frame._map_point_candidates.size(), 32, frame._descriptors.front().type() );
-    int i =0;
-    for ( Mat& desp: frame._descriptors )  {
-        desp.copyTo( desp_ygz.row(i++) );
-        // cout<<desp<<endl;
-    }
+    cout<<desp1<<endl;
+    cout<<desp2<<endl;
     
-    cout<<desp_ygz.rows<<","<<desp_ygz.cols<<endl;
-    
-    imshow("features cv", features_cv );
-    imshow("features ygz", features_ygz );
-    waitKey(0);
-    
-    // compute the descriptors given the keypoints from ygz 
-    Mat desp_from_ygz_keypoints;
-    orb_cv->compute( frame._color, kp_ygz, desp_from_ygz_keypoints );
-    
-    cout<<desp_from_ygz_keypoints.row(0) << endl;
-    cout<<frame._descriptors.front()<<endl;
-    
-    // match them ? 
-    cv::BFMatcher matcher;
+    cv::BFMatcher matcher( cv::NORM_HAMMING, true );
     vector<DMatch> matches;
-    matcher.match( desp_ygz, desp_from_ygz_keypoints, matches );
+    matcher.match( desp1, desp2, matches );
     cout<<"matches: "<<matches.size()<<endl;
     
     for( DMatch& m:matches ) {
         cout<<"matches: "<<m.queryIdx<<","<<m.trainIdx<<endl;
     }
-    /*
+    
+    vector<KeyPoint> kp1, kp2; 
+    for ( KeyPoint& kp: frame1._map_point_candidates ) {
+        kp1.push_back( kp );
+    }
+    for ( KeyPoint& kp: frame2._map_point_candidates ) {
+        kp2.push_back( kp );
+    }
+    
     Mat img_show;
-    cv::drawMatches( frame._color, kp_ygz, frame._color, kp_ygz, matches, img_show );
+    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, matches, img_show );
     imshow("matches", img_show);
     waitKey(0);
-    */
+    
+    // select good matches 
+    float min_dis = min_element( matches.begin(), matches.end(), 
+        [](const DMatch& m1, const DMatch& m2) {return m1.distance<m2.distance;}
+    )->distance;
+    cout<<"min dis = "<<min_dis<<endl;
+    
+    vector<DMatch> good;
+    for ( DMatch& m:matches ) {
+        if ( m.distance < 5.0*min_dis )
+            good.push_back(m);
+    }
+    
+    Mat img_show_good;
+    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, good, img_show_good );
+    imshow("good matches", img_show_good);
+    waitKey(0);
+    
+    
+    // 原生ORB是什么样的？
+    // origin ORB 
+    kp1.clear();
+    kp2.clear();
+    Ptr<ORB> orb_cv = ORB::create(500, 2.0f, 3, 20 );
+    desp1 = Mat(); desp2 = Mat(); 
+    orb_cv->detect( frame1._color, kp1 );
+    orb_cv->detect( frame2._color, kp2 );
+    orb_cv->compute( frame1._color, kp1, desp1 );
+    orb_cv->compute( frame2._color, kp2, desp2 );
+    matcher.match( desp1, desp2, matches );
+    Mat img_show_cv;
+    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, matches, img_show_cv );
+    imshow("matches cv", img_show_cv );
+    waitKey(0);
+    
+    
+    
 }

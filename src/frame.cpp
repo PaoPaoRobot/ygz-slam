@@ -151,6 +151,17 @@ void Frame::UpdateBestCovisibles()
     }
 }
 
+Mat Frame::GetAllDescriptors()
+{
+    Mat alldesp( _descriptors.size(), 32, CV_8U );
+    int index = 0;
+    for ( Mat& desp: _descriptors ) {
+        desp.copyTo( alldesp.row(index) );
+        index++;
+    }
+    return alldesp;
+}
+
 
 PinholeCamera* Frame::_camera = nullptr;
 

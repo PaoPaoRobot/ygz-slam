@@ -276,9 +276,19 @@ ORBExtractor::ORBExtractor()
         ++v0;
     }
     
+    // Make sure we are symmetric
+    for (v = HALF_PATCH_SIZE, v0 = 0; v >= vmin; --v)
+    {
+        while (_umax[v0] == _umax[v0 + 1])
+            ++v0;
+        _umax[v] = v0;
+        ++v0;
+    }
+    
     const cv::Point* pattern0 = (const cv::Point*)bit_pattern_31_;
     const int npoints = 512;
     std::copy(pattern0, pattern0 + npoints, std::back_inserter(pattern));
+    
     // _orb = cv::ORB::create();
 }
     
@@ -350,13 +360,17 @@ void ORBExtractor::Compute ( Frame* frame )
 {
     // LOG(INFO)<<frame->_id<<endl;
     for ( auto iter = frame->_map_point_candidates.begin(); iter!=frame->_map_point_candidates.end(); iter++) {
+    // auto iter = frame->_map_point_candidates.begin();
         cv::KeyPoint& kp = *iter;
         int level = kp.octave; 
         kp.pt.x /= (1<<level);
         kp.pt.y /= (1<<level);
-        kp.angle = IC_Angle( frame->_pyramid[0], kp.pt, _umax );
+        kp.angle = IC_Angle( frame->_pyramid[level], kp.pt, _umax );
+        // cout<<"angle = "<<kp.angle<<endl;
         Mat descriptor = Mat::zeros( 1, 32, CV_8UC1);
         ComputeOrbDescriptor( kp, frame->_pyramid[level], &pattern[0], descriptor.data );
+        cout<<descriptor<<endl;
+        
         kp.pt.x *= (1<<level);
         kp.pt.y *= (1<<level);
         frame->_descriptors.push_back( descriptor );
@@ -376,29 +390,48 @@ void ORBExtractor::ComputeOrbDescriptor (
     const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
     const int step = (int)img.step;
 
+    for ( size_t i=0; i<16; i++ ) {
+        cout<<pattern[i]<<endl;
+    }
+    
+    // auto GET_VALUE = [&](const int & idx ) { 
+        // cout << cvRound(pattern[idx].x*b + pattern[idx].y*a)<<", "<< 
+               // cvRound(pattern[idx].x*a - pattern[idx].y*b) << endl;
+        // return 
+        // center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + 
+               // cvRound(pattern[idx].x*a - pattern[idx].y*b)]; };
+               
     #define GET_VALUE(idx) \
         center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + \
-               cvRound(pattern[idx].x*a - pattern[idx].y*b)]
+               cvRound(pattern[idx].x*a - pattern[idx].y*b)]; 
 
 
     for (int i = 0; i < 32; ++i, pattern += 16)
     {
         int t0, t1, val;
-        t0 = GET_VALUE(0); t1 = GET_VALUE(1);
+        t0 = GET_VALUE(0); 
+        t1 = GET_VALUE(1);
         val = t0 < t1;
-        t0 = GET_VALUE(2); t1 = GET_VALUE(3);
+        t0 = GET_VALUE(2); 
+        t1 = GET_VALUE(3);
         val |= (t0 < t1) << 1;
-        t0 = GET_VALUE(4); t1 = GET_VALUE(5);
+        t0 = GET_VALUE(4); 
+        t1 = GET_VALUE(5);
         val |= (t0 < t1) << 2;
-        t0 = GET_VALUE(6); t1 = GET_VALUE(7);
+        t0 = GET_VALUE(6); 
+        t1 = GET_VALUE(7);
         val |= (t0 < t1) << 3;
-        t0 = GET_VALUE(8); t1 = GET_VALUE(9);
+        t0 = GET_VALUE(8); 
+        t1 = GET_VALUE(9);
         val |= (t0 < t1) << 4;
-        t0 = GET_VALUE(10); t1 = GET_VALUE(11);
+        t0 = GET_VALUE(10); 
+        t1 = GET_VALUE(11);
         val |= (t0 < t1) << 5;
-        t0 = GET_VALUE(12); t1 = GET_VALUE(13);
+        t0 = GET_VALUE(12); 
+        t1 = GET_VALUE(13);
         val |= (t0 < t1) << 6;
-        t0 = GET_VALUE(14); t1 = GET_VALUE(15);
+        t0 = GET_VALUE(14); 
+        t1 = GET_VALUE(15);
         val |= (t0 < t1) << 7;
 
         desc[i] = (uchar)val;

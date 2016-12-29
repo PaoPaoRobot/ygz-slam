@@ -100,6 +100,9 @@ public:
     // 更新共视帧的情况，根据 _connected_keyframe_weights 计算
     void UpdateBestCovisibles(); 
     
+    // 获得所有特征点的描述子
+    cv::Mat GetAllDescriptors(); 
+    
 public:
     // data 
     // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧

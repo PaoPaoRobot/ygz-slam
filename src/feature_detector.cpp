@@ -73,11 +73,10 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         LOG ( INFO ) << "keypoints in level "<<l<<" : "<<kps.size() <<endl;
         for ( cv::KeyPoint& kp: kps )
         {
-            /*
-            if ( utils::IsInside( Vector2d(kp.pt.x, kp.pt.y), frame->_pyramid[l]) == false ) {
+            if ( utils::IsInside( Vector2d(kp.pt.x, kp.pt.y), frame->_pyramid[l], 20 ) == false ) {
                 continue;
             }
-            */
+            
             const int gy = static_cast<int> ( ( kp.pt.y*scale ) /_cell_size );
             const int gx = static_cast<int> ( ( kp.pt.x*scale ) /_cell_size );
             const size_t k = gy*_grid_cols+gx;
