@@ -44,6 +44,11 @@ init.min_inliers: 40
 feature.cell: 20
 feature.detection_threshold: 20.0
 
+# 特征匹配参数
+matcher.th_low: 60
+matcher.th_high: 100
+matcher.knnRatio: 0.8
+
 # 关键帧参数
 vo.keyframe.min_rot: 0.2
 vo.keyframe.min_trans: 0.2

@@ -4,9 +4,11 @@
 
 namespace ygz {
     
-ORBMatcher::ORBMatcher ( float nnratio, bool checkOri ): _nnRatio(nnratio), _checkOrientation( checkOri )
+ORBMatcher::ORBMatcher ()
 {
-
+    _options.th_low = Config::get<int>("matcher.th_low");
+    _options.th_high = Config::get<int>("matcher.th_high");
+    _options.knnRatio = Config::get<int>("matcher.knnRatio");
 }
 
 int ORBMatcher::DescriptorDistance ( const Mat& a, const Mat& b )
@@ -46,7 +48,7 @@ bool ORBMatcher::CheckFrameDescriptors (
     best_dist = best_dist<_options.th_high ? best_dist:_options.th_high; 
     for ( size_t i=0; i<distance.size(); i++ ) {
         // LOG(INFO) << "dist = "<<distance[i]<<endl;
-        if ( distance[i] < _options.ratio*best_dist ) 
+        if ( distance[i] < _options.knnRatio*best_dist ) 
             inliers[i] = true;
         else 
             inliers[i] = false;
@@ -97,6 +99,146 @@ int ORBMatcher::SearchForTriangulation (
     }
 }
 
+// 利用 Bag of Words 加速匹配
+int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
+{
+    DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
+    DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
+    
+    int cnt_matches = 0;
+    
+    vector<int> rotHist[HISTO_LENGTH]; // rotation 的统计直方图
+    for ( int i=0;i <HISTO_LENGTH; i++ )
+        rotHist[i].reserve(500);
+    float factor = 1.0f/HISTO_LENGTH;
+    
+    DBoW3::FeatureVector::const_iterator f1it = fv1.begin();
+    DBoW3::FeatureVector::const_iterator f2it = fv2.begin();
+    DBoW3::FeatureVector::const_iterator f1end = fv1.end();
+    DBoW3::FeatureVector::const_iterator f2end = fv2.end();
+       
+    while( f1it!=f1end && f2it!=f2end ) {
+        if ( f1it->first == f2it->first ) {
+            const vector<unsigned int> indices_f1 = f1it->second;
+            const vector<unsigned int> indices_f2 = f2it->second;
+            
+            // 遍历 f1 中该 node 的特征点
+            for ( size_t if1 = 0; if1<indices_f1.size(); if1++ ) {
+                const unsigned int real_idx_f1 = indices_f1[if1];
+                Mat desp_f1 = kf1->_descriptors[real_idx_f1];
+                int bestDist1 = 256;  // 最好的距离
+                int bestIdxF2 = -1;
+                int bestDist2 = 256;  // 第二好的距离
+                
+                for ( size_t if2=0; if2<indices_f2.size(); if2++) {
+                    const unsigned int real_idx_f2 = indices_f2[if2];
+                    const Mat& desp_f2 = kf2->_descriptors[real_idx_f2];
+                    const int dist = DescriptorDistance( desp_f1, desp_f2 );
+                    if ( dist < bestDist1 ) {
+                        bestDist2 = bestDist1;
+                        bestDist1 = dist;
+                        bestIdxF2 = real_idx_f2;
+                    } else if ( dist<bestDist2 ) {
+                        bestDist2 = dist; 
+                    }
+                }
+                
+                if ( bestDist1 <= _options.th_low ) {
+                    // 最小匹配距离小于阈值
+                    if ( float(bestDist1) < _options.knnRatio* float(bestDist2) ) {
+                        // 最好的匹配明显比第二好的匹配好
+                        matches[ real_idx_f1 ] = bestIdxF2;
+                        if ( _options.checkOrientation ) {
+                            cv::KeyPoint& kp = kf1->_map_point_candidates[real_idx_f1];
+                            float rot = kp.angle - kf2->_map_point_candidates[bestIdxF2].angle;
+                            if ( rot<0 ) rot+=360;
+                            int bin = round(rot*factor);
+                            if ( bin == HISTO_LENGTH )
+                                bin = 0;
+                            assert( bin>=0 &&  bin<HISTO_LENGTH );
+                            rotHist[bin].push_back( bestIdxF2 );
+                        }
+                        cnt_matches++;
+                    }
+                }
+            }
+            
+            f1it++;
+            f2it++;
+            
+        } else if ( f1it->first < f2it->first ) {       // f1 iterator 比较小
+            f1it = fv1.lower_bound( f2it->first );
+        } else {        // f2 iterator 比较少
+            f2it = fv2.lower_bound( f1it->first );
+        }
+    }
+        
+    if ( _options.checkOrientation ) {
+        // 根据方向删除误匹配
+        int ind1 = -1; 
+        int ind2 = -1;
+        int ind3 = -1;
+        
+        ComputeThreeMaxima(rotHist, HISTO_LENGTH, ind1, ind2, ind3 );
+        
+        for ( int i=0; i<HISTO_LENGTH; i++ ) {
+            if ( i==ind1 || i==ind2 || i==ind3 )  // 保留之
+                continue;
+            for ( size_t j=0; j<rotHist[i].size(); j++ ) {
+                rotHist[i][j];
+                // TODO 删掉值为 rotHist[i][j] 的匹配
+                
+                cnt_matches--;
+            }
+        }
+    }
+    
+    return cnt_matches;
+}
+
+
+void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, int& ind2, int& ind3)
+{
+    int max1=0;
+    int max2=0;
+    int max3=0;
+
+    for(int i=0; i<L; i++)
+    {
+        const int s = histo[i].size();
+        if(s>max1)
+        {
+            max3=max2;
+            max2=max1;
+            max1=s;
+            ind3=ind2;
+            ind2=ind1;
+            ind1=i;
+        }
+        else if(s>max2)
+        {
+            max3=max2;
+            max2=s;
+            ind3=ind2;
+            ind2=i;
+        }
+        else if(s>max3)
+        {
+            max3=s;
+            ind3=i;
+        }
+    }
+
+    if(max2<0.1f*(float)max1)
+    {
+        ind2=-1;
+        ind3=-1;
+    }
+    else if(max3<0.1f*(float)max1)
+    {
+        ind3=-1;
+    }
+}
 
 
     

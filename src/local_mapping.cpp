@@ -652,7 +652,7 @@ void LocalMapping::CreateNewMapPoints()
 {
     int nn = 20;
     vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
-    ORBMatcher matcher(0.6, false);
+    ORBMatcher matcher();
     
     Vector3d cam_current = _current_kf->GetCamCenter();
     Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();

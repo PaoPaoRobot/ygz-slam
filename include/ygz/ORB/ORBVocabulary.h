@@ -7,4 +7,4 @@ namespace ygz {
 }
 
 
-#endif YGZ_ORBVOCABULARY_H_
+#endif // YGZ_ORBVOCABULARY_H_

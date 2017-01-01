@@ -5,6 +5,7 @@
 #include "ygz/camera.h"
 #include "ygz/memory.h"
 #include "ygz/config.h"
+#include "ygz/ORB/ORBVocabulary.h"
 
 namespace ygz {
     
@@ -162,7 +163,18 @@ Mat Frame::GetAllDescriptors()
     return alldesp;
 }
 
+void Frame::ComputeBoW()
+{
+    if ( _vocab && _bow_vec.empty() ) {
+        vector<Mat> desc; 
+        for ( Mat& desp: _descriptors )
+            desc.push_back( desp.clone() );
+        _vocab->transform( desc, _bow_vec, _feature_vec, 4);
+    }
+}
+
 
 PinholeCamera* Frame::_camera = nullptr;
+ORBVocabulary* Frame::_vocab = nullptr;
 
 }

@@ -2,6 +2,7 @@
 #define YGZ_FRAME_H
 
 #include "ygz/common_include.h"
+#include "ygz/ORB/ORBVocabulary.h"
 
 // for DBoW3 
 #include "BowVector.h"
@@ -103,6 +104,9 @@ public:
     // 获得所有特征点的描述子
     cv::Mat GetAllDescriptors(); 
     
+    // 将备选点的描述转换成 bow
+    void ComputeBoW();
+    
 public:
     // data 
     // ID, 只有关键帧才拥有系统管理的id，可以直接通过id寻找到这个关键帧
@@ -118,8 +122,8 @@ public:
     bool    _is_keyframe    =false;     // 标识是否是关键帧
     
     // 2D特征点，由特征提取算法给出
-    list<cv::KeyPoint>    _map_point_candidates; 
-    list<Mat>             _descriptors;       // 每个特征点的描述，由ORB计算
+    vector<cv::KeyPoint>    _map_point_candidates; 
+    vector<Mat>             _descriptors;       // 每个特征点的描述，由ORB计算
     
     // 观测
     // observations 与_map_point对应，即每个 map point 在这个帧上的投影位置
@@ -157,6 +161,8 @@ public:
     // DBoW 
     DBoW3::BowVector _bow_vec;
     DBoW3::FeatureVector _feature_vec;
+    
+    static ORBVocabulary* _vocab;
     
 public:
     // inner functions 

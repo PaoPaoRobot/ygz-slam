@@ -24,7 +24,7 @@
  *
  */
 
-// #include <fast/fast.h>
+#include <fast/fast.h>
 
 #include "ygz/memory.h"
 #include "ygz/feature_detector.h"
@@ -54,15 +54,17 @@ FeatureDetector::FeatureDetector()
 void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
 {
     // 这东西偶尔会挂掉，原因不明，试试改用opencv的fast？
-    LOG ( INFO ) <<"step into detect"<<endl;
-    if ( overwrite_existing_features ) {
+    // LOG ( INFO ) <<"step into detect"<<endl;
+    if ( overwrite_existing_features )
+    {
         frame->_grid = vector<int> ( _grid_cols*_grid_rows, 0 );
         frame->_map_point_candidates.clear();
     }
 
-    vector<cv::KeyPoint> selected_kps;
-    selected_kps.resize ( _grid_cols*_grid_rows );
+    // vector<cv::KeyPoint> selected_kps;
+    // selected_kps.resize ( _grid_cols*_grid_rows );
 
+    /*
     for ( int l=0; l<frame->_pyramid_level; l++ )
     {
         vector<cv::KeyPoint> kps;
@@ -76,7 +78,7 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
             if ( utils::IsInside( Vector2d(kp.pt.x, kp.pt.y), frame->_pyramid[l], 20 ) == false ) {
                 continue;
             }
-            
+
             const int gy = static_cast<int> ( ( kp.pt.y*scale ) /_cell_size );
             const int gx = static_cast<int> ( ( kp.pt.x*scale ) /_cell_size );
             const size_t k = gy*_grid_cols+gx;
@@ -112,85 +114,85 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
     }
 
     LOG ( INFO ) << "add total "<<frame->_map_point_candidates.size() <<" new features. "<<endl;
-    
+
     Mat img_show = frame->_color.clone();
     for ( cv::KeyPoint& kp: frame->_map_point_candidates ) {
         cv::circle( img_show, kp.pt, 5, cv::Scalar(0,250,250), 2 );
     }
     cv::imshow("new features", img_show);
     cv::waitKey(1);
+    */
     
-// reset the feature grid
+    Corners corners;
+    corners.resize ( _grid_cols*_grid_rows );
 
-/*
-Corners corners;
-corners.resize( _grid_cols*_grid_rows );
+    for ( int L=0; L<frame->_pyramid_level; ++L )
+    {
+        const int scale = ( 1<<L );
+        vector<fast::fast_xy> fast_corners;
 
-for(int L=0; L<frame->_pyramid_level; ++L)
-{
-    const int scale = (1<<L);
-    vector<fast::fast_xy> fast_corners;
-
-    // if ( frame->_pyramid[L].data == nullptr ) {
-        // LOG(FATAL) << "strange. " <<endl;
-    // }
-
-    LOG(INFO) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<", w,h="<< frame->_pyramid[L].rows << frame->_pyramid[L].cols <<endl;
-    // cv::imshow("Pyramid", frame->_pyramid[L] );
-    // cv::waitKey(0);
-    LOG(INFO) << "start detecting features"<<endl;
+        // LOG ( INFO ) << "extracting features on frame " << frame->_id <<", pyramid "<<L<<", w,h="<< frame->_pyramid[L].rows << frame->_pyramid[L].cols <<endl;
+        // cv::imshow("Pyramid", frame->_pyramid[L] );
+        // cv::waitKey(0);
+        // LOG ( INFO ) << "start detecting features"<<endl;
 
 #if __SSE2__
-    fast::fast_corner_detect_10_sse2(
-        (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,
-        frame->_pyramid[L].rows, frame->_pyramid[L].cols, 20, fast_corners);
+        fast::fast_corner_detect_10_sse2 (
+            ( fast::fast_byte* ) frame->_pyramid[L].data, frame->_pyramid[L].cols,
+            frame->_pyramid[L].rows, frame->_pyramid[L].cols, _detection_threshold, fast_corners );
 #elif HAVE_FAST_NEON
-    fast::fast_corner_detect_9_neon(
-        (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,
-        frame->_pyramid[L].rows, frame->_pyramid[L].cols, 20, fast_corners);
+        fast::fast_corner_detect_9_neon (
+            ( fast::fast_byte* ) frame->_pyramid[L].data, frame->_pyramid[L].cols,
+            frame->_pyramid[L].rows, frame->_pyramid[L].cols, 20, fast_corners );
 #else
-    fast::fast_corner_detect_10(
-        (fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols,
-        frame->_pyramid[L].rows, frame->_pyramid[L].cols, 20, fast_corners);
+        fast::fast_corner_detect_10 (
+            ( fast::fast_byte* ) frame->_pyramid[L].data, frame->_pyramid[L].cols,
+            frame->_pyramid[L].rows, frame->_pyramid[L].cols, 20, fast_corners );
 #endif
-    // nomax
-    vector<int> scores, nm_corners;
-    fast::fast_corner_score_10((fast::fast_byte*) frame->_pyramid[L].data, frame->_pyramid[L].cols, fast_corners, 20, scores);
-    fast::fast_nonmax_3x3(fast_corners, scores, nm_corners);
+        // nomax
+        vector<int> scores, nm_corners;
+        fast::fast_corner_score_10 ( ( fast::fast_byte* ) frame->_pyramid[L].data, frame->_pyramid[L].cols, fast_corners, _detection_threshold, scores );
+        fast::fast_nonmax_3x3 ( fast_corners, scores, nm_corners );
 
-    // LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
-    for(auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it)
-    {
-        fast::fast_xy& xy = fast_corners.at(*it);
-        const int gy = static_cast<int>((xy.y*scale)/_cell_size);
-        const int gx = static_cast<int>((xy.x*scale)/_cell_size);
-        const size_t k = gy*_grid_cols+gx;
-        if ( k > frame->_grid.size() ) {
-            LOG(ERROR) << k <<" is larger than grid size "<<frame->_grid.size()<<endl;
-            continue;
-        }
+        // LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
+        for ( auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it )
+        {
+            fast::fast_xy& xy = fast_corners.at ( *it );
+            if ( utils::IsInside( Vector2d(xy.x, xy.y), frame->_pyramid[L], 20 ) == false ) {
+                continue;
+            }
+            
+            const int gy = static_cast<int> ( ( xy.y*scale ) /_cell_size );
+            const int gx = static_cast<int> ( ( xy.x*scale ) /_cell_size );
+            const size_t k = gy*_grid_cols+gx;
+            if ( k > frame->_grid.size() )
+            {
+                LOG ( ERROR ) << k <<" is larger than grid size "<<frame->_grid.size() <<endl;
+                continue;
+            }
 
-        if( frame->_grid[k] == 1 )  // already have features here
-            continue;
-        const float score = this->ShiTomasiScore( frame->_pyramid[L], xy.x, xy.y );
-        if(score > corners.at(k).score) {
-            corners[k] = Corner(xy.x*scale, xy.y*scale, score, L, 0.0f);
-            frame->_grid[k] = 1;
+            if ( overwrite_existing_features==false && frame->_grid[k] == 1 ) // already have features here
+                continue;
+            const float score = this->ShiTomasiScore ( frame->_pyramid[L], xy.x, xy.y );
+            if ( score > corners.at ( k ).score )
+            {
+                corners[k] = Corner ( xy.x*scale, xy.y*scale, score, L, 0.0f );
+                frame->_grid[k] = 1;
+            }
         }
     }
-}
 
-for ( Corner& c: corners ) {
-    if ( c.x == 0 && c.y == 0 ) continue;
-    MapPoint point;
-    point._first_observed_frame = frame->_id;
-    point._obs[frame->_id] = Vector3d( c.x, c.y, 1 );
-    point._pyramid_level = c.level;
-    frame->_map_point_candidates.push_back( point );
-    // point.PrintInfo();
-}
-LOG(INFO) << "add total "<<frame->_map_point_candidates.size()<<" new features. "<<endl;
-*/
+    for ( Corner& c: corners )
+    {
+        if ( c.x == 0 && c.y == 0 ) continue;
+        cv::KeyPoint kp; 
+        kp.octave = c.level;
+        kp.pt.x = c.x;
+        kp.pt.y = c.y;
+        frame->_map_point_candidates.push_back ( kp );
+        // point.PrintInfo();
+    }
+    // LOG ( INFO ) << "add total "<<frame->_map_point_candidates.size() <<" new features. "<<endl;
 }
 
 void FeatureDetector::SetExistingFeatures ( Frame* frame )

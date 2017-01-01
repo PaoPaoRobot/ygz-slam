@@ -360,17 +360,13 @@ void ORBExtractor::Compute ( Frame* frame )
 {
     // LOG(INFO)<<frame->_id<<endl;
     for ( auto iter = frame->_map_point_candidates.begin(); iter!=frame->_map_point_candidates.end(); iter++) {
-    // auto iter = frame->_map_point_candidates.begin();
         cv::KeyPoint& kp = *iter;
         int level = kp.octave; 
         kp.pt.x /= (1<<level);
         kp.pt.y /= (1<<level);
         kp.angle = IC_Angle( frame->_pyramid[level], kp.pt, _umax );
-        // cout<<"angle = "<<kp.angle<<endl;
         Mat descriptor = Mat::zeros( 1, 32, CV_8UC1);
         ComputeOrbDescriptor( kp, frame->_pyramid[level], &pattern[0], descriptor.data );
-        cout<<descriptor<<endl;
-        
         kp.pt.x *= (1<<level);
         kp.pt.y *= (1<<level);
         frame->_descriptors.push_back( descriptor );
@@ -390,10 +386,6 @@ void ORBExtractor::ComputeOrbDescriptor (
     const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
     const int step = (int)img.step;
 
-    for ( size_t i=0; i<16; i++ ) {
-        cout<<pattern[i]<<endl;
-    }
-    
     // auto GET_VALUE = [&](const int & idx ) { 
         // cout << cvRound(pattern[idx].x*b + pattern[idx].y*a)<<", "<< 
                // cvRound(pattern[idx].x*a - pattern[idx].y*b) << endl;
