@@ -8,8 +8,7 @@
 
 namespace ygz {
     
-Tracker::Tracker( FeatureDetector* detector ) : 
-_detector( detector )
+Tracker::Tracker( )
 {
     // read the params from config 
     _min_features_initializing = Config::get<int>("init.min_features");
@@ -18,8 +17,6 @@ _detector( detector )
 void Tracker::SetReference(Frame* ref)
 {
     // detect the features in reference 
-    _detector->Detect( ref );
-    
     if ( ref->_map_point_candidates.size() < _min_features_initializing ) {
         LOG(WARNING) << "Init frame has few features, try moving in more textured environment. " << endl;
         _status = TRACK_NOT_READY;
@@ -68,15 +65,22 @@ void Tracker::TrackKLT()
     cv::TermCriteria termcrit ( cv::TermCriteria::COUNT+cv::TermCriteria::EPS, klt_max_iter, klt_eps );
     
     // convert the list to vector 
+    vector<size_t> tracked_index;
     vector<cv::Point2f> pt_ref; 
-    for ( cv::KeyPoint& p: _ref->_map_point_candidates )  {
-        pt_ref.push_back( p.pt );
+    for ( size_t i=0; i< _ref->_map_point_candidates.size(); i++ ) {
+        if ( _ref->_candidate_status[i] == CandidateStatus::BAD ) 
+            continue;
+        pt_ref.push_back( _ref->_map_point_candidates[i].pt );
+        tracked_index.push_back(i);
     }
+    LOG(INFO) << "pt ref = "<<pt_ref.size()<<endl;
     
     vector<cv::Point2f> pt_curr; 
     for ( cv::Point2f& p: _px_curr )  {
         pt_curr.push_back( p );
     }
+    
+    LOG(INFO) << "pt cur = "<< pt_curr.size()<<endl;
     
     cv::calcOpticalFlowPyrLK ( _ref->_pyramid[0], _curr->_pyramid[0],
                                pt_ref, pt_curr,
@@ -84,21 +88,16 @@ void Tracker::TrackKLT()
                                cv::Size2i ( klt_win_size, klt_win_size ),
                                4, termcrit, cv::OPTFLOW_USE_INITIAL_FLOW );
     
-    auto px_ref_it = _ref->_map_point_candidates.begin();
-    auto pt_cur_it = pt_curr.begin();
-    
     _px_curr.clear();
-    // copy the tracked ones and remove the lost ones
-    for ( size_t i=0; px_ref_it != _ref->_map_point_candidates.end(); ++i, ++pt_cur_it )
+    // copy the tracked ones 
+    
+    for ( size_t iStatus=0; iStatus<status.size(); ++iStatus )
     {
-        if ( !status[i] || ! _curr->InFrame( *pt_cur_it) )
-        {
-            px_ref_it = _ref->_map_point_candidates.erase( px_ref_it );
-            continue;
+        if ( !status[iStatus] || ! _curr->InFrame(pt_curr[iStatus], 20) ) {
+            _ref->_candidate_status[ tracked_index[iStatus] ] = CandidateStatus::BAD;
+        } else {
+            _px_curr.push_back( pt_curr[iStatus] );
         }
-        // LOG(INFO) << "error = "<<error[i]<<endl;
-        _px_curr.push_back( *pt_cur_it );
-        px_ref_it++;
     }
     
     LOG(INFO) << "pts tracked in LK: " << _px_curr.size() << endl;
@@ -115,22 +114,16 @@ void Tracker::PlotTrackedPoints() const
     }
     
     Mat ref_show = _ref->_color.clone();
-    
-    auto ref_it = _ref->_map_point_candidates.begin();
     auto curr_it = _px_curr.begin();
     
-    for ( ; curr_it != _px_curr.end(); ++ref_it, ++curr_it ) {
-        // LOG(INFO) << *curr_it << endl;
-        cv::circle( img_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
-        // cv::circle( img_show, *ref_it, 2, cv::Scalar(250,0,0), 2 );
-        // cv::line( img_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
+    for ( size_t i=0; i<_ref->_map_point_candidates.size(); i++ ) {
+        if ( _ref->_candidate_status[i] == CandidateStatus::BAD ) 
+            continue; 
         
-        // LOG(INFO) << *ref_it << endl;
-        // cv::circle( ref_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
-        cv::circle( ref_show, ref_it->pt, 2, cv::Scalar(250,0,0), 2 );
-        // cv::line( ref_show, *ref_it, *curr_it, cv::Scalar(0,250,0), 2);
+        cv::circle( ref_show, _ref->_map_point_candidates[i].pt, 2, cv::Scalar(250,0,0), 2 );
+        cv::circle( img_show, *curr_it, 2, cv::Scalar(0,250,0), 2 );
+        curr_it++;
     }
-   
     cv::imshow( "tracked points in curr", img_show );
     cv::imshow( "tracked points in ref", ref_show );
     cv::waitKey(0);
@@ -142,8 +135,11 @@ float Tracker::MeanDisparity() const
     auto curr_it = _px_curr.begin();
     
     double mean_disparity =0; 
-    for ( auto ref_it_end = _ref->_map_point_candidates.end(); ref_it!=ref_it_end; ref_it++, curr_it++ ) {
-        mean_disparity += Vector2d(ref_it->pt.x-curr_it->x, ref_it->pt.y - curr_it->y).norm();
+    for ( size_t i=0; i<_ref->_map_point_candidates.size(); i++ ) {
+        if ( _ref->_candidate_status[i] == CandidateStatus::BAD ) 
+            continue;
+        mean_disparity += Vector2d( _ref->_map_point_candidates[i].pt.x-curr_it->x, _ref->_map_point_candidates[i].pt.y - curr_it->y).norm();
+        curr_it++;
     }
     return (float) mean_disparity/_ref->_map_point_candidates.size();
 }
@@ -166,8 +162,10 @@ void Tracker::GetTrackedPixel(
     vector< Vector2d >& px1, 
     vector< Vector2d >& px2) const
 {
-    for ( auto& px:_ref->_map_point_candidates ) {
-        px1.push_back( Vector2d(px.pt.x, px.pt.y) );
+    for ( size_t i1=0; i1<_ref->_map_point_candidates.size(); i1++ ) {
+        if ( _ref->_candidate_status[i1] == CandidateStatus::BAD) 
+            continue;
+        px1.push_back( Vector2d( _ref->_map_point_candidates[i1].pt.x, _ref->_map_point_candidates[i1].pt.y) );
     }
     for ( auto& px:_px_curr ) {
         px2.push_back( Vector2d(px.x, px.y) );

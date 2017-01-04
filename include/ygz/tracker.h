@@ -22,7 +22,7 @@ public:
     };
     
 public:
-    Tracker( FeatureDetector* detector );
+    Tracker();
     
     // set the reference to track 
     void SetReference( Frame* ref );
@@ -61,7 +61,6 @@ private:
     list<cv::Point2f> _px_curr;           // pixels in curr, lost features will be deleted from reference 
     
     TrackerStatusType _status =TRACK_NOT_READY;
-    FeatureDetector* _detector =nullptr; 
     
     // parameters 
     int _min_features_initializing; 

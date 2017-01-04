@@ -17,6 +17,14 @@ class MapPoint;
 // Frame，帧
 // 帧是一种数据对象，所以本身使用Struct，成员都使用public
 
+// 候选点的状态
+enum CandidateStatus { 
+    WAIT_DESCRIPTOR=0, // 尚未计算描述
+    WAIT_TRIANGULATION,// 尚未三角化
+    TRIANGULATED,      // 已经三角化
+    BAD                // 坏点
+} ;
+
 // TODO 关键帧的spanning tree
 struct Frame {
 public:
@@ -86,7 +94,7 @@ public:
     }
     
     // 得到共视关键最好的N个帧
-    vector<Frame*> GetBestCovisibilityKeyframes( const int & N );
+    vector<Frame*> GetBestCovisibilityKeyframes( const int & N=10 );
     
     // 判断某个地图点的投影是否在视野内，同时检查其夹角
     bool IsInFrustum( MapPoint* mp, float viewingCosLimit=0.5 );
@@ -122,8 +130,9 @@ public:
     bool    _is_keyframe    =false;     // 标识是否是关键帧
     
     // 2D特征点，由特征提取算法给出
-    vector<cv::KeyPoint>    _map_point_candidates; 
+    vector<cv::KeyPoint>    _map_point_candidates; // 关键点位置
     vector<Mat>             _descriptors;       // 每个特征点的描述，由ORB计算
+    vector<CandidateStatus> _candidate_status; // 候选点是否已经被利用于生成地图点
     
     // 观测
     // observations 与_map_point对应，即每个 map point 在这个帧上的投影位置

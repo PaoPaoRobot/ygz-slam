@@ -427,9 +427,10 @@ bool FindEpipolarMatchDirect (
         {
             LOG(INFO) << "align 2d succeed"<<endl;
             px_cur = px_scaled* ( 1<<search_level );
+            double depth2;
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
-                        cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
+                        cur_frame->_camera->Pixel2Camera ( px_cur ), depth, depth2 ) )
             {
                 LOG(INFO) << "estimated depth = " << depth <<endl;
 
@@ -555,10 +556,11 @@ bool FindEpipolarMatchDirect (
         if ( res )
         {
             px_cur = px_scaled* ( 1<<search_level );
+            double depth2;
 
             if ( DepthFromTriangulation (
                         T_cur_ref, pt_ref,
-                        cur_frame->_camera->Pixel2Camera ( px_cur ), depth ) )
+                        cur_frame->_camera->Pixel2Camera ( px_cur ), depth, depth2 ) )
             {
                 if ( depth > 10 )
                 {

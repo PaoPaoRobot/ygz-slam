@@ -60,7 +60,7 @@ protected:
     void ResetCurrentObservation(); 
     
     // 初始化中，根据描述子检测两个帧跟踪的点是否成立
-    bool CheckInitializationByDescriptors(); 
+    bool CheckInitializationByDescriptors( ); 
     
 private:
     Status _status =VO_NOT_READY;       // current status 

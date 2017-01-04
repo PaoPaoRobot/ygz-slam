@@ -358,18 +358,22 @@ float ORBExtractor::IC_Angle (
 
 void ORBExtractor::Compute ( Frame* frame )
 {
-    // LOG(INFO)<<frame->_id<<endl;
-    for ( auto iter = frame->_map_point_candidates.begin(); iter!=frame->_map_point_candidates.end(); iter++) {
-        cv::KeyPoint& kp = *iter;
-        int level = kp.octave; 
-        kp.pt.x /= (1<<level);
-        kp.pt.y /= (1<<level);
-        kp.angle = IC_Angle( frame->_pyramid[level], kp.pt, _umax );
-        Mat descriptor = Mat::zeros( 1, 32, CV_8UC1);
-        ComputeOrbDescriptor( kp, frame->_pyramid[level], &pattern[0], descriptor.data );
-        kp.pt.x *= (1<<level);
-        kp.pt.y *= (1<<level);
-        frame->_descriptors.push_back( descriptor );
+    /// for ( auto iter = frame->_map_point_candidates.begin(); iter!=frame->_map_point_candidates.end(); iter++) {
+    for ( size_t i=0; i<frame->_map_point_candidates.size(); i++ ) {
+        if ( frame->_candidate_status[i] == CandidateStatus::WAIT_DESCRIPTOR ) {
+            // 尚未计算该点的描述，于是计算之
+            cv::KeyPoint& kp = frame->_map_point_candidates[i];
+            int level = kp.octave; 
+            kp.pt.x /= (1<<level);
+            kp.pt.y /= (1<<level);
+            kp.angle = IC_Angle( frame->_pyramid[level], kp.pt, _umax );
+            Mat descriptor = Mat::zeros( 1, 32, CV_8UC1);
+            ComputeOrbDescriptor( kp, frame->_pyramid[level], &pattern[0], descriptor.data );
+            kp.pt.x *= (1<<level);
+            kp.pt.y *= (1<<level);
+            frame->_descriptors.push_back( descriptor );
+            frame->_candidate_status[i] = CandidateStatus::WAIT_TRIANGULATION;
+        }
     }
 }
 

@@ -45,7 +45,14 @@ int main( int argc, char** argv )
     LOG(INFO) << "start viewer"<<endl;
     Viewer* v = new Viewer();
     
+    ygz::ORBVocabulary vocab; 
+    cout<<"load from binary file"<<endl;
+    vocab.loadFromBinaryFile("./vocab/ORBvoc.bin");
+    
+    Frame::_vocab = &vocab;
+    
     for ( size_t i=0; i<rgbFiles.size(); i++ ) {
+        LOG(INFO) << "image "<<i<<endl;
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         if ( color.data == nullptr ) 
             continue;

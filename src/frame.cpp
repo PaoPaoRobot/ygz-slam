@@ -126,6 +126,8 @@ void Frame::UpdateConnections()
     _cov_keyframes = vector<Frame*> (lKFs.begin(), lKFs.end());
     _cov_weights = vector<int>( lWs.begin(), lWs.end() );
     
+    LOG(INFO) << "convisible keyframes: "<<_cov_keyframes.size()<<endl;
+    
     // Essential 待议
 }
 
@@ -166,10 +168,7 @@ Mat Frame::GetAllDescriptors()
 void Frame::ComputeBoW()
 {
     if ( _vocab && _bow_vec.empty() ) {
-        vector<Mat> desc; 
-        for ( Mat& desp: _descriptors )
-            desc.push_back( desp.clone() );
-        _vocab->transform( desc, _bow_vec, _feature_vec, 4);
+        _vocab->transform( _descriptors, _bow_vec, _feature_vec, 4);
     }
 }
 

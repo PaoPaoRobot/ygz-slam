@@ -75,29 +75,30 @@ bool Initializer::TryInitialize(
     // initialization success, triangulate the tracked points
     // select from E and H
     // TODO compare the result of H and E, now we only select E
-    VecVector3d features3d_curr;
+    // VecVector3d features3d_curr;
     
     if ( retE == false && retH == false )
         return false;
     if ( retE == true ) {
         LOG(INFO) << "T21 from E: \n" << T21_E.matrix()<<endl;
         
-        Triangulate( T21_E, features3d_curr );
+        // Triangulate( T21_E, features3d_curr );
         // rescale the map 
-        double scale = RescaleMap( features3d_curr );
+        // double scale = RescaleMap( features3d_curr );
         // double scale = 1;
         _frame->_T_c_w = T21_E * ref->_T_c_w;
         // change the scale between ref and current 
-        _frame->_T_c_w.translation() = -_frame->_T_c_w.rotation_matrix() * ( ref->Pos() + 1/scale*( _frame->Pos() - ref->Pos()));
+        // _frame->_T_c_w.translation() = -_frame->_T_c_w.rotation_matrix() * ( ref->Pos() + 1/scale*( _frame->Pos() - ref->Pos()));
         
         // add feature into both ref and curr frame 
-        SE3 T_w_c = _frame->_T_c_w.inverse(); 
+        // SE3 T_w_c = _frame->_T_c_w.inverse(); 
         
         // register both the current 
         // Memory::RegisterFrame( ref );
-        Memory::RegisterFrame( curr );
+        // Memory::RegisterFrame( curr );
         
-        // set the map points 
+        // set the map point
+        /*
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
             if ( ref->InFrame(px1[i], 10) && curr->InFrame(px2[i]) && features3d_curr[i][2]>0 ) {
@@ -115,16 +116,19 @@ bool Initializer::TryInitialize(
                 map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
+        */ 
+        
         return true; 
     } else if ( retH == true ) {
-        Triangulate( T21_H, features3d_curr );
+        // Triangulate( T21_H, features3d_curr );
         // rescale the map 
-        double scale = RescaleMap( features3d_curr );
+        // double scale = RescaleMap( features3d_curr );
         _frame->_T_c_w = T21_H * ref->_T_c_w;
         // change the scale between ref and current 
-        _frame->_T_c_w.translation() = -_frame->_T_c_w.rotation_matrix() * ( ref->Pos() + 1/scale*( _frame->Pos() - ref->Pos()));
+        // _frame->_T_c_w.translation() = -_frame->_T_c_w.rotation_matrix() * ( ref->Pos() + 1/scale*( _frame->Pos() - ref->Pos()));
         
         // add feature into both ref and curr frame 
+        /*
         SE3 T_w_c = _frame->_T_c_w.inverse(); 
         for ( size_t i=0; i<_inliers.size(); i++ ) {
             if ( _inliers[i] == false ) continue; 
@@ -143,6 +147,8 @@ bool Initializer::TryInitialize(
                 map_point->_obs[ curr->_id ] = Vector3d( _px2[i].x, _px2[i].y, features3d_curr[i][2]/scale );
             }
         }
+        */
+        
         return true; 
     }
     return false;

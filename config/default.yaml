@@ -37,7 +37,7 @@ frame.pyramid: 3
 
 # 初始化参数
 init.min_features: 100
-init.min_disparity: 50
+init.min_disparity: 30
 init.min_inliers: 40
 
 # 特征提取参数
@@ -45,8 +45,9 @@ feature.cell: 20
 feature.detection_threshold: 20.0
 
 # 特征匹配参数
-matcher.th_low: 60
+matcher.th_low: 50
 matcher.th_high: 100
+matcher.bow_low: 60
 matcher.knnRatio: 0.8
 
 # 关键帧参数

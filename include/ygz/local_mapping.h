@@ -24,6 +24,7 @@ class LocalMapping {
     
     struct Options {
         int min_track_localmap_inliers = 50;
+        double outlier_th=5.991;    // 度量outlier的阈值
     } _options;
     
 public:
@@ -56,13 +57,17 @@ public:
     // 新建一些地图点
     void CreateNewMapPoints(); 
     
+    // 在当前关键帧二级相邻的帧中搜索匹配点
+    void SearchInNeighbors();
+    
+    // 修正 keyframe 
+    void KeyFrameCulling(); 
+    
 private:
     // 测试某个点是否可以和当前帧匹配上
     bool TestDirectMatch( Frame* current, const MatchPointCandidate& candidate, Vector2d& px_curr );
     
     // Local Bundle Adjustment 
-    // 这里只修改current的pose，以及与current关联的路标点，不会修改其他的路标点和帧的位姿
-    // 用于刚加入新的普通帧时的优化
     void LocalBA( Frame* current ); 
     
     // 局部关键帧和地图点，用于tracking

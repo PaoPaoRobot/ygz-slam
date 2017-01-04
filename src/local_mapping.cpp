@@ -276,18 +276,99 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
 
 void LocalMapping::LocalBA ( Frame* current )
 {
+    // 待优化的关键帧
+    set<Frame*> local_keyframes;
+    local_keyframes.insert( current );
+    vector<Frame*> neighbours = current->GetBestCovisibilityKeyframes();
+    for ( Frame* n: neighbours ) 
+        local_keyframes.insert( n );
+    
+    // 待优化的地图点，也就是所有相邻关键帧的观测点
+    set<MapPoint*> local_points; 
+    for ( Frame* k: local_keyframes ) {
+        for ( auto& obs: k->_obs ) {
+            MapPoint* mp = Memory::GetMapPoint( obs.first );
+            if ( local_points.find(mp) == local_points.end() ) 
+                local_points.insert( mp );
+        }
+    }
+    
+    // 但是这些个 local points 还可能被其他帧观测到
+    /*
+    set<Frame*> extra_frames;
+    for ( MapPoint* mp: local_points ) {
+        for ( auto& obs: mp->_obs ) {
+            Frame* f = Memory::GetFrame( obs.first );
+            if ( local_keyframes.find(f) == local_keyframes.end() )  {
+                // 虽然有观测但不在局部关键帧中
+                extra_frames.insert(f);
+            }
+        }
+    }
+    */
+    
+    // setup ceres  
+    map<unsigned long, Vector6d*> poses;  
+    for( Frame* f: local_keyframes ) {
+        Vector6d* pose = new Vector6d();
+        Vector3d r = f->_T_c_w.so3().log(), t=f->_T_c_w.translation();
+        pose->head<3>() = t;
+        pose->tail<3>() = r;
+        poses[f->_id] = pose;
+    }
+    
     ceres::Problem problem;
-    vector<Vector6d*> poses;  
     
-    Vector6d* pose = new Vector6d();
-    Vector3d r = current->_T_c_w.so3().log(), t=current->_T_c_w.translation();
-    pose->head<3>() = t;
-    pose->tail<3>() = r;
-    poses.push_back( pose );
+    // TODO 考虑 ordering 和 稀疏性加速
     
-    // 把每个帧与current 有关的map point拿出来的优化？还是说所有的放在一起优化？
     map<unsigned long, Vector3d, less<unsigned long>, Eigen::aligned_allocator<Vector3d>> mp_backup; // 缓存优化前的地图点坐标
     
+    // 遍历所有地图点
+    for ( MapPoint* mappoint: local_points ) {
+        // 缓存之 
+        mp_backup[mappoint->_id] = mappoint->_pos_world;
+        
+        for ( auto& obs: mappoint->_obs ) {
+            Frame* f = Memory::GetFrame( obs.first );
+            
+            Vector3d pt = f->_camera->Pixel2Camera( obs.second.head<2>() );
+            
+            if ( local_keyframes.find(f) != local_keyframes.end() ) {
+                // 该点被局部关键帧观测到，既优化 pose 也优化 point 
+                if ( f->_id == 0 ) { // 初始帧不动 
+                    problem.AddResidualBlock (
+                        new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                            new CeresReprojectionErrorPointOnly ( pt.head<2>(), f->_T_c_w )
+                        ),
+                        new ceres::HuberLoss(5),
+                        mappoint->_pos_world.data()
+                    );
+                } else {
+                    // 其他帧参与优化
+                    problem.AddResidualBlock (
+                        new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
+                            new CeresReprojectionError ( pt.head<2>() )
+                        ),
+                        new ceres::HuberLoss(5),
+                        poses[f->_id]->data(),
+                        mappoint->_pos_world.data()
+                    );
+                }
+            } else {
+                // 该点被其他关键帧观测到，此时只优化 point 而不用优化 pose 
+                // 这好像被称为 marg ?
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( pt.head<2>(), f->_T_c_w )
+                    ),
+                    new ceres::HuberLoss(5),
+                    mappoint->_pos_world.data()
+                );
+            }
+        }
+    }
+    
+    /*
     for ( auto iter = current->_obs.begin(); iter != current->_obs.end(); iter++ ) {
         MapPoint* mp = Memory::GetMapPoint( iter->first );
         Vector3d pt_curr = current->_camera->Pixel2Camera( iter->second.head<2>() );
@@ -339,21 +420,44 @@ void LocalMapping::LocalBA ( Frame* current )
             }
         }
     }
+    */
     
     // Optimize it! 
     // 解之
-    
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_SCHUR;
-    // options.linear_solver_type = ceres::SPARSE_SCHUR;
-    // options.minimizer_progress_to_stdout = true;
+    // options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
 
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
-    // cout<< summary.FullReport() << endl;
+    cout<< summary.FullReport() << endl;
     
-    current->_T_c_w = SE3( SO3::exp(pose->tail<3>()), pose->head<3>() );
-    delete pose;
+    // TODO setup inliers and outliers 
+    
+    
+    for ( MapPoint* mappoint: local_points ) {
+        for ( auto iter = mappoint->_obs.begin(); iter!=mappoint->_obs.end(); ) {
+            // 计算重投影误差
+            Frame* f = Memory::GetFrame(iter->first);
+            Vector2d delta = iter->second.head<2>() - f->_camera->World2Pixel( mappoint->_pos_world, f->_T_c_w );
+            if ( delta.dot(delta) > _options.outlier_th ) {
+                // 这个观测不够好，从keyframe和地图点中删除彼此的观测
+                iter = mappoint->_obs.erase( iter );
+                auto iter_kf = f->_obs.find( mappoint->_id );
+                f->_obs.erase( iter_kf );
+            } else  {
+                iter++;
+            }
+        }
+    }
+    
+    // set the poses of keyframes 
+    for ( auto& pose:poses ) {
+        Frame* f = Memory::GetFrame( pose.first );
+        f->_T_c_w = SE3( SO3::exp(pose.second->tail<3>()), pose.second->head<3>() );
+        delete pose.second;  // new 出来的，记得delete
+    }
     
     // 判断地图点是否收敛
     for ( auto& backup_pair: mp_backup ) {
@@ -577,8 +681,9 @@ void LocalMapping::UpdateLocalMapPoints ( Frame* current )
 
 void LocalMapping::Run()
 {
+    // while (1) {
     // 调通之后改成多线程形式
-    if ( _new_keyframes.size() != 0 ) {
+    while ( _new_keyframes.size() != 0 ) {
         // 将关键帧插入 memory 并处理共视关系
         ProcessNewKeyFrame(); 
         
@@ -587,7 +692,27 @@ void LocalMapping::Run()
         
         // 通过相邻帧间的特征匹配新建一些地图点
         CreateNewMapPoints();
-    }
+        
+        // 没有新的关键帧要处理
+        if ( _new_keyframes.empty() ) {
+            // 再搜索当前关键帧以及相邻关键帧之间的匹配
+            SearchInNeighbors(); 
+        }
+        
+        if ( _new_keyframes.empty() ) {
+            // Local Bundle Adjustment 
+            LocalBA( _current_kf );
+            
+            // Keyframe Culling 
+            // 删掉一些没必要存在的关键帧，减少计算量
+            KeyFrameCulling();
+        }
+        
+        // 把这个帧加到闭环检测队列中
+    } 
+    // TODO 添加多线程功能
+    
+    //}
 }
 
 void LocalMapping::ProcessNewKeyFrame()
@@ -598,9 +723,10 @@ void LocalMapping::ProcessNewKeyFrame()
     // 提取该帧的特征点
     _detector->SetExistingFeatures( _current_kf );
     _detector->Detect( _current_kf, false );
-    
     // 计算特征点描述，因为在关键帧层级上计算所以计算量不大
     _orb_extractor->Compute( _current_kf );
+    
+    _current_kf->ComputeBoW();
     
     // 更新此关键帧观测到的地图点
     for ( auto& obs_pair: _current_kf->_obs ) {
@@ -652,10 +778,13 @@ void LocalMapping::CreateNewMapPoints()
 {
     int nn = 20;
     vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
-    ORBMatcher matcher();
+    ORBMatcher matcher;
     
     Vector3d cam_current = _current_kf->GetCamCenter();
-    Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();
+    // Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();
+    LOG(INFO) << "K inv = "<< K_inv <<endl;
+    
+    int cnt_new_mappoints = 0;
     
     // 计算当前关键帧和别的关键帧之间的特征匹配关系
     for ( size_t i=0; i<neighbour_kf.size(); i++ ) {
@@ -672,13 +801,109 @@ void LocalMapping::CreateNewMapPoints()
         // Fundamental 矩阵
         SE3 T12 = _current_kf->_T_c_w * f2->_T_c_w.inverse(); 
         // F12 = K^{-T} t_12^x R_12 K^{-1} 
-        Eigen::Matrix3d F12 = K_inv.transpose() * SO3::hat( T12.translation() )*T12.rotation_matrix() * K_inv;
+        // E12 = t_12^x R_12, epipolar constraint: y1^T t12^x R12 y2 
+        Eigen::Matrix3d E12 = SO3::hat( T12.translation() )*T12.rotation_matrix();
+        LOG(INFO) << "E12 = "<<E12<<endl;
         
-        // matcher.SearchForTriangulation();
+        vector<pair<int, int>> matched_pairs; 
+        int matches = matcher.SearchForTriangulation( _current_kf, f2, F12, matched_pairs);
         
+        // 对每个匹配点进行三角化
+        for ( int im=0; im<matches; im++ ) {
+            cv::KeyPoint& kp1 = _current_kf->_map_point_candidates[ matched_pairs[im].first ];
+            cv::KeyPoint& kp2 = f2->_map_point_candidates[ matched_pairs[im].second ];
+            Vector3d pt1 = _current_kf->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) );
+            Vector3d pt1_world = _current_kf->_camera->Camera2World( pt1, _current_kf->_T_c_w ); 
+            Vector3d pt2 = f2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) );
+            Vector3d pt2_world = f2->_camera->Camera2World( pt2, f2->_T_c_w ); 
+            
+            double cos_para_rays = pt1.dot(pt2) / (pt1.norm()*pt2.norm()) ;
+            if ( cos_para_rays >= 0.9998 ) // 两条线平行性太强，不好三角化
+                continue; 
+            double depth1 = 0, depth2=0;
+            bool ret = utils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
+            if ( ret==false || depth1 <0 )
+                continue; 
+            // 计算三角化点的重投影误差
+            Vector3d pt1_triangulated = pt1*depth1;
+            Vector2d px2_reproj = f2->_camera->Camera2Pixel( T12.inverse()*pt1_triangulated );
+            double reproj_error = (px2_reproj - Vector2d(kp2.pt.x, kp2.pt.y) ).norm();
+            if ( reproj_error > 5.991 )  // 重投影太大
+                continue; 
+            
+            // 什么是尺度连续性。。。算了先不管它
+            
+            // 终于可以生成地图点了
+            MapPoint* mp = Memory::CreateMapPoint();
+            mp->_first_observed_frame = _current_kf->_id;
+            mp->_pyramid_level = kp1.octave;
+            mp->_obs[_current_kf->_id] = Vector3d(kp1.pt.x, kp1.pt.y, depth1);
+            mp->_obs[ f2->_id ] = Vector3d( kp2.pt.x, kp2.pt.y, depth2 );
+            mp->_cnt_visible = 2;
+            mp->_cnt_found = 2;
+            mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_T_c_w );
+            
+            _current_kf->_obs[mp->_id] = mp->_obs[_current_kf->_id];
+            f2->_obs[mp->_id] = mp->_obs[f2->_id];
+            
+            mp->_descriptor.push_back( _current_kf->_descriptors[matched_pairs[im].first] );
+            mp->_descriptor.push_back( f2->_descriptors[ matched_pairs[im].second] );
+            
+            _recent_mappoints.push_back( mp );
+            cnt_new_mappoints++;
+        }
+    }
+    
+    LOG(INFO) << "New map points: " << cnt_new_mappoints << endl;
+}
+
+void LocalMapping::SearchInNeighbors()
+{
+    int nn = 20;
+    
+    // vector<Frame*> neighbour = _current_kf->GetBestCovisibilityKeyframes(nn);
+
+}
+
+// 剔除一些冗余的关键帧
+void LocalMapping::KeyFrameCulling()
+{
+    // 原则：如果某个关键帧的地图点有90%以上，都能被其他关键帧看到，则认为此关键帧是冗余的
+    vector<Frame*> local_keyframes = _current_kf->GetBestCovisibilityKeyframes();
+    for ( Frame* frame : local_keyframes ) {
+        if ( frame->_id == 0 ) 
+            continue;
+        
+        const int th_obs = 3; 
+        int redundant_observations = 0; 
+        int mappoints = 0;
+        
+        for( auto& obs: frame->_obs ) {
+            MapPoint* mp = Memory::GetMapPoint( obs.first );
+            if ( mp->_bad == false ) {
+                int nobs = 0;
+                mappoints++;
+                if ( mp->_obs.size() > th_obs ) {
+                    // 至少被三个帧看到
+                    for ( auto& obs_mp : mp->_obs ) {
+                        Frame* obs_frame = Memory::GetFrame( obs_mp.first );
+                        if ( obs_frame == frame ) 
+                            continue;
+                        nobs++;
+                    }
+                }
+                
+                if ( nobs >= th_obs )
+                    redundant_observations++;
+            }
+        }
+        
+        if ( redundant_observations > 0.9*mappoints )
+            frame->_bad = true; 
     }
     
 }
+
 
     
 }

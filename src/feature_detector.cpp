@@ -182,6 +182,7 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         }
     }
 
+    int cnt_new_features =0;
     for ( Corner& c: corners )
     {
         if ( c.x == 0 && c.y == 0 ) continue;
@@ -190,9 +191,12 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         kp.pt.x = c.x;
         kp.pt.y = c.y;
         frame->_map_point_candidates.push_back ( kp );
+        frame->_candidate_status.push_back( CandidateStatus::WAIT_DESCRIPTOR );
+        cnt_new_features++;
         // point.PrintInfo();
     }
-    // LOG ( INFO ) << "add total "<<frame->_map_point_candidates.size() <<" new features. "<<endl;
+    
+    LOG(INFO) << "add total "<<cnt_new_features<<" new features."<<endl;
 }
 
 void FeatureDetector::SetExistingFeatures ( Frame* frame )
@@ -205,6 +209,14 @@ void FeatureDetector::SetExistingFeatures ( Frame* frame )
         // inlier observations
         int gy = static_cast<int> ( obs[0]/_cell_size );
         int gx = static_cast<int> ( obs[1]/_cell_size );
+        size_t k = gy*_grid_cols+gx;
+        frame->_grid[k] = 1;
+        cnt++;
+    }
+    
+    for ( cv::KeyPoint& kp: frame->_map_point_candidates ) {
+        int gy = static_cast<int> ( kp.pt.y/_cell_size );
+        int gx = static_cast<int> ( kp.pt.x/_cell_size );
         size_t k = gy*_grid_cols+gx;
         frame->_grid[k] = 1;
         cnt++;

@@ -1,6 +1,7 @@
+#include "ygz/common_include.h"
 #include "ygz/ORB/ORBMatcher.h"
 #include "ygz/frame.h"
-#include <ygz/camera.h>
+#include "ygz/camera.h"
 
 namespace ygz {
     
@@ -26,42 +27,68 @@ int ORBMatcher::DescriptorDistance ( const Mat& a, const Mat& b )
     return dist;
 }
 
-bool ORBMatcher::CheckFrameDescriptors ( 
+int ORBMatcher::CheckFrameDescriptors ( 
     Frame* frame1, 
     Frame* frame2, 
-    vector< bool >& inliers )
+    vector<pair<int,int>>& matches
+)
 {
     vector<int> distance; 
-    assert( frame1->_map_point_candidates.size() == frame2->_map_point_candidates.size() );
-    for ( auto iter1 = frame1->_descriptors.begin(), iter2=frame2->_descriptors.begin(); 
-        iter1!=frame1->_descriptors.end(); iter1++, iter2++
-    ) {
-        distance.push_back( 
-            DescriptorDistance( *iter1, *iter2 )
+    LOG(INFO) << frame1->_descriptors.size()<<","<<frame2->_descriptors.size();
+    // 第一个帧有一些没跟上的点，所以会多一些
+    
+    // assert( frame1->_map_point_candidates.size() == frame2->_map_point_candidates.size() );
+    // assert( frame1->_descriptors.size() == frame2->_descriptors.size() );
+    
+    vector<int> valid_idx_ref;
+    for ( size_t i1 = 0, i2=0; i1<frame1->_map_point_candidates.size(); i1++ )
+    {
+        if ( frame1->_candidate_status[i1] == CandidateStatus::BAD )
+            continue; 
+        distance.push_back ( 
+            DescriptorDistance( frame1->_descriptors[i1], frame2->_descriptors[i2] )
         );
+        i2++;
+        valid_idx_ref.push_back(i1);
     }
     
+    int cnt_good = 0;
     int best_dist = *std::min_element( distance.begin(), distance.end() );
     LOG(INFO) << "best dist = "<<best_dist<<endl;
+    
     // 取个上下限
-    best_dist = best_dist>_options.th_low ? best_dist:_options.th_low; 
-    best_dist = best_dist<_options.th_high ? best_dist:_options.th_high; 
+    best_dist = best_dist>_options.init_low ? best_dist:_options.init_low; 
+    best_dist = best_dist<_options.init_high ? best_dist:_options.init_high; 
+    
+    
     for ( size_t i=0; i<distance.size(); i++ ) {
         // LOG(INFO) << "dist = "<<distance[i]<<endl;
-        if ( distance[i] < _options.knnRatio*best_dist ) 
-            inliers[i] = true;
-        else 
-            inliers[i] = false;
+        
+        if ( distance[i] < _options.initMatchRatio*best_dist )  {
+            frame1->_candidate_status[ valid_idx_ref[i] ] = CandidateStatus::WAIT_TRIANGULATION;
+            frame2->_candidate_status[i] = CandidateStatus::WAIT_TRIANGULATION;
+            matches.push_back( make_pair( valid_idx_ref[i], i) );
+            cnt_good++;
+        }
+        else  {
+            frame1->_candidate_status[ valid_idx_ref[i] ] = CandidateStatus::BAD;
+            frame2->_candidate_status[i] = CandidateStatus::BAD;
+        }
     }
+    
+    LOG(INFO) << distance.size() <<","<<frame2->_candidate_status.size()<<endl;
+    return cnt_good;
 }
 
 int ORBMatcher::SearchForTriangulation ( 
     Frame* kf1, 
     Frame* kf2, 
-    const Matrix3d& F12, 
-    vector< pair< size_t, size_t > >& matched_points, 
+    const Matrix3d& E12, 
+    vector< pair< int, int > >& matched_points, 
     const bool& onlyStereo )
 {
+    LOG(INFO) << kf2->_map_point_candidates.size()<<","<<kf2->_descriptors.size()<<endl;
+    
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
     
@@ -89,7 +116,63 @@ int ORBMatcher::SearchForTriangulation (
             // 同属一个节点
             for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
                 const size_t idx1 = f1it->second[i1]; 
-                // 这里略绕，稍微放一放，等我把特征点的描述搞定
+                // 取出 kf1 中对应的特征点
+                const cv::KeyPoint& kp1 = kf1->_map_point_candidates[idx1];
+                const cv::Mat& desp1 = kf1->_descriptors[idx1];
+                
+                int bestDist = _options.th_low;
+                int bestIdx2 = -1;
+                
+                for ( size_t i2=0, iend2 = f2it->second.size(); i2<iend2; i2++ ) {
+                    size_t idx2 = f2it->second[i2];
+                    Mat& desp2 = kf2->_descriptors[idx2];
+                    const int dist = DescriptorDistance( desp1, desp2 );
+                    
+                    const cv::KeyPoint& kp2 = kf2->_map_point_candidates[idx2];
+                    
+                    
+                    if ( dist>_options.th_low || dist>bestDist ) 
+                        continue;
+                    
+                    LOG(INFO) << "dist = " << dist << endl;
+                    
+                    Mat ref_show = kf1->_color.clone();
+                    Mat curr_show = kf2->_color.clone();
+                    
+                    cv::circle( ref_show, kp1.pt, 2, cv::Scalar(0,250,0), 2 );
+                    cv::circle( curr_show, kp2.pt, 2, cv::Scalar(0,250,0), 2 );
+                    cv::imshow("ref", ref_show);
+                    cv::imshow("curr", curr_show);
+                    cv::waitKey(0);
+                    
+                   
+                    // 计算两个 keypoint 是否满足极线约束
+                    if ( CheckDistEpipolarLine(kp1, kp2, F12) ) {
+                        // 极线约束成立
+                        bestIdx2 = idx2;
+                        bestDist = dist;
+                    }
+                }
+                
+                if ( bestIdx2 >=0 ) {
+                    const cv::KeyPoint& kp2 = kf2->_map_point_candidates[bestIdx2];
+                    matches12[idx1] = bestIdx2;
+                    matches++;
+                    
+                    if ( _options.checkOrientation ) {
+                        float rot = kp1.angle - kf2->_map_point_candidates[bestIdx2].angle;
+                        if ( rot<0 ) rot+=360;
+                        int bin = round(rot*factor);
+                        if ( bin == HISTO_LENGTH )
+                            bin = 0;
+                        assert( bin>=0 &&  bin<HISTO_LENGTH );
+                        rotHist[bin].push_back( bestIdx2 );
+                    }
+                    
+                }
+                
+                f1it++;
+                f2it++;
             }
         } else if ( f1it->first < f2it->first ) {
             f1it = fv1.lower_bound( f2it->first );
@@ -97,6 +180,21 @@ int ORBMatcher::SearchForTriangulation (
             f2it = fv2.lower_bound( f1it->first );
         }
     }
+    
+    if ( _options.checkOrientation ) {
+        // TODO 去掉旋转不对的点
+    }
+    
+    matched_points.clear();
+    matched_points.reserve( matches );
+    
+    for ( size_t i=0; i<matches12.size(); i++ ) {
+        if ( matches12[i] >= 0 )
+            matched_points.push_back( make_pair(i, matches12[i]) );
+    }
+    
+    LOG(INFO) << "matches: "<<matches;
+    return matches;
 }
 
 // 利用 Bag of Words 加速匹配
@@ -145,7 +243,7 @@ int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
                 
                 if ( bestDist1 <= _options.th_low ) {
                     // 最小匹配距离小于阈值
-                    if ( float(bestDist1) < _options.knnRatio* float(bestDist2) ) {
+                    if ( float(bestDist1) < _options.knnRatio*float(bestDist2) ) {
                         // 最好的匹配明显比第二好的匹配好
                         matches[ real_idx_f1 ] = bestIdxF2;
                         if ( _options.checkOrientation ) {
@@ -239,6 +337,25 @@ void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, 
         ind3=-1;
     }
 }
+
+bool ORBMatcher::CheckDistEpipolarLine(const cv::KeyPoint& kp1, const cv::KeyPoint& kp2, const Matrix3d& F12)
+{
+    const float a = kp1.pt.x * F12(0,0) + kp1.pt.y*F12(1,0)+F12(2,0);
+    const float b = kp1.pt.x * F12(0,1) + kp1.pt.y*F12(1,1)+F12(2,1);
+    const float c = kp1.pt.x * F12(0,2) + kp1.pt.y*F12(1,2)+F12(2,2);
+    
+    const float num = a*kp2.pt.x+b*kp2.pt.y+c;
+    const float den = a*a+b*b;
+    
+    LOG(INFO) << "den = "<<den;
+    if ( den < 1e-6 )
+        return false; 
+    
+    const float dsqr = num*num/den;
+    LOG(INFO) << "dsqr = "<<dsqr << endl;
+    return dsqr < 3.84 * (1<<kp2.octave);
+}
+
 
 
     

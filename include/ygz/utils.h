@@ -227,7 +227,10 @@ inline bool DepthFromTriangulation (
     const SE3& T_search_ref,
     const Vector3d& f_ref,
     const Vector3d& f_cur,
-    double& depth )
+    double& depth1, 
+    double& depth2, 
+    const double& determinant_th=1e-4
+)
 {
     Eigen::Matrix<double,3,2> A;
     A << T_search_ref.rotation_matrix() * f_ref, -f_cur;
@@ -235,7 +238,7 @@ inline bool DepthFromTriangulation (
     Eigen::Matrix2d AtA = A.transpose() *A;
     
     // LOG(INFO) << "AtA determinant = " << AtA.determinant()<<endl;
-    if ( AtA.determinant() < 1e-4 ) {
+    if ( AtA.determinant() < determinant_th ) {
         // 行列式太小说明该方程解不稳定
         return false;
     }
@@ -247,11 +250,12 @@ inline bool DepthFromTriangulation (
     
     // LOG(INFO) << "AtA = \n"<<AtA<<endl;
     
-    Vector2d depth2 = - AtA.inverse() *A.transpose() *T_search_ref.translation();
-    LOG(INFO) << "depth2 = " << depth2.transpose() << endl;
+    Vector2d depth2d = - AtA.inverse() *A.transpose() *T_search_ref.translation();
+    // LOG(INFO) << "depth2 = " << depth2.transpose() << endl;
     // Vector3d r = A*depth2;
     // LOG(INFO) << "Ad = " << r.transpose() << endl;
-    depth = fabs ( depth2[0] );
+    depth1 = fabs ( depth2d[0] );
+    depth2 = fabs ( depth2d[1] );
     return true;
 }
 

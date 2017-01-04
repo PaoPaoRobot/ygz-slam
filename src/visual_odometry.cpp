@@ -31,7 +31,7 @@ VisualOdometry::VisualOdometry ( System* system )
     // TODO 为了调试方便所以在这里写new，但最后需要挪到system里面管理
     _init = new Initializer();
     _detector = new FeatureDetector();
-    _tracker = new Tracker(_detector);
+    _tracker = new Tracker();
     _local_mapping = new LocalMapping();
     _depth_filter = new opti::DepthFilter( _local_mapping );
     
@@ -96,7 +96,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
                     SetKeyframe( _curr_frame );
                 } else {
                     // 该帧是普通帧，加到 depth filter 中去
-                    _depth_filter->AddFrame( frame );
+                    // _depth_filter->AddFrame( frame );
                 }
                 
                 // 把参考帧设为当前帧
@@ -150,21 +150,25 @@ void VisualOdometry::MonocularInitialization()
 
         // _tracker->GetTrackedPointsNormalPlane( pt1, pt2 );
         _tracker->GetTrackedPixel( pt1, pt2 );
+        LOG(INFO) <<pt1.size()<<","<<pt2.size()<<endl;
         
         bool init_success = _init->TryInitialize( pt1, pt2, _ref_frame, _curr_frame );
         if ( init_success ) {
             // 初始化算法认为初始化通过，但可能会有outlier和误跟踪
             // 光流在跟踪之后不能保证仍是角点
-            
             _tracker->PlotTrackedPoints(); 
             
+            // 把跟踪后的特征点设为 current 的特征点，计算描述量
             int i = 0;
-            LOG(INFO) <<pt1.size()<<","<<pt2.size()<<endl;
-            for ( auto iter = _ref_frame->_map_point_candidates.begin(); iter!=_ref_frame->_map_point_candidates.end(); iter++, i++ ) {
-                LOG(INFO) << pt2[i].transpose() << endl;
+            
+            for ( size_t iRef = 0; iRef<_ref_frame->_map_point_candidates.size(); iRef++ ) {
+                if ( _ref_frame->_candidate_status[iRef] == CandidateStatus::BAD ) 
+                    continue;
                 _curr_frame->_map_point_candidates.push_back(
-                    cv::KeyPoint( pt2[i][0], pt2[i][1], iter->size )
+                    cv::KeyPoint( pt2[i][0], pt2[i][1], _ref_frame->_map_point_candidates[iRef].size )
                 );
+                _curr_frame->_candidate_status.push_back( CandidateStatus::WAIT_DESCRIPTOR );
+                i++;
             }
             
             // 计算 ref 和 current 之间的描述子，依照描述子检测匹配是否正确
@@ -192,6 +196,7 @@ void VisualOdometry::MonocularInitialization()
             
             LOG(INFO) << "ref pose = \n" <<_ref_frame->_T_c_w.matrix()<<endl;
             LOG(INFO) << "current pose = \n"<< _curr_frame->_T_c_w.matrix()<<endl;
+            LOG(INFO) << "current obs: " << _curr_frame->_obs.size() << endl;
             
             // set current as key-frame and their observed points 
             SetKeyframe( _curr_frame );
@@ -269,29 +274,33 @@ void VisualOdometry::SetKeyframe ( Frame* frame, bool initializing )
     frame->_is_keyframe = true; 
     // Memory::PrintInfo();
     if ( frame->_id != 0 ) { // 已经注册了，就不要重复注册一遍
-        
     } else {
         frame = Memory::RegisterFrame( frame );  // 未注册，则注册新的关键帧
     }
     LOG(INFO) << "frame id = " << frame->_id << endl;
     
+    _local_mapping->AddKeyFrame( frame );
+    _local_mapping->Run();
+    
     if ( initializing == false ) {
-        // 在新的关键帧中，提取新的特征点
         
-        _detector->SetExistingFeatures( frame );
-        _detector->Detect( frame, false );
+        // 在新的关键帧中，提取新的特征点
+        // _detector->SetExistingFeatures( frame );
+        // _detector->Detect( frame, false );
+        
+        // _local_mapping->Run();
         
         // 向 depth filter 中加入新的关键帧
-        double mean_depth=0, min_depth=0; 
-        frame->GetMeanAndMinDepth( mean_depth, min_depth );
+        // double mean_depth=0, min_depth=0; 
+        // frame->GetMeanAndMinDepth( mean_depth, min_depth );
         
         // LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
-        _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
+        // _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
         
-        for ( auto& obs_pair: frame->_obs ) {
-            MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
-            mp->_obs[frame->_id] = obs_pair.second;
-        }
+        // for ( auto& obs_pair: frame->_obs ) {
+            // MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+            // mp->_obs[frame->_id] = obs_pair.second;
+        // }
     }
     
     // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
@@ -306,7 +315,6 @@ void VisualOdometry::SetKeyframe ( Frame* frame, bool initializing )
     }
     */
     
-    _local_mapping->AddKeyFrame( frame );
     _last_key_frame = frame; 
     
     /*
@@ -433,7 +441,7 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
                 break;
             }
             
-            if ( pt[2] < 0.001 || pt[2] > 20 ) {
+            if ( pt[2] < 0.001 || pt[2] > 1000 ) {
                 // 距离太近或太远，可能原因是两条射线平行
                 LOG(INFO) << "bad depth = "<<pt[2]<<" in frame "<<observation.first<<", reproj = "<<reproj_error<<endl;
                 bad_depth = true;
@@ -491,13 +499,14 @@ void VisualOdometry::ResetCurrentObservation()
     double mean_depth = 0; 
     int cnt = 0;
     auto& all_points = Memory::GetAllPoints();
+    // 注意这里还没有归一化，所以深度可能会有很大的值
     for ( auto iter = all_points.begin(); iter!=all_points.end(); ) {
         
         MapPoint* map_point = iter->second;
         Vector3d pt_ref = _ref_frame->_camera->World2Camera( map_point->_pos_world, _ref_frame->_T_c_w );
         Vector3d pt_curr = _curr_frame->_camera->World2Camera( map_point->_pos_world, _curr_frame->_T_c_w );
         
-        if ( pt_ref[2] <0 || pt_ref[2]>20 || pt_curr[2] <0 || pt_curr[2]>20 ) {
+        if ( pt_ref[2] <0 || pt_ref[2]>1000 || pt_curr[2] <0 || pt_curr[2]>1000 ) {
             LOG(INFO) << "bad depth, pt_ref[2] = " << pt_ref[2] <<" and pt_curr[2] = " << pt_curr[2] <<endl;
             iter->second->_bad = true;
             iter++;
@@ -546,31 +555,96 @@ void VisualOdometry::ResetCurrentObservation()
 bool VisualOdometry::CheckInitializationByDescriptors()
 {
     // 计算两个帧中特征点的描述
-    _orb_extractor->Compute( _ref_frame );
     _orb_extractor->Compute( _curr_frame );
     
-    
     LOG(INFO) << _ref_frame->_map_point_candidates.size()<<","<<_curr_frame->_map_point_candidates.size()<<endl;
-    vector<bool> inliers( _ref_frame->_map_point_candidates.size(), false ); 
-    _orb_matcher->CheckFrameDescriptors( _ref_frame, _curr_frame, inliers ); 
+    
+    vector<pair<int,int>> matches;
+    int good_pts = _orb_matcher->CheckFrameDescriptors( _ref_frame, _curr_frame, matches ); 
+    LOG(INFO) << "good features: "<<good_pts<<endl;
+    
+    // 对成功匹配的点进行三角化
+    SE3 T21 = _curr_frame->_T_c_w * _ref_frame->_T_c_w.inverse();
+    for ( auto& m:matches ) {
+        int i1 = m.first;
+        int i2 = m.second;
+        
+        assert( _ref_frame->_candidate_status[i1] == CandidateStatus::WAIT_TRIANGULATION );
+        assert( _curr_frame->_candidate_status[i2] == CandidateStatus::WAIT_TRIANGULATION );
+        
+        Vector3d pt_ref = _ref_frame->_camera->Pixel2Camera(
+            Vector2d(_ref_frame->_map_point_candidates[i1].pt.x, _ref_frame->_map_point_candidates[i1].pt.y) );
+        Vector3d pt_curr = _curr_frame->_camera->Pixel2Camera(
+            Vector2d(_curr_frame->_map_point_candidates[i2].pt.x, _curr_frame->_map_point_candidates[i2].pt.y) );
+        double depth1, depth2; 
+        
+        /*
+        Mat ref_show = _ref_frame->_color.clone();
+        Mat curr_show = _curr_frame->_color.clone();
+        
+        cv::circle( ref_show, _ref_frame->_map_point_candidates[i1].pt, 2, cv::Scalar(0,250,0), 2 );
+        cv::circle( curr_show, _curr_frame->_map_point_candidates[i2].pt, 2, cv::Scalar(0,250,0), 2 );
+        cv::imshow("ref", ref_show);
+        cv::imshow("curr", curr_show);
+        cv::waitKey(0);
+        */
+        
+        if ( utils::DepthFromTriangulation( T21, pt_ref, pt_curr, depth1, depth2, 1e-6 ) ) {
+            LOG(INFO) << "depth1 = "<< depth1<<", depth2 = "<<depth2<<endl;
+            MapPoint* mp = Memory::CreateMapPoint();
+            mp->_pos_world = _ref_frame->_camera->Camera2World( pt_ref*depth1, _ref_frame->_T_c_w );
+            // set the observations 
+            
+            mp->_obs[_ref_frame->_id] = Vector3d( 
+                _ref_frame->_map_point_candidates[i1].pt.x, 
+                _ref_frame->_map_point_candidates[i1].pt.y, 
+                pt_ref[2] 
+            );
+            _ref_frame->_obs[mp->_id] = mp->_obs[_ref_frame->_id];
+            
+            mp->_obs[_curr_frame->_id] = Vector3d( 
+                _curr_frame->_map_point_candidates[i2].pt.x, 
+                _curr_frame->_map_point_candidates[i2].pt.y, 
+                pt_curr[2] 
+            );
+            _curr_frame->_obs[mp->_id] = mp->_obs[_curr_frame->_id];
+            
+            // other statistics 
+            mp->_cnt_found = 2;
+            mp->_cnt_visible = 2;
+            
+            mp->_first_observed_frame = _ref_frame->_id;
+            mp->_last_seen = _curr_frame->_id;
+            mp->_track_in_view = true;
+            
+            _ref_frame->_candidate_status[i1] = CandidateStatus::TRIANGULATED;
+            _curr_frame->_candidate_status[i2] = CandidateStatus::TRIANGULATED;
+        }
+    }
     
     // show the inliers 
     Mat show(_ref_frame->_color.rows, 2*_ref_frame->_color.cols, CV_8UC3);
     _ref_frame->_color.copyTo( show(cv::Rect(0,0,show.cols/2, show.rows )));
     _curr_frame->_color.copyTo( show(cv::Rect(show.cols/2,0, show.cols/2, show.rows)));
-    // Mat ref_img = _ref_frame->_color.clone();
-    // Mat curr_img = _curr_frame->_color.clone();
-    auto iter1 = _ref_frame->_map_point_candidates.begin();
-    auto iter2 = _curr_frame->_map_point_candidates.begin();
-    for ( int i=0; iter1!=_ref_frame->_map_point_candidates.end(); iter1++, iter2++,i++ ) {
-        if ( inliers[i] == true ) {
-            cv::circle( show, iter1->pt, 2, cv::Scalar(0,250,0),2 );
-            cv::circle( show, iter2->pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,250,0),2 );
-            // cv::line( show, iter1->pt, iter2->pt+cv::Point2f(show.cols/2, 0), cv::Scalar(0,250,0) );
+    
+    for ( size_t i1=0; i1<_ref_frame->_map_point_candidates.size(); i1++ ) {
+        if ( _ref_frame->_candidate_status[i1] == CandidateStatus::TRIANGULATED ) {
+            cv::circle( show, _ref_frame->_map_point_candidates[i1].pt, 2, cv::Scalar(0,250,0),2 );
+            //cv::line( show, _ref_frame->_map_point_candidates[i1].pt, _curr_frame->_map_point_candidates[i2].pt+cv::Point2f(show.cols/2, 0), cv::Scalar(0,250,0) );
+        } else if ( _ref_frame->_candidate_status[i1] == CandidateStatus::WAIT_TRIANGULATION ) {
+            cv::circle( show, _ref_frame->_map_point_candidates[i1].pt, 2, cv::Scalar(250,0,0),2 );
         } else {
-            cv::circle( show, iter1->pt, 2, cv::Scalar(0,0,250),2 );
-            cv::circle( show, iter2->pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,0,250),2 );
-            // cv::line( show, iter1->pt, iter2->pt+cv::Point2f(show.cols/2, 0), cv::Scalar(0,0,250) );
+            cv::circle( show, _ref_frame->_map_point_candidates[i1].pt, 2, cv::Scalar(0,0,250),2 );
+        }
+    }
+    
+    for ( size_t i2=0; i2<_curr_frame->_map_point_candidates.size(); i2++ ) {
+        if ( _curr_frame->_candidate_status[i2] == CandidateStatus::TRIANGULATED ) {
+            cv::circle( show, _curr_frame->_map_point_candidates[i2].pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,250,0),2 );
+        } else if ( _curr_frame->_candidate_status[i2] == CandidateStatus::WAIT_TRIANGULATION ) {
+            cv::circle( show, _curr_frame->_map_point_candidates[i2].pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(250,0,0),2 );
+        } else {
+            cv::circle( show, _curr_frame->_map_point_candidates[i2].pt+cv::Point2f(show.cols/2,0), 2, cv::Scalar(0,0,250),2 );
         }
     }
     

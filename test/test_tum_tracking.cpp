@@ -38,7 +38,7 @@ int main( int argc, char** argv )
     PinholeCamera* cam = new PinholeCamera; 
     Frame::SetCamera( cam );
     
-    Tracker tracker( new ygz::FeatureDetector ); 
+    Tracker tracker; 
     for ( size_t i=0; i<50; i++ ) {
         Mat color = imread( string(argv[1])+string("/")+rgbFiles[i] );
         Frame* pf = new Frame ;
