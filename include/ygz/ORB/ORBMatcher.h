@@ -54,7 +54,7 @@ private:
     // 计算旋转直方图中三个最大值
     void ComputeThreeMaxima( vector<int>* histo, const int L, int& ind1, int& ind2, int& ind3 );
     
-    bool CheckDistEpipolarLine( const cv::KeyPoint& kp1, const cv::KeyPoint& kp2, const Eigen::Matrix3d& F12 );
+    bool CheckDistEpipolarLine( const Vector3d& pt1, const Vector3d& pt2, const Eigen::Matrix3d& E12 );
 };
     
 }

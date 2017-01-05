@@ -43,10 +43,13 @@ public:
     
     static inline Frame* GetFrame( const unsigned long& id ) {
         auto iter = _frames.find( id );
-        if ( iter == _frames.end() )
+        if ( iter == _frames.end() ) {
             return nullptr;
+        }
         return iter->second;
     }
+    
+    static inline int GetNumberFrames() { return _frames.size(); }
     
     static inline MapPoint* GetMapPoint( const unsigned long& id ) {
         auto iter = _points.find( id );

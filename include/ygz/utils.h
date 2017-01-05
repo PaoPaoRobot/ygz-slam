@@ -209,6 +209,13 @@ bool Align2D (
     bool convergence_condiiton = true
 );
 
+// Alignment using Ceres
+bool Align2DCeres( 
+    const Mat& cur_img, 
+    uint8_t* ref_patch, 
+    Vector2d& cur_px_estimate 
+);
+
 // Find a match by searching along the epipolar line without using any features.
 // 需要假设 curr_frame 是已经知道 pose 的
 bool FindEpipolarMatchDirect (

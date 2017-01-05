@@ -193,7 +193,6 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         frame->_map_point_candidates.push_back ( kp );
         frame->_candidate_status.push_back( CandidateStatus::WAIT_DESCRIPTOR );
         cnt_new_features++;
-        // point.PrintInfo();
     }
     
     LOG(INFO) << "add total "<<cnt_new_features<<" new features."<<endl;

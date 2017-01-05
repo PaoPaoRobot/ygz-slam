@@ -171,9 +171,15 @@ void VisualOdometry::MonocularInitialization()
                 i++;
             }
             
+            _curr_frame = Memory::RegisterFrame( _curr_frame, false );
             // 计算 ref 和 current 之间的描述子，依照描述子检测匹配是否正确
             CheckInitializationByDescriptors();
             
+            {
+            MapPoint* mp = Memory::GetMapPoint(26);
+            if ( mp==nullptr ) 
+                LOG(INFO)<<"here."<<endl;
+            }
             // show the tracked points 
             // _tracker->PlotTrackedPoints();
             
@@ -188,6 +194,12 @@ void VisualOdometry::MonocularInitialization()
             // 这步会删掉深度值不对的那些点
             ReprojectMapPointsInInitializaion();
             
+            {
+            MapPoint* mp = Memory::GetMapPoint(26);
+            if ( mp==nullptr ) 
+                LOG(INFO)<<"here."<<endl;
+            }
+            
             // 去掉外点后再优化一次
             opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id, false ); 
             
@@ -199,6 +211,11 @@ void VisualOdometry::MonocularInitialization()
             LOG(INFO) << "current obs: " << _curr_frame->_obs.size() << endl;
             
             // set current as key-frame and their observed points 
+            
+            MapPoint* mp = Memory::GetMapPoint(26);
+            if ( mp==nullptr ) 
+                LOG(INFO)<<"here."<<endl;
+            
             SetKeyframe( _curr_frame );
             _status = VO_GOOD;
             
@@ -220,11 +237,16 @@ void VisualOdometry::MonocularInitialization()
             
             int cntBad = 0;
             for ( auto& map_point_pair : Memory::_points ) {
+                
+                if ( map_point_pair.second->_obs.size() < 2 ) // 其中一帧的观测被删
+                    continue;
+                
                 Vector2d px_ref = _ref_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _ref_frame->_T_c_w );
                 Vector2d px_curr = _curr_frame->_camera->World2Pixel( map_point_pair.second->_pos_world, _curr_frame->_T_c_w );
                 
                 Vector2d obs_ref = map_point_pair.second->_obs[_ref_frame->_id].head<2>();
                 Vector2d obs_curr = map_point_pair.second->_obs[_curr_frame->_id].head<2>();
+                
                 
                 if ( map_point_pair.second->_bad ) {
                     cntBad++;
@@ -256,6 +278,7 @@ void VisualOdometry::MonocularInitialization()
 #endif 
             
             _ref_frame = _curr_frame;
+            LOG(INFO) <<_ref_frame->_id<<","<<_curr_frame->_id<<endl;
             
             return;
         } else {
@@ -344,7 +367,6 @@ bool VisualOdometry::TrackRefFrame()
         _align[level].SparseImageAlignmentCeres( _ref_frame, _curr_frame, level );
         TCR = _align[level].GetEstimatedT21();
         
-        /*
         Mat ref_img = _ref_frame->_color.clone();
         Mat curr_img = _curr_frame->_color.clone();
         
@@ -357,7 +379,6 @@ bool VisualOdometry::TrackRefFrame()
         cv::imshow("alignment ref", ref_img);
         cv::imshow("alignment curr", curr_img);
         cv::waitKey(0);
-        */
     }
     
     if ( TCR.log().norm() > _options.max_sparse_align_motion ) {
@@ -381,6 +402,8 @@ bool VisualOdometry::TrackLocalMap()
     // 根据 sparse align 的结果，把参考帧中的地图点投影到当毅前上
     for ( auto& obs_pair: _ref_frame->_obs ) {
         MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        if ( mp->_bad ) 
+            continue; 
         Vector3d pt_curr = _curr_frame->_camera->World2Camera( mp->_pos_world, _curr_frame->_T_c_w );
         Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( pt_curr );
         _curr_frame->_obs[ obs_pair.first ] = Vector3d( px_curr[0], px_curr[1], pt_curr[2]);
@@ -462,9 +485,13 @@ void VisualOdometry::ReprojectMapPointsInInitializaion()
         }
         
         if ( bad_reproj == true ) {
-            iter = Memory::_points.erase( iter );
+            LOG(INFO) << "set point "<<iter->first<<" as bad one"<<endl;
+            iter->second->_bad = true;
+            iter++;
+            // iter = Memory::_points.erase( iter ); // 别随便删啊。。。删的话要把observation都去掉
         } else if ( bad_depth ) {
             iter->second->_bad = true;
+            LOG(INFO) << "set point "<<iter->first<<" as bad one"<<endl;
             iter++;
         } else {
             iter++;
@@ -608,6 +635,8 @@ bool VisualOdometry::CheckInitializationByDescriptors()
                 pt_curr[2] 
             );
             _curr_frame->_obs[mp->_id] = mp->_obs[_curr_frame->_id];
+            
+            mp->PrintInfo();
             
             // other statistics 
             mp->_cnt_found = 2;

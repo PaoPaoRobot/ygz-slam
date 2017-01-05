@@ -117,6 +117,11 @@ int ORBMatcher::SearchForTriangulation (
             for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
                 const size_t idx1 = f1it->second[i1]; 
                 // 取出 kf1 中对应的特征点
+                if ( kf1->_candidate_status[idx1] == CandidateStatus::TRIANGULATED ) {  // 该点已经三角化
+                    f1it++;
+                    f2it++;
+                    continue;
+                }
                 const cv::KeyPoint& kp1 = kf1->_map_point_candidates[idx1];
                 const cv::Mat& desp1 = kf1->_descriptors[idx1];
                 
@@ -147,7 +152,9 @@ int ORBMatcher::SearchForTriangulation (
                     
                    
                     // 计算两个 keypoint 是否满足极线约束
-                    if ( CheckDistEpipolarLine(kp1, kp2, F12) ) {
+                    Vector3d pt1 = kf1->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) ); 
+                    Vector3d pt2 = kf2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) ); 
+                    if ( CheckDistEpipolarLine(pt1, pt2, E12) ) {
                         // 极线约束成立
                         bestIdx2 = idx2;
                         bestDist = dist;
@@ -338,8 +345,11 @@ void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, 
     }
 }
 
-bool ORBMatcher::CheckDistEpipolarLine(const cv::KeyPoint& kp1, const cv::KeyPoint& kp2, const Matrix3d& F12)
+bool ORBMatcher::CheckDistEpipolarLine(const Vector3d& pt1, const Vector3d& pt2, const Matrix3d& E12)
 {
+    double res = pt1.transpose() * E12 * pt2; 
+    LOG(INFO) << "res = "<< res << endl;
+    /*
     const float a = kp1.pt.x * F12(0,0) + kp1.pt.y*F12(1,0)+F12(2,0);
     const float b = kp1.pt.x * F12(0,1) + kp1.pt.y*F12(1,1)+F12(2,1);
     const float c = kp1.pt.x * F12(0,2) + kp1.pt.y*F12(1,2)+F12(2,2);
@@ -353,7 +363,9 @@ bool ORBMatcher::CheckDistEpipolarLine(const cv::KeyPoint& kp1, const cv::KeyPoi
     
     const float dsqr = num*num/den;
     LOG(INFO) << "dsqr = "<<dsqr << endl;
-    return dsqr < 3.84 * (1<<kp2.octave);
+    */
+    
+    return fabs(res) < 3.84;
 }
 
 

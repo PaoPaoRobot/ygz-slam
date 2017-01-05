@@ -4,6 +4,7 @@
 #include "ygz/utils.h"
 #include "ygz/map_point.h"
 #include "ygz/frame.h"
+#include "ygz/ceres_types.h"
 
 
 namespace ygz
@@ -262,6 +263,7 @@ bool Align2D (
                 LOG(INFO)<<"return true"<<endl;
                 return true;
             }
+            LOG(INFO)<<"error increased, return false, chi2 = "<<chi2_vec.back()<<endl;
             return false;
         }
 
@@ -275,6 +277,35 @@ bool Align2D (
     }
     LOG(INFO)<<"return false"<<endl;
     return false;
+}
+
+bool Align2DCeres( 
+    const Mat& cur_img, 
+    uint8_t* ref_patch, 
+    Vector2d& cur_px_estimate 
+)
+{
+    ceres::Problem problem;
+    problem.AddResidualBlock(
+        new CeresAlignmentError (
+            ref_patch, cur_img
+        ), 
+        nullptr,
+        cur_px_estimate.data()
+    );
+    
+    ceres::Solver::Options options;
+    options.max_num_iterations = 10;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
+    
+    ceres::Solver::Summary summary;
+    ceres::Solve( options, &problem, &summary );
+    cout<< summary.FullReport() << endl;
+    
+    if ( summary.IsSolutionUsable() )
+        return true;
+    return false; 
 }
 
 bool FindEpipolarMatchDirect (

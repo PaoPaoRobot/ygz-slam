@@ -36,6 +36,11 @@ public:
         p[1] += pose_TCW[1]; 
         p[2] += pose_TCW[2]; 
         
+        if ( p[2] < T(0) ) {
+            residuals[0] = residuals[1] = T(0);
+            return false;
+        }
+        
         residuals[0] = _pt_cam[0] - p[0]/p[2];
         residuals[1] = _pt_cam[1] - p[1]/p[2];
         return true; 
@@ -82,6 +87,11 @@ public:
         p[1] += pose_TCW[1]; 
         p[2] += pose_TCW[2]; 
         
+        if ( p[2] < T(0) ) {
+            residuals[0] = residuals[1] = T(0);
+            return false;
+        }
+        
         residuals[0] = _pt_cam[0] - p[0]/p[2];
         residuals[1] = _pt_cam[1] - p[1]/p[2];
         return true; 
@@ -122,6 +132,11 @@ public:
         p[0] += (T) _TCW[0]; 
         p[1] += (T) _TCW[1]; 
         p[2] += (T) _TCW[2]; 
+        
+        if ( p[2] < T(0) ) {
+            residuals[0] = residuals[1] = T(0);
+            return false;
+        }
         
         residuals[0] = _pt_cam[0] - p[0]/p[2];
         residuals[1] = _pt_cam[1] - p[1]/p[2];
@@ -212,6 +227,58 @@ protected:
     Vector3d _pt_ref;
     PinholeCamera* _cam =nullptr;
     double _scale;
+};
+
+// 用于 alignment 的 Error 项
+// 也照着 DSO 那样用 pattern，不过估计的是像素位置，所以 parameter 是2
+class CeresAlignmentError: public ceres::SizedCostFunction<PATTERN_SIZE, 2> 
+{
+public:
+    static const uint HALF_PATCH_REF=4; 
+    CeresAlignmentError( uint8_t* ref_patch, Mat curr_img )
+        : _ref_patch(ref_patch), _curr_img(curr_img) {}
+        
+    virtual bool Evaluate( 
+        double const* const* parameters,
+        double* residuals,
+        double** jacobians) const override
+        {
+            bool setJacobian = false; 
+            if ( jacobians && jacobians[0] ) 
+                setJacobian = true; 
+            
+            double curr_x = parameters[0][0];
+            double curr_y = parameters[0][1];
+            
+            for ( int i=0; i<PATTERN_SIZE; i++ ) {
+                double u = curr_x + PATTERN_DX[i];
+                double v = curr_y + PATTERN_DY[i];
+                int ref_x = HALF_PATCH_REF + PATTERN_DX[i];
+                int ref_y = HALF_PATCH_REF + PATTERN_DY[i];
+                
+                if ( u>0 && v>0 && u<=_curr_img.cols && v<=_curr_img.rows ) {
+                    // 在图像中
+                    uchar gray = GetBilateralInterpUchar(u,v,_curr_img);
+                    residuals[i] =  gray - _ref_patch[ ref_y*2*HALF_PATCH_REF + ref_x ];
+                    if ( setJacobian ) {
+                        double du = (GetBilateralInterpUchar(u+1, v, _curr_img) - GetBilateralInterpUchar(u-1,v,_curr_img))/2;
+                        double dv = (GetBilateralInterpUchar(u, v+1, _curr_img) - GetBilateralInterpUchar(u,v-1,_curr_img))/2;
+                        jacobians[0][i*2] = du;
+                        jacobians[0][i*2+1] = dv;
+                    }
+                } else {
+                    residuals[i] = 0;
+                    if ( setJacobian ) {
+                        jacobians[0][i*2] = jacobians[0][i*2+1] = 0;
+                    }
+                }
+            }
+            return true;
+        }
+    
+private:
+    uint8_t* _ref_patch;
+    Mat& _curr_img;
 };
 
 }
