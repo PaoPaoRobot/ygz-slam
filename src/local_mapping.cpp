@@ -183,6 +183,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
             
             Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
             Mat img_curr = current->_color.clone();
+            // 绿的是优化值，紫红的是初始值
             cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
             cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
             cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
@@ -196,10 +197,10 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 // 匹配到的点作为观测值
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
-                break; // 如果这个map point已经被匹配过了，就没必要再匹配了
+                // break; // 如果这个map point已经被匹配过了，就没必要再匹配了
             } else {
                 // 这个地图点已经匹配过了
-                break;
+                // break;
             }
         }
     } 
@@ -214,7 +215,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     // 至此，current->_obs中已经记录了正确的地图点匹配信息
         
     // Step 3
-    // optimize the current pose
+    // optimize the current pose and the structure 
     map<unsigned long, bool> outlier;
     opti::OptimizePoseCeres( current, outlier );
     
@@ -224,9 +225,16 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         if ( outlier[iter->first] ) {
             iter = current->_obs.erase( iter );
         } else {
+            
             MapPoint* mp = Memory::GetMapPoint( iter->first );
             Vector3d pt = current->_camera->World2Camera( mp->_pos_world, current->_T_c_w);
             iter->second[2] = pt[2];
+            
+            /*
+            Vector3d pt_from_px = current->_camera->Pixel2Camera( iter->second.head<2>(), pt[2]);
+            mp->_extra_obs.push_back( ExtraObservation(current->_T_c_w, pt_from_px) );
+            */
+            
             // 更新地图点的统计量
             mp->_cnt_visible++;
             cntInliers++;
@@ -237,13 +245,11 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     LOG(INFO) << "inliers: "<<cntInliers<<endl;
     if ( cntInliers < _options.min_track_localmap_inliers ) 
         return false;
-    return true;
     
-    /*
     // Step 4
-    // 现在当前帧应该全是内点了吧，再优化一次以求更精确
-    // 这里需要使用局部地图的 ba 
-    LocalBA( current );
+    // 更新地图点的统计量
+    opti::OptimizeMapPointsCeres( current );
+    
     // 把观测按照重投影位置设置一下
     // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
     
@@ -263,15 +269,14 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         iter->second.head<2>() = px;
         
         // 在地图点中添加额外观测
-        if ( map_point->_converged == false )
-            map_point->_extra_obs.push_back( ExtraObservation( pt_obs, current->_T_c_w) );
+        // if ( map_point->_converged == false )
+            // map_point->_extra_obs.push_back( ExtraObservation( pt_obs, current->_T_c_w) );
         iter->second[2] = pt[2]; // 只重设一下距离试试？
     }
     cv::imshow("obs vs reproj" , img_show);
     cv::waitKey(0);
     
     LOG(INFO) << "final observations: "<<current->_obs.size()<<endl;
-    */
     
     return true;
 }
@@ -570,7 +575,6 @@ bool LocalMapping::TestDirectMatch (
     success = utils::Align2DCeres( current->_pyramid[search_level], _patch, px_scaled );
     
     px_curr = px_scaled*(1<<search_level);
-    
     /*
 #ifdef DEBUG_VIZ
     // show the original and warpped patch 
@@ -611,14 +615,13 @@ bool LocalMapping::TestDirectMatch (
     cv::resizeWindow("curr patch", 500, 500);
     
     cv::waitKey(1);
-    curr_img = current->_color.clone();
-    px_curr_tmp = cv::Point2f( px_curr[0], px_curr[1] );
+    cv::Mat curr_img = current->_color.clone();
+    cv::Point2f px_curr_tmp ( px_curr[0], px_curr[1] );
     cv::rectangle( curr_img, px_curr_tmp+cv::Point2f(-6,-6), px_curr_tmp+cv::Point2f(6,6), cv::Scalar(0,250,0),3 );
     cv::imshow( "curr img", curr_img );
     cv::waitKey(0);
 #endif
     */
-    
     // LOG(INFO) << "px curr change from "<<candidate._projected_pixel.transpose()<<" to "<< px_curr.transpose()<<endl;
     
     return success;

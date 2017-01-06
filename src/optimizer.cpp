@@ -343,7 +343,6 @@ void OptimizePoseCeres(
     
     // 标识每次观测是否为 outlier
     const float chi2Mono = 5.991;
-    
     map<unsigned long, CeresReprojectionErrorPoseOnly*> blocks;
 
     ceres::Problem problem;
@@ -367,8 +366,9 @@ void OptimizePoseCeres(
     ceres::Solver::Summary summary;
     
     Vector6d pose_backup = pose;
+    int cntInlier = 0;
     for ( size_t it =0; it<4; it++ ) {
-        int cntInlier = 0;
+        cntInlier = 0;
         pose = pose_backup;
         ceres::Solve ( options, &problem, &summary );
         
@@ -392,11 +392,49 @@ void OptimizePoseCeres(
         if ( cntInlier< 10 )
             break;
     }
-    
+    LOG(INFO)<<"total "<<outlier.size()<<", inliers: "<<cntInlier<<endl;
     // set the pose of current
     current->_T_c_w = SE3 (
         SO3::exp ( pose.tail<3>() ), pose.head<3>()
     );
+}
+
+void OptimizeMapPointsCeres(Frame* current)
+{
+    ceres::Problem problem;
+    for ( auto& obs: current->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs.first );
+        Vector3d pt = current->_camera->Pixel2Camera( obs.second.head<2>() );
+        if ( mp->_converged == false ) {
+            // 当前帧的投影
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                    new CeresReprojectionErrorPointOnly ( pt.head<2>(), current->_T_c_w )
+                ),
+                new ceres::HuberLoss(5),
+                mp->_pos_world.data()
+            );
+            
+            // 还会被其他关键帧看到
+            for ( auto& obs_mp:mp->_obs ) {
+                Frame* frame = Memory::GetFrame( obs_mp.first );
+                Vector3d pt = frame->_camera->Pixel2Camera( obs_mp.second.head<2>() );
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( pt.head<2>(), frame->_T_c_w )
+                    ),
+                    nullptr,
+                    mp->_pos_world.data()
+                );
+            }
+        }
+    }
+    
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
+    ceres::Solver::Summary summary;
+    ceres::Solve ( options, &problem, &summary );
 }
 
 /***************************************************

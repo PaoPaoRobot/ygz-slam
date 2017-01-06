@@ -235,8 +235,10 @@ class CeresAlignmentError: public ceres::SizedCostFunction<PATTERN_SIZE, 2>
 {
 public:
     static const uint HALF_PATCH_REF=4; 
-    CeresAlignmentError( uint8_t* ref_patch, Mat curr_img )
-        : _ref_patch(ref_patch), _curr_img(curr_img) {}
+    CeresAlignmentError( uint8_t* ref_patch, const Mat& curr_img )
+        : _ref_patch(ref_patch), _curr_img(curr_img) {
+            // LOG(INFO)<<_curr_img.rows<<","<<_curr_img.cols<<endl;
+        }
         
     virtual bool Evaluate( 
         double const* const* parameters,
@@ -256,7 +258,7 @@ public:
                 int ref_x = HALF_PATCH_REF + PATTERN_DX[i];
                 int ref_y = HALF_PATCH_REF + PATTERN_DY[i];
                 
-                if ( u>0 && v>0 && u<=_curr_img.cols && v<=_curr_img.rows ) {
+                if ( u>0 && v>0 && u<_curr_img.cols && v<_curr_img.rows ) {
                     // 在图像中
                     uchar gray = GetBilateralInterpUchar(u,v,_curr_img);
                     residuals[i] =  gray - _ref_patch[ ref_y*2*HALF_PATCH_REF + ref_x ];
@@ -278,7 +280,7 @@ public:
     
 private:
     uint8_t* _ref_patch;
-    Mat& _curr_img;
+    const Mat& _curr_img;
 };
 
 }

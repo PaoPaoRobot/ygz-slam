@@ -36,6 +36,11 @@ void OptimizePoseCeres(
     map<unsigned long, bool>& outlier
 );
 
+// 更新当前帧观测到地图点信息
+void OptimizeMapPointsCeres(
+    Frame* current
+); 
+
 // sparse image alignment, using ceres 
 // 这里模仿 DSO 的做法，不是计算4x4的patch，而是算一个8维的pattern
 // TODO 能否用SSE加速？
