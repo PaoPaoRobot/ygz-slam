@@ -133,6 +133,7 @@ public:
     vector<cv::KeyPoint>    _map_point_candidates; // 关键点位置
     vector<Mat>             _descriptors;       // 每个特征点的描述，由ORB计算
     vector<CandidateStatus> _candidate_status; // 候选点是否已经被利用于生成地图点
+    map<size_t, MapPoint*>  _triangulated_mappoints; // 如果候选点已经三角化，那么对应的地图点是什么？key是candidate的index
     
     // 观测
     // observations 与_map_point对应，即每个 map point 在这个帧上的投影位置

@@ -149,7 +149,8 @@ protected:
 
 // used in sparse direct method 
 // the pattern is inspired by DSO
-class CeresReprojSparseDirectError: public ceres::SizedCostFunction<PATTERN_SIZE,6>
+// 第一个量是6自由度pose，第二个量是深度值
+class CeresReprojSparseDirectError: public ceres::SizedCostFunction<PATTERN_SIZE,6,1>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -181,18 +182,22 @@ public:
                 pose.head<3>()
             );
             
+            double depth = parameters[1][0];  // 第二个参数为d
+            
             // LOG(INFO) << "TCR = "<<endl<<TCR.matrix()<<endl;
-            Vector3d pt_curr = TCR*_pt_ref;
+            Vector3d pt_curr = TCR*(_pt_ref*depth);
             Vector2d px_curr = _cam->Camera2Pixel( pt_curr ) / _scale; // consider the pyramid 
             
             bool setJacobian = false;
             if ( jacobians && jacobians[0] ) 
                 setJacobian = true; 
-            bool visible = IsInside( px_curr, _curr_img );
+            bool visible = IsInside( px_curr, _curr_img ) && pt_curr[2]>0;
             
             for ( int i=0; i<PATTERN_SIZE; i++ ) {
+                
                 double u = px_curr[0] + PATTERN_DX[i];
                 double v = px_curr[1] + PATTERN_DY[i];
+                
                 if ( visible ) {
                     residuals[i] = _ref_pattern.pattern[i] - utils::GetBilateralInterp(u,v,_curr_img);
                     if ( setJacobian ) {
@@ -207,6 +212,8 @@ public:
                         {
                             jacobians[0][i*6+k] = J[k]*_scale;
                         }
+                        // jacobians[1][i] = duv.transpose()*J_uv_xyz.block<2,3>(0,0)*( TCR*_pt_ref );
+                        jacobians[1][i] = 0;
                     }
                 } else { // 点在图像外面，不考虑它带来的误差
                     residuals[i] = 0;
@@ -215,10 +222,11 @@ public:
                         {
                             jacobians[0][i*6+k] = 0;
                         }
+                        jacobians[1][i] = 0;
                     }
-                    
                 }
             }
+            
             return true;
         }
 protected:
@@ -231,14 +239,24 @@ protected:
 
 // 用于 alignment 的 Error 项
 // 也照着 DSO 那样用 pattern，不过估计的是像素位置，所以 parameter 是2
+// 可以使用First estimate jacobian啦，FEJ会稍微快一点儿
 class CeresAlignmentError: public ceres::SizedCostFunction<PATTERN_SIZE, 2> 
 {
 public:
     static const uint HALF_PATCH_REF=4; 
-    CeresAlignmentError( uint8_t* ref_patch, const Mat& curr_img )
-        : _ref_patch(ref_patch), _curr_img(curr_img) {
-            // LOG(INFO)<<_curr_img.rows<<","<<_curr_img.cols<<endl;
+    CeresAlignmentError( uint8_t* ref_patch, const Mat& curr_img, bool use_fej = true )
+        : _ref_patch(ref_patch), _curr_img(curr_img), _use_fej(use_fej) {
+            if ( use_fej ) {
+                int step = 2*HALF_PATCH_REF;
+                for ( int i=0; i<PATTERN_SIZE; i++ ) {
+                    int ref_x = HALF_PATCH_REF + PATTERN_DX[i];
+                    int ref_y = HALF_PATCH_REF + PATTERN_DY[i];
+                    _fej[i][0] = (_ref_patch[ ref_y*step+ref_x+1 ] - _ref_patch[ref_y*step+ref_x-1] );
+                    _fej[i][1] = (_ref_patch[ (ref_y+1)*step+ref_x ] - _ref_patch[(ref_y-1)*step+ref_x] );
+                }
+            }
         }
+    void SetFej( bool use_fej ) { _use_fej = use_fej; }
         
     virtual bool Evaluate( 
         double const* const* parameters,
@@ -263,10 +281,16 @@ public:
                     uchar gray = GetBilateralInterpUchar(u,v,_curr_img);
                     residuals[i] =  gray - _ref_patch[ ref_y*2*HALF_PATCH_REF + ref_x ];
                     if ( setJacobian ) {
-                        double du = (GetBilateralInterpUchar(u+1, v, _curr_img) - GetBilateralInterpUchar(u-1,v,_curr_img))/2;
-                        double dv = (GetBilateralInterpUchar(u, v+1, _curr_img) - GetBilateralInterpUchar(u,v-1,_curr_img))/2;
-                        jacobians[0][i*2] = du;
-                        jacobians[0][i*2+1] = dv;
+                        if ( _use_fej ) {
+                            jacobians[0][i*2]   =   _fej[i][0];
+                            jacobians[0][i*2+1] =   _fej[i][1];
+                        } else {
+                            // 不用FEJ的话，就在current上面计算jacobian
+                            double du = (GetBilateralInterpUchar(u+1, v, _curr_img) - GetBilateralInterpUchar(u-1,v,_curr_img))/2;
+                            double dv = (GetBilateralInterpUchar(u, v+1, _curr_img) - GetBilateralInterpUchar(u,v-1,_curr_img))/2;
+                            jacobians[0][i*2] = du;
+                            jacobians[0][i*2+1] = dv;
+                        }
                     }
                 } else {
                     residuals[i] = 0;
@@ -281,6 +305,8 @@ public:
 private:
     uint8_t* _ref_patch;
     const Mat& _curr_img;
+    double _fej[PATTERN_SIZE][2];  // first estimate jacobian 
+    bool _use_fej;
 };
 
 }

@@ -30,9 +30,9 @@
 #include "ygz/feature_detector.h"
 #include "ygz/config.h"
 #include "ygz/frame.h"
-#include <ygz/utils.h>
+#include "ygz/utils.h"
 
-#include <opencv2/imgproc/imgproc.hpp>
+#include <boost/format.hpp>
 
 namespace ygz
 {
@@ -154,7 +154,8 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
         fast::fast_corner_score_10 ( ( fast::fast_byte* ) frame->_pyramid[L].data, frame->_pyramid[L].cols, fast_corners, _detection_threshold, scores );
         fast::fast_nonmax_3x3 ( fast_corners, scores, nm_corners );
 
-        // LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
+        LOG(INFO) << "original corners: "<<fast_corners.size()<<endl;
+        LOG(INFO) << "nm corners = "<<nm_corners.size()<<endl;
         for ( auto it=nm_corners.begin(), ite=nm_corners.end(); it!=ite; ++it )
         {
             fast::fast_xy& xy = fast_corners.at ( *it );
@@ -196,6 +197,14 @@ void FeatureDetector::Detect ( Frame* frame, bool overwrite_existing_features )
     }
     
     LOG(INFO) << "add total "<<cnt_new_features<<" new features."<<endl;
+    
+    Mat img_show = frame->_color.clone();
+    for ( cv::KeyPoint& kp: frame->_map_point_candidates ) {
+        cv::circle( img_show, kp.pt, 2, cv::Scalar(0,250,250), 2 );
+    }
+    boost::format fmt("features %d");
+    cv::imshow( (fmt%frame->_id).str(), img_show);
+    cv::waitKey(1);
 }
 
 void FeatureDetector::SetExistingFeatures ( Frame* frame )
@@ -213,12 +222,15 @@ void FeatureDetector::SetExistingFeatures ( Frame* frame )
         cnt++;
     }
     
-    for ( cv::KeyPoint& kp: frame->_map_point_candidates ) {
-        int gy = static_cast<int> ( kp.pt.y/_cell_size );
-        int gx = static_cast<int> ( kp.pt.x/_cell_size );
-        size_t k = gy*_grid_cols+gx;
-        frame->_grid[k] = 1;
-        cnt++;
+    for ( size_t i=0; i<frame->_map_point_candidates.size(); i++ ) {
+        if ( frame->_candidate_status[i] != CandidateStatus::BAD ) {
+            cv::KeyPoint& kp = frame->_map_point_candidates[i];
+            int gy = static_cast<int> ( kp.pt.y/_cell_size );
+            int gx = static_cast<int> ( kp.pt.x/_cell_size );
+            size_t k = gy*_grid_cols+gx;
+            frame->_grid[k] = 1;
+            cnt++;
+        }
     }
     LOG ( INFO ) << "set total " <<cnt<<" existing features."<<endl;
 }

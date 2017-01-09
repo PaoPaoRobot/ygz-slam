@@ -9,6 +9,9 @@ ORBMatcher::ORBMatcher ()
 {
     _options.th_low = Config::get<int>("matcher.th_low");
     _options.th_high = Config::get<int>("matcher.th_high");
+    
+    _options.init_low = Config::get<int>("matcher.init_low");
+    _options.init_high = Config::get<int>("matcher.init_high");
     _options.knnRatio = Config::get<int>("matcher.knnRatio");
 }
 
@@ -76,7 +79,8 @@ int ORBMatcher::CheckFrameDescriptors (
         }
     }
     
-    LOG(INFO) << distance.size() <<","<<frame2->_candidate_status.size()<<endl;
+    LOG(INFO) << "correct matches: "<<matches.size()<<endl;
+    
     return cnt_good;
 }
 
@@ -87,6 +91,7 @@ int ORBMatcher::SearchForTriangulation (
     vector< pair< int, int > >& matched_points, 
     const bool& onlyStereo )
 {
+    LOG(INFO) << kf1->_map_point_candidates.size()<<","<<kf1->_descriptors.size()<<endl;
     LOG(INFO) << kf2->_map_point_candidates.size()<<","<<kf2->_descriptors.size()<<endl;
     
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
@@ -117,11 +122,10 @@ int ORBMatcher::SearchForTriangulation (
             for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
                 const size_t idx1 = f1it->second[i1]; 
                 // 取出 kf1 中对应的特征点
-                if ( kf1->_candidate_status[idx1] == CandidateStatus::TRIANGULATED ) {  // 该点已经三角化
-                    f1it++;
-                    f2it++;
+                if ( kf1->_candidate_status[idx1] != CandidateStatus::WAIT_TRIANGULATION ) {  // 该点已经三角化
                     continue;
                 }
+                
                 const cv::KeyPoint& kp1 = kf1->_map_point_candidates[idx1];
                 const cv::Mat& desp1 = kf1->_descriptors[idx1];
                 
@@ -135,22 +139,12 @@ int ORBMatcher::SearchForTriangulation (
                     
                     const cv::KeyPoint& kp2 = kf2->_map_point_candidates[idx2];
                     
+                    // LOG(INFO) << "dist = " << dist << endl;
                     
                     if ( dist>_options.th_low || dist>bestDist ) 
                         continue;
                     
-                    LOG(INFO) << "dist = " << dist << endl;
                     
-                    Mat ref_show = kf1->_color.clone();
-                    Mat curr_show = kf2->_color.clone();
-                    
-                    cv::circle( ref_show, kp1.pt, 2, cv::Scalar(0,250,0), 2 );
-                    cv::circle( curr_show, kp2.pt, 2, cv::Scalar(0,250,0), 2 );
-                    cv::imshow("ref", ref_show);
-                    cv::imshow("curr", curr_show);
-                    cv::waitKey(0);
-                    
-                   
                     // 计算两个 keypoint 是否满足极线约束
                     Vector3d pt1 = kf1->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) ); 
                     Vector3d pt2 = kf2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) ); 
@@ -178,9 +172,10 @@ int ORBMatcher::SearchForTriangulation (
                     
                 }
                 
-                f1it++;
-                f2it++;
             }
+            
+            f1it++;
+            f2it++;
         } else if ( f1it->first < f2it->first ) {
             f1it = fv1.lower_bound( f2it->first );
         } else {
@@ -248,7 +243,7 @@ int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
                     }
                 }
                 
-                if ( bestDist1 <= _options.th_low ) {
+                if ( bestDist1 < _options.th_low ) {
                     // 最小匹配距离小于阈值
                     if ( float(bestDist1) < _options.knnRatio*float(bestDist2) ) {
                         // 最好的匹配明显比第二好的匹配好
@@ -347,14 +342,14 @@ void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, 
 
 bool ORBMatcher::CheckDistEpipolarLine(const Vector3d& pt1, const Vector3d& pt2, const Matrix3d& E12)
 {
-    double res = pt1.transpose() * E12 * pt2; 
-    LOG(INFO) << "res = "<< res << endl;
-    /*
-    const float a = kp1.pt.x * F12(0,0) + kp1.pt.y*F12(1,0)+F12(2,0);
-    const float b = kp1.pt.x * F12(0,1) + kp1.pt.y*F12(1,1)+F12(2,1);
-    const float c = kp1.pt.x * F12(0,2) + kp1.pt.y*F12(1,2)+F12(2,2);
+    // double res = pt1.transpose() * E12 * pt2; 
+    // LOG(INFO) << "res = "<< res << endl;
     
-    const float num = a*kp2.pt.x+b*kp2.pt.y+c;
+    const float a = pt1[0] * E12(0,0) + pt1[1] * E12(1,0) + E12(2,0);
+    const float b = pt1[0] * E12(0,1) + pt1[1] * E12(1,1) + E12(2,1);
+    const float c = pt1[0] * E12(0,2) + pt1[1] * E12(1,2) + E12(2,2);
+    
+    const float num = a * pt2[0] + b * pt2[1] + c;
     const float den = a*a+b*b;
     
     LOG(INFO) << "den = "<<den;
@@ -363,9 +358,8 @@ bool ORBMatcher::CheckDistEpipolarLine(const Vector3d& pt1, const Vector3d& pt2,
     
     const float dsqr = num*num/den;
     LOG(INFO) << "dsqr = "<<dsqr << endl;
-    */
     
-    return fabs(res) < 3.84;
+    return fabs(dsqr) < 2e-4;
 }
 
 

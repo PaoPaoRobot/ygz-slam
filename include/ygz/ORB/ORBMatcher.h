@@ -17,9 +17,11 @@ public:
         int th_high = 100;       // 这两个在搜索匹配时用
         int th_low = 50;         // 低阈值
         float knnRatio = 0.8;
+        
         bool checkOrientation = false;
+        
         float initMatchRatio = 3.0; 
-        int init_low = 30;
+        int init_low = 30;      // 这两个在初始化时用于检测光流结果是否正确
         int init_high = 80;
     } _options;
     
@@ -33,6 +35,7 @@ public:
     
     // 匹配特征点以建立三角化结果
     // 给定两帧之间的Fundamental，计算 matched points 
+    // 结果中的 kf1 关键点状态必须没有三角化，kf2中则无所谓
     int SearchForTriangulation( 
         Frame* kf1, Frame* kf2, const Matrix3d& E12, 
         vector< pair<int, int> >& matched_points, 

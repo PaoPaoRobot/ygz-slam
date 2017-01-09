@@ -288,10 +288,12 @@ bool Align2DCeres(
     // LOG(INFO) << "initial estimate: " << cur_px_estimate.transpose()<<endl;
     ceres::Problem problem;
     Vector2d px = cur_px_estimate;
+    CeresAlignmentError* p = new CeresAlignmentError(
+        ref_patch, cur_img
+    );
+    
     problem.AddResidualBlock(
-        new CeresAlignmentError (
-            ref_patch, cur_img
-        ), 
+        p, 
         nullptr,
         cur_px_estimate.data()
     );
@@ -299,16 +301,30 @@ bool Align2DCeres(
     ceres::Solver::Options options;
     options.max_num_iterations = 10;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    // options.minimizer_progress_to_stdout = true;
-    
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    // cout<< summary.FullReport() << endl;
-    // LOG(INFO) << "final estimate: " << cur_px_estimate.transpose()<<endl;
-    LOG(INFO) << summary.final_cost << endl;
+    
+    // LOG(INFO) << summary.final_cost << endl;
+    bool bad = false;
     if ( (px-cur_px_estimate).norm() > 5 )
-        return false; 
-    return summary.IsSolutionUsable();
+        bad = true;
+    if ( summary.final_cost > 2000 ) 
+        bad = true;
+    if ( bad == false ) 
+        return true; 
+    
+    // LOG(INFO)<<"retrying"<<endl;
+    // 尝试不使用FeJ重新算一遍
+    cur_px_estimate = px; 
+    p->SetFej( false );
+    ceres::Solve( options, &problem, &summary );
+    // LOG(INFO) << summary.final_cost << endl;
+    
+    if ( (px-cur_px_estimate).norm() > 5 )
+        return false;
+    if ( summary.final_cost > 2000 ) 
+        return false;
+    return true;
 }
 
 bool FindEpipolarMatchDirect (

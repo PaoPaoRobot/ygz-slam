@@ -60,7 +60,11 @@ protected:
     void ResetCurrentObservation(); 
     
     // 初始化中，根据描述子检测两个帧跟踪的点是否成立
-    bool CheckInitializationByDescriptors( ); 
+    // 如果成立的话，将在地图中新增一些地图点
+    bool CheckInitializationByDescriptors( );  
+    
+    // 添加关键帧时，通过描述来计算某个关键帧的观测量是否正确
+    bool CheckObservationByDescriptors(); 
     
 private:
     Status _status =VO_NOT_READY;       // current status 
@@ -95,6 +99,8 @@ private:
     double _min_keyframe_rot=0;
     double _min_keyframe_trans=0;
     int _min_keyframe_features=0;
+    
+    int _processed_frames=0;      // 已经处理过的帧，用于判断是否插入关键帧
     
 };
 }

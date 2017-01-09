@@ -246,12 +246,14 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     pose2.tail<3>() = r2;
 
     int index = 0;
+    map<unsigned long, double> depth;
     for ( auto it=_frame1->_obs.begin(); it!=_frame1->_obs.end(); it++, index++ )
     {
         // camera coordinates in ref
         if ( Memory::GetMapPoint(it->first)->_bad == true ) continue;
+        Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->second.head<2>());
+        depth[it->first] = it->second[2];
         
-        Vector3d xyz_ref = _frame1->_camera->Pixel2Camera( it->second.head<2>() ,it->second[2]) ; // 我日，之前忘乘了深度，怪不得怎么算都不对
         problem.AddResidualBlock (
             new CeresReprojSparseDirectError (
                 _frame2->_pyramid[_pyramid_level],
@@ -262,7 +264,8 @@ void SparseImgAlign::SparseImageAlignmentCeres (
             ),
             // new ceres::HuberLoss(10), // TODO do I need Loss Function?
             nullptr,
-            pose2.data()
+            pose2.data(),
+            &depth[it->first]
         );
     }
 
@@ -273,38 +276,18 @@ void SparseImgAlign::SparseImageAlignmentCeres (
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
     // cout<< summary.FullReport() << endl;
-    // show the estimated pose
+    
+    // recover the pose 
     _TCR = SE3 (
                SO3::exp ( pose2.tail<3>() ),
                pose2.head<3>()
            );
-
-    /*
-#ifdef DEBUG_VIZ
-    cv::Mat ref_show, curr_show;
-    cv::cvtColor ( _frame1->_pyramid[pyramid_level], ref_show, CV_GRAY2BGR );
-    cv::cvtColor ( _frame2->_pyramid[pyramid_level], curr_show, CV_GRAY2BGR );
-
-    LOG ( INFO ) << "TCR = " << _TCR.matrix() << endl;
-    auto iter_mp = _frame1->_map_point.begin(); 
-    auto iter_obs = _frame1->_observations.begin(); 
-    for ( ; iter_mp!=_frame1->_map_point.end(); iter_mp++, iter_obs++ )
-    {
-        // camera coordinates in ref
-        Vector2d px_ref = iter_obs->head<2>();
-        Vector3d pt_ref = _frame1->_camera->Pixel2Camera ( px_ref, (*iter_obs)[2]);
-        // in current
-        Vector3d xyz_curr = _TCR * pt_ref;
-        Vector2d px_curr = _frame2->_camera->Camera2Pixel ( xyz_curr ) / _scale;
-
-        cv::circle ( ref_show, cv::Point2d ( px_ref[0]/_scale, px_ref[1]/_scale ), 3, cv::Scalar ( 0,250,0 ) );
-        cv::circle ( curr_show, cv::Point2d ( px_curr[0], px_curr[1] ), 3, cv::Scalar ( 0,250,0 ) );
-    }
-    cv::imshow ( "ref", ref_show );
-    cv::imshow ( "curr", curr_show );
-    cv::waitKey ( 0 );
-#endif
-    */
+    
+    // and the depth 
+    // for ( auto& depth_pair: depth ) {
+        // LOG(INFO) << "depth changed from "<<_frame1->_obs[depth_pair.first][2]<<" to "<<depth_pair.second;
+        // _frame1->_obs[depth_pair.first][2] = depth_pair.second;
+    // }
 }
 
 
@@ -355,7 +338,7 @@ void OptimizePoseCeres(
         );
         problem.AddResidualBlock (
             new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2, 6> ( cost ),
-            nullptr, 
+            new ceres::HuberLoss(0.01), // 注意这里以米为单位，所以huber要设小一点
             pose.data()
         );
         blocks[iter->first] = cost;
@@ -367,6 +350,7 @@ void OptimizePoseCeres(
     
     Vector6d pose_backup = pose;
     int cntInlier = 0;
+    
     for ( size_t it =0; it<4; it++ ) {
         cntInlier = 0;
         pose = pose_backup;
@@ -374,15 +358,16 @@ void OptimizePoseCeres(
         
         SE3 TCW = SE3( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
         for ( auto& curr_obs: current->_obs ) {
-            Vector3d reprojection = current->_camera->World2Camera( Memory::GetMapPoint(curr_obs.first)->_pos_world, TCW);
-            reprojection *= 1/reprojection[2];
-            Vector3d pt_obs = current->_camera->Pixel2Camera( curr_obs.second.head<2>() );
-            Vector3d delta = reprojection - pt_obs;
+            Vector2d reprojection = current->_camera->World2Pixel( Memory::GetMapPoint(curr_obs.first)->_pos_world, TCW);
+            // Vector3d pt_obs = current->_camera->Pixel2Camera( curr_obs.second.head<2>() );
+            Vector2d delta = reprojection - curr_obs.second.head<2>();
             if ( delta.dot(delta) > chi2Mono ) {
                 // regard this as an outlier 
+                LOG(INFO) << "outlier, delta = "<<delta.dot(delta)<<endl;
                 blocks[curr_obs.first]->SetEnable( false );
                 outlier[curr_obs.first] = true;
             } else {
+                LOG(INFO) << "inlier, delta = "<<delta.dot(delta)<<endl;
                 blocks[curr_obs.first]->SetEnable( true );
                 outlier[curr_obs.first] = false;
                 cntInlier++;
@@ -427,12 +412,22 @@ void OptimizeMapPointsCeres(Frame* current)
                     mp->_pos_world.data()
                 );
             }
+            
+            // 还有来自普通帧的观测
+            for ( ExtraObservation& extra_obs: mp->_extra_obs ) {
+                problem.AddResidualBlock (
+                    new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                        new CeresReprojectionErrorPointOnly ( extra_obs._pt.head<2>(), extra_obs._TCW )
+                    ),
+                    nullptr,
+                    mp->_pos_world.data()
+                );
+            }
         }
     }
     
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
 }

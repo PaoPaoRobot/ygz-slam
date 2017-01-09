@@ -89,6 +89,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 _status = VO_GOOD;      // 跟踪成功
                 LOG(INFO) << "Track success, current TCW = \n" << _curr_frame->_T_c_w.matrix() << endl;
                 
+                _processed_frames ++; 
                 // 检查此帧是否可以作为关键帧
                 if ( NeedNewKeyFrame() ) {
                     // create new key-frame 
@@ -104,6 +105,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
                     delete _ref_frame;  // 不是关键帧的话就可以删了
                 _ref_frame = _curr_frame;
                 
+                /*
                 // plot the currernt image 
                 Mat img_show = _curr_frame->_color.clone();
                 for ( auto& obs_pair: _curr_frame->_obs ) {
@@ -113,6 +115,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 }
                 cv::imshow("current", img_show);
                 cv::waitKey(1);
+                */
                 
             } else {
                 _status = VO_LOST;      // 丢失，尝试在下一帧恢复 
@@ -156,7 +159,7 @@ void VisualOdometry::MonocularInitialization()
         if ( init_success ) {
             // 初始化算法认为初始化通过，但可能会有outlier和误跟踪
             // 光流在跟踪之后不能保证仍是角点
-            _tracker->PlotTrackedPoints(); 
+            // _tracker->PlotTrackedPoints(); 
             
             // 把跟踪后的特征点设为 current 的特征点，计算描述量
             int i = 0;
@@ -172,16 +175,9 @@ void VisualOdometry::MonocularInitialization()
             }
             
             _curr_frame = Memory::RegisterFrame( _curr_frame, false );
+            
             // 计算 ref 和 current 之间的描述子，依照描述子检测匹配是否正确
             CheckInitializationByDescriptors();
-            
-            {
-            MapPoint* mp = Memory::GetMapPoint(26);
-            if ( mp==nullptr ) 
-                LOG(INFO)<<"here."<<endl;
-            }
-            // show the tracked points 
-            // _tracker->PlotTrackedPoints();
             
             // two view BA to minimize the reprojection error 
             // use g2o or ceres or what you want 
@@ -194,12 +190,6 @@ void VisualOdometry::MonocularInitialization()
             // 这步会删掉深度值不对的那些点
             ReprojectMapPointsInInitializaion();
             
-            {
-            MapPoint* mp = Memory::GetMapPoint(26);
-            if ( mp==nullptr ) 
-                LOG(INFO)<<"here."<<endl;
-            }
-            
             // 去掉外点后再优化一次
             opti::TwoViewBACeres( _ref_frame->_id, _curr_frame->_id, false ); 
             
@@ -211,30 +201,15 @@ void VisualOdometry::MonocularInitialization()
             LOG(INFO) << "current obs: " << _curr_frame->_obs.size() << endl;
             
             // set current as key-frame and their observed points 
-            
-            MapPoint* mp = Memory::GetMapPoint(26);
-            if ( mp==nullptr ) 
-                LOG(INFO)<<"here."<<endl;
-            
-            SetKeyframe( _curr_frame );
+            SetKeyframe( _curr_frame, true );
             _status = VO_GOOD;
             
             LOG(INFO) << "tracked points: " << pt1.size() << endl;
             LOG(INFO) << "obs: " << _curr_frame->_obs.size() << endl;
             LOG(INFO) << "total map points: " << Memory::GetAllPoints().size() << endl;
             
-#ifdef DEBUG_VIZ
-            // 画出初始化点在两个图像中的投影
-            Mat img_ref=  _ref_frame->_color.clone();
-            Mat img_curr=  _curr_frame->_color.clone();
-            
             /*
-            for ( size_t i=0; i<pt1.size(); i++ ) {
-                cv::circle( img_ref, cv::Point2f(pt1[i][0], pt1[i][1]),5, cv::Scalar(0,0,250),1 );
-                cv::circle( img_curr, cv::Point2f(pt2[i][0], pt2[i][1]),5, cv::Scalar(0,0,250),1 );
-            }
-            */
-            
+#ifdef DEBUG_VIZ
             int cntBad = 0;
             for ( auto& map_point_pair : Memory::_points ) {
                 
@@ -276,7 +251,7 @@ void VisualOdometry::MonocularInitialization()
             cv::imshow("curr", img_curr);
             cv::waitKey(0);
 #endif 
-            
+            */
             _ref_frame = _curr_frame;
             LOG(INFO) <<_ref_frame->_id<<","<<_curr_frame->_id<<endl;
             
@@ -302,63 +277,27 @@ void VisualOdometry::SetKeyframe ( Frame* frame, bool initializing )
     }
     LOG(INFO) << "frame id = " << frame->_id << endl;
     
+    if ( initializing == false ) {
+        // 检查 observation 中的描述是否匹配
+        CheckObservationByDescriptors();
+    }
+    
     _local_mapping->AddKeyFrame( frame );
     _local_mapping->Run();
     
-    if ( initializing == false ) {
-        
-        // 在新的关键帧中，提取新的特征点
-        // _detector->SetExistingFeatures( frame );
-        // _detector->Detect( frame, false );
-        
-        // _local_mapping->Run();
-        
-        // 向 depth filter 中加入新的关键帧
-        // double mean_depth=0, min_depth=0; 
-        // frame->GetMeanAndMinDepth( mean_depth, min_depth );
-        
-        // LOG(INFO) << "mean depth = " << mean_depth << ", min depth = " << min_depth << endl;        
-        // _depth_filter->AddKeyframe( frame, mean_depth, min_depth );
-        
-        // for ( auto& obs_pair: frame->_obs ) {
-            // MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
-            // mp->_obs[frame->_id] = obs_pair.second;
-        // }
-    }
-    
-    // 在关键帧中，我们把直接法提取的关键点升级为带描述的特征点，以实现全局的匹配
-    /*
-    ORBExtractor orb;
-    for ( unsigned long map_point_id: frame->_map_point ) {
-        MapPoint::Ptr map_point = Memory::GetMapPoint( map_point_id );
-        if ( map_point->_descriptor.data==nullptr ) {
-            // 这个地图点还没有描述子，计算它的描述 
-            orb.Compute( frame->_pyramid[map_point->_pyramid_level], map_point->_obs[frame->_id].head<2>(), map_point->_keypoint, map_point->_descriptor );
-        }
-    }
-    */
+    // 更新局部地图中的关键帧和地图点（用于追踪）
+    _local_mapping->UpdateLocalKeyframes( frame );
+    _local_mapping->UpdateLocalMapPoints( frame );
     
     _last_key_frame = frame; 
+    _processed_frames =0;
     
-    /*
-    // show the key frame 
-    if ( initializing == false ) {
-        boost::format fmt("keyframe-%d");
-        string title = (fmt%frame->_id).str();
-        cv::Mat img_show = frame->_color.clone();
-        for ( Vector3d& obs:frame->_observations ) {
-            cv::circle( img_show, cv::Point2f(obs[0], obs[1]), 5, cv::Scalar(250,0,250), 2 );
-        }
-        cv::imshow(title.c_str(), img_show);
-        cv::waitKey(1);
-    }
-    */
 }
 
 // TODO 考虑sparse alignment 失败的情况
 bool VisualOdometry::TrackRefFrame()
 {
-    LOG(INFO) <<"ref frame id = "<<_ref_frame->_id<<endl;
+    LOG(INFO) << "track ref frame"<<endl;
     _TCR_estimated = SE3();
     SE3 TCR = _TCR_estimated; 
     for ( int level = _curr_frame->_pyramid.size()-1; level>=0; level -- ) {
@@ -370,6 +309,7 @@ bool VisualOdometry::TrackRefFrame()
         Mat ref_img = _ref_frame->_color.clone();
         Mat curr_img = _curr_frame->_color.clone();
         
+        /*
         for ( auto& obs_pair: _ref_frame->_obs ) {
             Vector3d pt_ref = _ref_frame->_camera->Pixel2Camera( obs_pair.second.head<2>(), obs_pair.second[2] );
             Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( TCR * pt_ref );
@@ -378,7 +318,8 @@ bool VisualOdometry::TrackRefFrame()
         }
         cv::imshow("alignment ref", ref_img);
         cv::imshow("alignment curr", curr_img);
-        cv::waitKey(0);
+        cv::waitKey(1);
+        */
     }
     
     if ( TCR.log().norm() > _options.max_sparse_align_motion ) {
@@ -391,6 +332,19 @@ bool VisualOdometry::TrackRefFrame()
     // set the pose of current frame 
     _curr_frame->_T_c_w = _TCR_estimated * _ref_frame->_T_c_w;
     
+    /*
+    // 根据 sparse align 的结果，把参考帧中的地图点投影到当毅前上
+    for ( auto& obs_pair: _ref_frame->_obs ) {
+        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
+        if ( mp->_bad ) 
+            continue; 
+        Vector3d pt_ref = _ref_frame->_camera->Pixel2Camera(obs_pair.second.head<2>(), obs_pair.second[2] );
+        Vector3d pt_curr = _TCR_estimated * pt_ref;
+        Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( pt_curr );
+        _curr_frame->_obs[ obs_pair.first ] = Vector3d( px_curr[0], px_curr[1], pt_curr[2]);
+    }
+    */
+    
     return true; 
 }
 
@@ -399,21 +353,6 @@ bool VisualOdometry::TrackLocalMap()
     // Track Local Map 还是有点微妙的
     // 当前帧不是关键帧时，它不会提取新的特征，所以特征点都是从局部地图中投影过来的
     
-    // 根据 sparse align 的结果，把参考帧中的地图点投影到当毅前上
-    for ( auto& obs_pair: _ref_frame->_obs ) {
-        MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
-        if ( mp->_bad ) 
-            continue; 
-        Vector3d pt_curr = _curr_frame->_camera->World2Camera( mp->_pos_world, _curr_frame->_T_c_w );
-        Vector2d px_curr = _curr_frame->_camera->Camera2Pixel( pt_curr );
-        _curr_frame->_obs[ obs_pair.first ] = Vector3d( px_curr[0], px_curr[1], pt_curr[2]);
-    }
-    
-    // 更新局部地图中的关键帧和地图点
-    _local_mapping->UpdateLocalKeyframes( _curr_frame );
-    _local_mapping->UpdateLocalMapPoints( _curr_frame );
-    
-    // 在局部地图中搜索可能的匹配点
     bool success = _local_mapping->TrackLocalMap( _curr_frame );
     
     /*
@@ -505,19 +444,27 @@ bool VisualOdometry::NeedNewKeyFrame()
     // 话说这事还真能用机器学习学吧...
     // 先简单点，根据上个key-frame和当前的位姿差，以及tracked points做决定
     
+    // 条件1，关键帧不能太密集，中间要经过一定的帧数
+    if ( _processed_frames < 5 ) 
+        return false; 
+    
     SE3 deltaT = _last_key_frame->_T_c_w.inverse()*_curr_frame->_T_c_w;
+    
     // 度量旋转李代数和平移向量的范数
     double dRotNorm = deltaT.so3().log().norm();
     double dTransNorm = deltaT.translation().norm();
     
     LOG(INFO) << "rot = "<<dRotNorm << ", t = "<< dTransNorm<<endl;
-    bool condition1 = dRotNorm > _min_keyframe_rot || dTransNorm > _min_keyframe_trans;
+    if ( dRotNorm < _min_keyframe_rot && dTransNorm < _min_keyframe_trans )     // 平移或旋转都很小
+        return false; 
+    
+    // 看跟踪是否快挂了
+    if ( _curr_frame->_obs.size() < 30 )
+        return true;
     
     // 计算正确跟踪的特征数量
     // 如果这个数量太少，很可能前面计算结果也是不对的
-    bool condition2 = _curr_frame->_obs.size() > _min_keyframe_features;
-    
-    return condition1 && condition2;
+    return true; 
 }
 
 void VisualOdometry::ResetCurrentObservation()
@@ -616,10 +563,11 @@ bool VisualOdometry::CheckInitializationByDescriptors()
         cv::waitKey(0);
         */
         
-        if ( utils::DepthFromTriangulation( T21, pt_ref, pt_curr, depth1, depth2, 1e-6 ) ) {
-            LOG(INFO) << "depth1 = "<< depth1<<", depth2 = "<<depth2<<endl;
+        if ( utils::DepthFromTriangulation( T21, pt_ref, pt_curr, depth1, depth2, 1e-4 ) ) {
+            LOG(INFO) << "Create new map point" ;
             MapPoint* mp = Memory::CreateMapPoint();
             mp->_pos_world = _ref_frame->_camera->Camera2World( pt_ref*depth1, _ref_frame->_T_c_w );
+            
             // set the observations 
             
             mp->_obs[_ref_frame->_id] = Vector3d( 
@@ -636,7 +584,7 @@ bool VisualOdometry::CheckInitializationByDescriptors()
             );
             _curr_frame->_obs[mp->_id] = mp->_obs[_curr_frame->_id];
             
-            mp->PrintInfo();
+            // mp->PrintInfo();
             
             // other statistics 
             mp->_cnt_found = 2;
@@ -646,8 +594,21 @@ bool VisualOdometry::CheckInitializationByDescriptors()
             mp->_last_seen = _curr_frame->_id;
             mp->_track_in_view = true;
             
+            mp->_descriptors.push_back(_ref_frame->_descriptors[i1]);
+            mp->_descriptors.push_back(_curr_frame->_descriptors[i2]);
+            
             _ref_frame->_candidate_status[i1] = CandidateStatus::TRIANGULATED;
             _curr_frame->_candidate_status[i2] = CandidateStatus::TRIANGULATED;
+            
+            mp->ComputeDistinctiveDesc();
+            
+            _ref_frame->_triangulated_mappoints[i1] = mp;
+            _curr_frame->_triangulated_mappoints[i2] = mp;
+            
+        } else {
+            // 三角化失败，可能因为平行性太强，但是不能把它设成BAD，可以等待之后再进行匹配
+            _ref_frame->_candidate_status[i1] = CandidateStatus::WAIT_TRIANGULATION;
+            _curr_frame->_candidate_status[i2] = CandidateStatus::WAIT_TRIANGULATION;
         }
     }
     
@@ -681,6 +642,57 @@ bool VisualOdometry::CheckInitializationByDescriptors()
     cv::waitKey(0);
 }
 
+bool VisualOdometry::CheckObservationByDescriptors()
+{
+    // 将 current 的 observation 设成它的特征点
+    for ( auto& obs_pair: _curr_frame->_obs ) {
+        _curr_frame->_map_point_candidates.push_back( 
+            cv::KeyPoint( obs_pair.second[0], obs_pair.second[1], 7 )
+        );
+        _curr_frame->_candidate_status.push_back( CandidateStatus::WAIT_DESCRIPTOR );
+    }
+    
+    _orb_extractor->Compute( _curr_frame );
+    
+    // compare these descriptors to map points 
+    int i=0; 
+    for ( auto iter = _curr_frame->_obs.begin(); iter!=_curr_frame->_obs.end(); i++ ) {
+        MapPoint* mp = Memory::GetMapPoint( iter->first );
+        int distance = ORBMatcher::DescriptorDistance( _curr_frame->_descriptors[i], mp->_distinctive_desc );
+        
+        LOG(INFO) << "distance = "<<distance<<endl;
+        
+        if ( distance < 80 ) {
+            // take this as a good one  
+            mp->_descriptors.push_back( _curr_frame->_descriptors[i] );
+            mp->ComputeDistinctiveDesc();
+            _curr_frame->_candidate_status[i] = CandidateStatus::TRIANGULATED;
+            mp->_obs[_curr_frame->_id] = iter->second;
+            mp->_descriptors.push_back( _curr_frame->_descriptors[i] );
+            mp->ComputeDistinctiveDesc();
+            iter++;
+        } else {
+            
+            // observation does not match descriptors 
+            iter = _curr_frame->_obs.erase(iter);
+            _curr_frame->_candidate_status[i] = CandidateStatus::BAD;
+        }
+    }
+    
+    // _curr_frame->_map_point_candidates.clear();
+    // _curr_frame->_descriptors.clear();
+    
+    LOG(INFO) << "good observations: "<< _curr_frame->_obs.size()<<endl;
+    
+    cv::Mat img_show = _curr_frame->_color.clone();
+    for ( auto iter=_curr_frame->_obs.begin(); iter!=_curr_frame->_obs.end(); iter++ ) {
+        // reset the observation 
+        cv::circle( img_show, cv::Point2f( (iter->second)[0], (iter->second)[1] ), 2, cv::Scalar(0,0,250), 2 );
+    }
+    cv::imshow("good observations" , img_show);
+    cv::waitKey(0);
+    
+}
 
     
 

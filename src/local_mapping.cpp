@@ -75,6 +75,7 @@ void LocalMapping::AddMapPoint ( const long unsigned int& map_point_id )
 // 如果匹配数量足够，调用一次仅有pose的优化
 bool LocalMapping::TrackLocalMap ( Frame* current )
 {
+    static int cnt = 0;
     // Step 1
     // 建立匹配点的网格，提候选点
     LOG(INFO) << "frames in local map: "<< this->_local_keyframes.size()<< endl;
@@ -87,6 +88,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     // 但是 alignement 只优化 pose，observation是重投影来的，不一定对
     
     int cntCandidate =0;
+    /*
     for ( auto& obs_pair: current->_obs ) {
         MapPoint* mp = Memory::GetMapPoint( obs_pair.first );
         // 检测该顶点的 observation 里，有没有在相邻关键帧的
@@ -111,6 +113,14 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
             }
         }
     }
+    */
+    
+    /*
+    for ( MapPoint* mp: _local_map_points ) {
+        if ( mp->_bad == false )
+            mp->_track_in_view = false;
+    }
+    */
     
     // 遍历local map points，寻找在当前帧视野范围内，而且能匹配上patch的那些点
     for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ ) {
@@ -118,13 +128,14 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         MapPoint* map_point = *it;
         if ( map_point->_bad == true )
             continue;
-        if ( map_point->_track_in_view == true ) // 已经在视野里了
-            continue;
+        // if ( map_point->_track_in_view == true ) // 已经在视野里了
+            // continue;
         
+        map_point->_cnt_visible++;
         // 检查这个地图点是否可见
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
-        if ( pt_curr[2] < 0 || !current->InFrame(px_curr) ) { // 在相机后面或不在视野内 
+        if ( pt_curr[2] < 0 || !current->InFrame(px_curr,20) ) { // 在相机后面或不在视野内 
             map_point->_track_in_view = false;
             continue;
         }
@@ -159,7 +170,14 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     int cntFailed = 0;
     
     set<unsigned long> matched_points; 
+    
     for ( size_t i=0; i<_grid.size(); i++ ) {
+        
+        // 最近的排前面
+        sort( _grid[i].begin(), _grid[i].end(), 
+            [] (const MatchPointCandidate& c1, const MatchPointCandidate& c2) { return c1._observed_keyframe > c2._observed_keyframe; }
+        );
+        
         for ( size_t j=0; j<_grid[i].size(); j++ ) {
             
             // 类似于光流的匹配 
@@ -168,6 +186,7 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
             Vector2d projected_px = matched_px;
             bool success = TestDirectMatch( current, candidate, matched_px );
             if ( !success ) {  // 没有匹配到
+                /*
                 // 我要看一下怎么样的匹配才算失败
                 Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
                 Mat img_curr = current->_color.clone();
@@ -177,19 +196,26 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 cv::imshow("wrong match ref", img_ref );
                 cv::imshow("wrong match curr", img_curr );
                 cv::waitKey(0);
+                */
                 cntFailed++;
                 continue;
             } 
             
-            Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
-            Mat img_curr = current->_color.clone();
-            // 绿的是优化值，紫红的是初始值
-            cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
-            cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
-            cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
-            cv::imshow("correct match ref", img_ref );
-            cv::imshow("correct match curr", img_curr );
-            cv::waitKey(0);
+            if ( cnt > 20 ) 
+            {
+                // plot the align result
+                Mat img_ref = Memory::GetFrame(candidate._observed_keyframe)->_color.clone();
+                Mat img_curr = current->_color.clone();
+                // 绿的是优化值，紫红的是初始值
+                cv::circle( img_ref, cv::Point2f( candidate._keyframe_pixel[0], candidate._keyframe_pixel[1]), 2, cv::Scalar(0,250,0), 2);
+                cv::circle( img_curr, cv::Point2f( matched_px[0], matched_px[1]), 2, cv::Scalar(0,250,0), 2);
+                cv::circle( img_curr, cv::Point2f( projected_px[0], projected_px[1]), 2, cv::Scalar(250,0,250), 2);
+                
+                cv::imshow("correct match ref", img_ref );
+                cv::imshow("correct match curr", img_curr );
+                cv::waitKey(0);
+                
+            }
             
             if ( matched_points.find(candidate._map_point) == matched_points.end() ) { // 这个地图点没有被匹配过
                 // 在current frame里增加一个对该地图点的观测，以便将来使用
@@ -197,14 +223,27 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
                 // 匹配到的点作为观测值
                 matched_points.insert( candidate._map_point );
                 cntSuccess++;
-                // break; // 如果这个map point已经被匹配过了，就没必要再匹配了
+                break; // 一个grid里只需一个观测
             } else {
                 // 这个地图点已经匹配过了
-                // break;
+                // 这句话是不是应该放到前面去
+                break;
             }
         }
     } 
     
+    // plot the current observations 
+    /*
+    cv::Mat img_show = current->_color.clone();
+    for ( auto& obs_pair: current->_obs ) {
+        Vector3d obs = obs_pair.second;
+        cv::circle( img_show, cv::Point2f(obs[0], obs[1]), 2, cv::Scalar(0,250,0),2 );
+    }
+    cv::imshow("current obs", img_show);
+    cv::waitKey(0);
+    */
+    
+    cnt++;
     LOG(INFO) << "success = " << cntSuccess << ", failed = "<<cntFailed << endl; 
     if ( current->_obs.size() < 10 ) { // TODO magic number, adjust it!
         // 匹配不够
@@ -213,7 +252,8 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
     }
     
     // 至此，current->_obs中已经记录了正确的地图点匹配信息
-        
+    // 这里是不是直接来一把BA就完了？
+    
     // Step 3
     // optimize the current pose and the structure 
     map<unsigned long, bool> outlier;
@@ -225,33 +265,34 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         if ( outlier[iter->first] ) {
             iter = current->_obs.erase( iter );
         } else {
-            
             MapPoint* mp = Memory::GetMapPoint( iter->first );
             Vector3d pt = current->_camera->World2Camera( mp->_pos_world, current->_T_c_w);
             iter->second[2] = pt[2];
-            
-            /*
-            Vector3d pt_from_px = current->_camera->Pixel2Camera( iter->second.head<2>(), pt[2]);
-            mp->_extra_obs.push_back( ExtraObservation(current->_T_c_w, pt_from_px) );
-            */
-            
+            // Vector3d pt_from_px = current->_camera->Pixel2Camera( iter->second.head<2>() );
+            // mp->_extra_obs.push_back( ExtraObservation(pt_from_px,current->_T_c_w) );
             // 更新地图点的统计量
-            mp->_cnt_visible++;
+            mp->_cnt_found++;
             cntInliers++;
             iter++;
         }
     }
     
     LOG(INFO) << "inliers: "<<cntInliers<<endl;
-    if ( cntInliers < _options.min_track_localmap_inliers ) 
+    if ( cntInliers < _options.min_track_localmap_inliers ) {
+        LOG(INFO) << "inliers < min inliers in local map, abort"<<endl;
         return false;
+    }
     
     // Step 4
     // 更新地图点的统计量
-    opti::OptimizeMapPointsCeres( current );
+    // 当前面的投影有较大误差时，用这些信息去更新地图点位置是不明智的
+    
+    // LOG(INFO) << "Optimizing map points"<<endl;
+    // opti::OptimizeMapPointsCeres( current );
     
     // 把观测按照重投影位置设置一下
     // 这里设重投影位置待议，由于误差存在，可能重投影位置不对，而之前至少是模板匹配得来的
+    // 设成重投影会导致observation不准确，所以还是保留alignment的observation更好一些
     
     // 看看重投影和obs有何不同
     cv::Mat img_show = current->_color.clone();
@@ -260,24 +301,22 @@ bool LocalMapping::TrackLocalMap ( Frame* current )
         MapPoint* map_point = Memory::GetMapPoint( iter->first );
         Vector3d pt = current->_camera->World2Camera( map_point->_pos_world, current->_T_c_w );
         Vector2d px = current->_camera->World2Pixel( map_point->_pos_world, current->_T_c_w );
-        
         Vector3d pt_obs = current->_camera->Pixel2Camera( px );
         
         cv::circle( img_show, cv::Point2f( (iter->second)[0], (iter->second)[1] ), 2, cv::Scalar(0,0,250), 2 );
         cv::circle( img_show, cv::Point2f( px[0], px[1] ), 2, cv::Scalar(0,250,0), 2 );
         
-        iter->second.head<2>() = px;
+        // iter->second.head<2>() = px; // 这个待议
+        iter->second[2] = pt[2]; // 只重设一下距离
         
         // 在地图点中添加额外观测
         // if ( map_point->_converged == false )
             // map_point->_extra_obs.push_back( ExtraObservation( pt_obs, current->_T_c_w) );
-        iter->second[2] = pt[2]; // 只重设一下距离试试？
     }
     cv::imshow("obs vs reproj" , img_show);
     cv::waitKey(0);
     
     LOG(INFO) << "final observations: "<<current->_obs.size()<<endl;
-    
     return true;
 }
 
@@ -350,7 +389,7 @@ void LocalMapping::LocalBA ( Frame* current )
                         new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
                             new CeresReprojectionErrorPointOnly ( pt.head<2>(), f->_T_c_w )
                         ),
-                        new ceres::HuberLoss(5),
+                        new ceres::HuberLoss(0.1),
                         mappoint->_pos_world.data()
                     );
                 } else {
@@ -359,7 +398,7 @@ void LocalMapping::LocalBA ( Frame* current )
                         new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3> (
                             new CeresReprojectionError ( pt.head<2>() )
                         ),
-                        new ceres::HuberLoss(5),
+                        new ceres::HuberLoss(0.1),
                         poses[f->_id]->data(),
                         mappoint->_pos_world.data()
                     );
@@ -371,7 +410,7 @@ void LocalMapping::LocalBA ( Frame* current )
                     new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
                         new CeresReprojectionErrorPointOnly ( pt.head<2>(), f->_T_c_w )
                     ),
-                    new ceres::HuberLoss(5),
+                    new ceres::HuberLoss(0.1),
                     mappoint->_pos_world.data()
                 );
             }
@@ -573,8 +612,17 @@ bool LocalMapping::TestDirectMatch (
     );
     */
     success = utils::Align2DCeres( current->_pyramid[search_level], _patch, px_scaled );
+    //if ( success ) {
+        // LOG(INFO) << "Accepted."<< endl;
+    //} else {
+        // LOG(INFO) << "Rejected."<< endl;
+    //}
     
     px_curr = px_scaled*(1<<search_level);
+    if ( !current->InFrame(px_curr) )
+        return false;
+    return success;
+    
     /*
 #ifdef DEBUG_VIZ
     // show the original and warpped patch 
@@ -624,7 +672,6 @@ bool LocalMapping::TestDirectMatch (
     */
     // LOG(INFO) << "px curr change from "<<candidate._projected_pixel.transpose()<<" to "<< px_curr.transpose()<<endl;
     
-    return success;
 }
 
 // 更新局部关键帧: _local_keyframes 
@@ -834,52 +881,101 @@ void LocalMapping::CreateNewMapPoints()
         // 对每个匹配点进行三角化
         for ( int im=0; im<matches; im++ ) {
             
-            cv::KeyPoint& kp1 = _current_kf->_map_point_candidates[ matched_pairs[im].first ];
-            cv::KeyPoint& kp2 = f2->_map_point_candidates[ matched_pairs[im].second ];
-            Vector3d pt1 = _current_kf->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) );
-            Vector3d pt1_world = _current_kf->_camera->Camera2World( pt1, _current_kf->_T_c_w ); 
-            Vector3d pt2 = f2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) );
-            Vector3d pt2_world = f2->_camera->Camera2World( pt2, f2->_T_c_w ); 
+            int i1 = matched_pairs[im].first;
+            int i2 = matched_pairs[im].second;
             
-            double cos_para_rays = pt1.dot(pt2) / (pt1.norm()*pt2.norm()) ;
-            if ( cos_para_rays >= 0.9998 ) // 两条线平行性太强，不好三角化
-                continue; 
-            double depth1 = 0, depth2=0;
-            bool ret = utils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
-            if ( ret==false || depth1 <0 )
-                continue; 
-            // 计算三角化点的重投影误差
-            Vector3d pt1_triangulated = pt1*depth1;
-            Vector2d px2_reproj = f2->_camera->Camera2Pixel( T12.inverse()*pt1_triangulated );
-            double reproj_error = (px2_reproj - Vector2d(kp2.pt.x, kp2.pt.y) ).norm();
-            if ( reproj_error > 5.991 )  // 重投影太大
-                continue; 
+            CandidateStatus& s1 = _current_kf->_candidate_status[i1];
+            CandidateStatus& s2 = f2->_candidate_status[i2];
             
-            // 什么是尺度连续性。。。算了先不管它
+            assert(s1 == CandidateStatus::WAIT_TRIANGULATION );
             
-            // 终于可以生成地图点了
-            MapPoint* mp = Memory::CreateMapPoint();
-            mp->_first_observed_frame = _current_kf->_id;
-            mp->_pyramid_level = kp1.octave;
-            mp->_obs[_current_kf->_id] = Vector3d(kp1.pt.x, kp1.pt.y, depth1);
-            mp->_obs[ f2->_id ] = Vector3d( kp2.pt.x, kp2.pt.y, depth2 );
-            mp->_cnt_visible = 2;
-            mp->_cnt_found = 2;
-            mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_T_c_w );
+            cv::KeyPoint& kp1 = _current_kf->_map_point_candidates[i1];
+            cv::KeyPoint& kp2 = f2->_map_point_candidates[i2];
             
-            _current_kf->_obs[mp->_id] = mp->_obs[_current_kf->_id];
-            f2->_obs[mp->_id] = mp->_obs[f2->_id];
+            Mat ref_show = _current_kf->_color.clone();
+            Mat curr_show = f2->_color.clone();
             
-            mp->_descriptor.push_back( _current_kf->_descriptors[matched_pairs[im].first] );
-            mp->_descriptor.push_back( f2->_descriptors[ matched_pairs[im].second] );
+            cv::circle( ref_show, kp1.pt, 2, cv::Scalar(0,250,0), 2 );
+            cv::circle( curr_show, kp2.pt, 2, cv::Scalar(0,250,0), 2 );
+            cv::imshow("triangulate ref", ref_show);
+            cv::imshow("triangulate curr", curr_show);
+            cv::waitKey(0);
+                    
             
-            _recent_mappoints.push_back( mp );
+            if ( s2 == CandidateStatus::WAIT_TRIANGULATION || s2==CandidateStatus::BAD ) {
+                
+                // 第二帧中的点未被三角化，那么新建地图点
+                Vector3d pt1 = _current_kf->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) );
+                Vector3d pt1_world = _current_kf->_camera->Camera2World( pt1, _current_kf->_T_c_w ); 
+                Vector3d pt2 = f2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) );
+                Vector3d pt2_world = f2->_camera->Camera2World( pt2, f2->_T_c_w ); 
+                
+                double cos_para_rays = pt1.dot(pt2) / (pt1.norm()*pt2.norm()) ;
+                if ( cos_para_rays >= 0.9998 ) // 两条线平行性太强，不好三角化
+                    continue; 
+                double depth1 = 0, depth2=0;
+                bool ret = utils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
+                if ( ret==false || depth1 <0 || depth2<0 )
+                    continue; 
+                // 计算三角化点的重投影误差
+                Vector3d pt1_triangulated = pt1*depth1;
+                Vector2d px2_reproj = f2->_camera->Camera2Pixel( T12.inverse()*pt1_triangulated );
+                double reproj_error = (px2_reproj - Vector2d(kp2.pt.x, kp2.pt.y) ).norm();
+                
+                if ( reproj_error > 5.991 ) { // 重投影太大
+                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    continue; 
+                }
+                
+                // 什么是尺度连续性。。。算了先不管它
+                
+                // 终于可以生成地图点了
+                MapPoint* mp = Memory::CreateMapPoint();
+                mp->_first_observed_frame = _current_kf->_id;
+                mp->_pyramid_level = kp1.octave;
+                mp->_obs[_current_kf->_id] = Vector3d(kp1.pt.x, kp1.pt.y, depth1);
+                mp->_obs[ f2->_id ] = Vector3d( kp2.pt.x, kp2.pt.y, depth2 );
+                mp->_cnt_visible = 2;
+                mp->_cnt_found = 2;
+                mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_T_c_w );
+                
+                _current_kf->_obs[mp->_id] = mp->_obs[_current_kf->_id];
+                f2->_obs[mp->_id] = mp->_obs[f2->_id];
+                
+                mp->_descriptors.push_back( _current_kf->_descriptors[matched_pairs[im].first] );
+                mp->_descriptors.push_back( f2->_descriptors[ matched_pairs[im].second] );
+                
+                _recent_mappoints.push_back( mp );
+                
+                _current_kf->_candidate_status[i1] = CandidateStatus::TRIANGULATED;
+                f2->_candidate_status[i2] = CandidateStatus::TRIANGULATED;
+                
+                cnt_new_mappoints++;
+                
+                _current_kf->_triangulated_mappoints[i1] = mp;
+                f2->_triangulated_mappoints[i2] = mp;
+                
+            } else if ( s2 == CandidateStatus::TRIANGULATED ) {
+                // 计算重投影
+                assert( f2->_triangulated_mappoints[i2] != nullptr );
+                MapPoint* mp = f2->_triangulated_mappoints[i2];
+                
+                Vector2d px_reproj = _current_kf->_camera->World2Pixel( mp->_pos_world, _current_kf->_T_c_w );
+                double reproj_error = (px_reproj - Vector2d(kp1.pt.x, kp1.pt.y) ).norm();
+                if ( reproj_error > 5.991 ) { // 重投影太大
+                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    continue; 
+                }
+                
+                // 匹配到了一个已经三角化了的点，将自己的观测量设过去
+                mp->_obs[ _current_kf->_id ] = Vector3d( kp1.pt.x, kp1.pt.y, -1 );
+                _current_kf->_obs[mp->_id] = Vector3d( kp1.pt.x, kp1.pt.y, -1 );
+                _current_kf->_triangulated_mappoints[i1] = mp;
+                // 等待LocalMapping更新此地图点的位置
+                s1 = CandidateStatus::TRIANGULATED;
+            }
             
-            _current_kf->_candidate_status[ matched_pairs[im].first ] = CandidateStatus::TRIANGULATED;
-            f2->_candidate_status[ matched_pairs[im].second ] = CandidateStatus::TRIANGULATED;
             
-            
-            cnt_new_mappoints++;
         }
     }
     

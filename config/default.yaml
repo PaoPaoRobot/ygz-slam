@@ -41,18 +41,19 @@ init.min_disparity: 30
 init.min_inliers: 40
 
 # 特征提取参数
-feature.cell: 20
-feature.detection_threshold: 20.0
+feature.cell: 10
+feature.detection_threshold: 15.0
 
 # 特征匹配参数
-matcher.th_low: 50
+matcher.th_low: 65
 matcher.th_high: 100
-matcher.bow_low: 60
+matcher.init_low: 30
+matcher.init_high: 100
 matcher.knnRatio: 0.8
 
 # 关键帧参数
-vo.keyframe.min_rot: 0.2
-vo.keyframe.min_trans: 0.2
+vo.keyframe.min_rot: 0.1
+vo.keyframe.min_trans: 0.1
 vo.keyframe.min_features: 30
 
 LocalMapping.local_keyframes: 3

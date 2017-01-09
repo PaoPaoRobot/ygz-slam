@@ -23,7 +23,7 @@ class LocalMapping {
 // class MapPoint;
     
     struct Options {
-        int min_track_localmap_inliers = 50;
+        int min_track_localmap_inliers = 30;
         double outlier_th=5.991;    // 度量outlier的阈值
     } _options;
     

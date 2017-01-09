@@ -41,6 +41,9 @@ public:
         }
     }
     
+    // 计算唯一的描述子
+    void ComputeDistinctiveDesc(); 
+    
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     unsigned long   _id =0;                     // 全局id
@@ -58,8 +61,9 @@ public:
     bool            _converged=false;  // 深度值是否收敛？
     
     // ORB feature 
-    cv::Mat         _descriptor;        // 描述子
     cv::KeyPoint    _keypoint;          // 关键点
+    cv::Mat         _distinctive_desc;  // 描述子(唯一的)
+    vector<cv::Mat> _descriptors;       // 描述子（来自各个关键帧的计算）
     
     unsigned long   _last_seen =0;      // 最后一次看到的关键帧
     int             _cnt_visible =0;    // 被看到的次数
