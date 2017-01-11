@@ -1,18 +1,12 @@
-add_library( ygz-slam SHARED
-    frame.cpp
-    memory.cpp
-    tracker.cpp
-    config.cpp 
-    map_point.cpp
-    system.cpp
-    visual_odometry.cpp
-    feature_detector.cpp
-    initializer.cpp
-    optimizer.cpp
-    local_mapping.cpp
-    utils.cpp
-    viewer.cpp
-    
-    ORB/ORBExtractor.cpp 
-    ORB/ORBMatcher.cpp
+add_library( ygz-core SHARED
+    Basic/Config.cpp
+    Basic/Frame.cpp
+    Basic/MapPoint.cpp
+    Basic/Memory.cpp
+)
+
+add_library( ygz-algorithm 
+    Algorithm/FeatureDetector.cpp 
+    Algorithm/Matcher.cpp 
+    Algorithm/CVUtils.cpp
 )

@@ -6,13 +6,13 @@ set( CMAKE_CXX_COMPILER "g++" )
 # set( CMAKE_CXX_COMPILER "clang++" )
 
 # debug 
-set( CMAKE_BUILD_TYPE "Debug" )
-set( CMAKE_CXX_FLAGS "-std=c++11 -Wno-reorder" )
-add_definitions( "-DDEBUG_VIZ" )
+# set( CMAKE_BUILD_TYPE "Debug" )
+# set( CMAKE_CXX_FLAGS "-std=c++11 -Wno-reorder" )
+# add_definitions( "-DDEBUG_VIZ" )
 
 # Release config
-# set( CMAKE_BUILD_TYPE "Release" )
-# set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3" )
+set( CMAKE_BUILD_TYPE "Release" )
+set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3" )
 
 # Set build flags, set ARM_ARCHITECTURE environment variable on Odroid
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -D_LINUX -D_REENTRANT -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unknown-pragmas")
@@ -45,12 +45,6 @@ include_directories( ${Boost_INCLUDE_DIRS} )
 # fast 
 find_package( fast REQUIRED )
 include_directories( ${fast_INCLUDE_DIRS} )
-# g2o 
-find_package( G2O REQUIRED )
-include_directories( ${G2O_INCLUDE_DIRS} )
-# csparse, needed in g2o 
-find_package( CSparse REQUIRED )
-include_directories( ${CSPARSE_INCLUDE_DIR} )
 # ceres 
 find_package( Ceres REQUIRED )
 include_directories( ${CERES_INCLUDE_DIRS} )
@@ -68,9 +62,6 @@ set( THIRD_PARTY_LIBS
     ${GLOG_LIBRARY}
     ${Boost_LIBRARIES}
     ${fast_LIBRARIES}
-    
-    # g2o has a group of mess things 
-    g2o_core g2o_stuff g2o_csparse_extension g2o_types_sba g2o_solver_csparse 
     ${CSPARSE_LIBRARY}
     ${CERES_LIBRARIES}
     ${Pangolin_LIBRARIES}
@@ -81,4 +72,4 @@ set( THIRD_PARTY_LIBS
 ############### executable ######################
 add_subdirectory( src )
 add_subdirectory( test )
-add_subdirectory( examples )
+# add_subdirectory( examples )

@@ -54,4 +54,23 @@ using cv::Mat;
 // ceres
 #include <ceres/ceres.h>
 
+// for DBoW3 
+#include <BowVector.h>
+#include <FeatureVector.h>
+#include "Vocabulary.h"
+typedef DBoW3::Vocabulary ORBVocabulary;
+
+
+// ********************************************************************************
+// 常量定义
+
+// 稀疏直接法里用的pattern
+enum {PATTERN_SIZE = 8};
+const double PATTERN_DX[PATTERN_SIZE] = {0,-1,1,1,-2,0,2,0};
+const double PATTERN_DY[PATTERN_SIZE] = {0,-1,-1,1,0,-2,0,2};
+
+// Local mapping中使用的patch大小
+const int WarpHalfPatchSize = 4;    
+const int WarpPatchSize = 8;
+
 #endif

@@ -1,8 +1,8 @@
-#ifndef CAMERA_H_
-#define CAMERA_H_
+#ifndef YGZ_CAMERA_H_
+#define YGZ_CAMERA_H_
 
-#include "ygz/common_include.h"
-#include "ygz/config.h"
+#include "ygz/Basic/Common.h"
+#include "ygz/Basic/Config.h"
 
 namespace ygz
 {
@@ -11,15 +11,15 @@ class PinholeCamera
 {
 public:
     PinholeCamera( ) {
-        _fx = Config::get<float> ( "camera.fx" );
-        _fy = Config::get<float> ( "camera.fy" );
-        _cx = Config::get<float> ( "camera.cx" );
-        _cy = Config::get<float> ( "camera.cy" );
+        _fx = Config::Get<float> ( "camera.fx" );
+        _fy = Config::Get<float> ( "camera.fy" );
+        _cx = Config::Get<float> ( "camera.cx" );
+        _cy = Config::Get<float> ( "camera.cy" );
 
-        _k1 = Config::get<float> ( "camera.k1" );
-        _k2 = Config::get<float> ( "camera.k2" );
-        _p1 = Config::get<float> ( "camera.p1" );
-        _p2 = Config::get<float> ( "camera.p2" );
+        _k1 = Config::Get<float> ( "camera.k1" );
+        _k2 = Config::Get<float> ( "camera.k2" );
+        _p1 = Config::Get<float> ( "camera.p1" );
+        _p2 = Config::Get<float> ( "camera.p2" );
 
         _f = ( _fx+_fy ) /2;
         _mat = ( cv::Mat_<double> ( 3,3 ) <<  _fx, 0, _cx, 0, _fy, _cy, 0, 0, 1 );
@@ -107,13 +107,13 @@ protected:
     float _fx, _fy, _cx, _cy, _f;
     // distortion
     float _k1, _k2, _p1, _p2;
-
+    // Intrinsics in OpenCV's format
     Mat _mat;
 };
 
 
-// TODO: think about RGBD camera
+// TODO: think about RGBD or fisheye camera
 
 }
 
-#endif
+#endif // YGZ_CAMERA_H_

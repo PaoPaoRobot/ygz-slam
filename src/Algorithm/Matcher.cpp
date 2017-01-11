@@ -1,21 +1,20 @@
-#include "ygz/common_include.h"
-#include "ygz/ORB/ORBMatcher.h"
-#include "ygz/frame.h"
-#include "ygz/camera.h"
+#include "ygz/Basic.h"
+#include "ygz/Algorithm/Matcher.h"
+#include "ygz/Algorithm/CVUtils.h"
 
 namespace ygz {
     
-ORBMatcher::ORBMatcher ()
+Matcher::Matcher ()
 {
-    _options.th_low = Config::get<int>("matcher.th_low");
-    _options.th_high = Config::get<int>("matcher.th_high");
+    _options.th_low = Config::Get<int>("matcher.th_low");
+    _options.th_high = Config::Get<int>("matcher.th_high");
     
-    _options.init_low = Config::get<int>("matcher.init_low");
-    _options.init_high = Config::get<int>("matcher.init_high");
-    _options.knnRatio = Config::get<int>("matcher.knnRatio");
+    _options.init_low = Config::Get<int>("matcher.init_low");
+    _options.init_high = Config::Get<int>("matcher.init_high");
+    _options.knnRatio = Config::Get<int>("matcher.knnRatio");
 }
 
-int ORBMatcher::DescriptorDistance ( const Mat& a, const Mat& b )
+int Matcher::DescriptorDistance ( const Mat& a, const Mat& b )
 {
     const int *pa = a.ptr<int32_t>();
     const int *pb = b.ptr<int32_t>();
@@ -30,29 +29,19 @@ int ORBMatcher::DescriptorDistance ( const Mat& a, const Mat& b )
     return dist;
 }
 
-int ORBMatcher::CheckFrameDescriptors ( 
+int Matcher::CheckFrameDescriptors ( 
     Frame* frame1, 
     Frame* frame2, 
-    vector<pair<int,int>>& matches
+    list<pair<int,int>>& matches
 )
 {
     vector<int> distance; 
-    LOG(INFO) << frame1->_descriptors.size()<<","<<frame2->_descriptors.size();
-    // 第一个帧有一些没跟上的点，所以会多一些
-    
-    // assert( frame1->_map_point_candidates.size() == frame2->_map_point_candidates.size() );
-    // assert( frame1->_descriptors.size() == frame2->_descriptors.size() );
-    
-    vector<int> valid_idx_ref;
-    for ( size_t i1 = 0, i2=0; i1<frame1->_map_point_candidates.size(); i1++ )
+    for ( auto& m: matches )
     {
-        if ( frame1->_candidate_status[i1] == CandidateStatus::BAD )
-            continue; 
-        distance.push_back ( 
-            DescriptorDistance( frame1->_descriptors[i1], frame2->_descriptors[i2] )
-        );
-        i2++;
-        valid_idx_ref.push_back(i1);
+        distance.push_back( DescriptorDistance(
+            frame1->_features[m.first]->_desc,
+            frame2->_features[m.second]->_desc
+        ));
     }
     
     int cnt_good = 0;
@@ -63,48 +52,40 @@ int ORBMatcher::CheckFrameDescriptors (
     best_dist = best_dist>_options.init_low ? best_dist:_options.init_low; 
     best_dist = best_dist<_options.init_high ? best_dist:_options.init_high; 
     
-    
-    for ( size_t i=0; i<distance.size(); i++ ) {
-        // LOG(INFO) << "dist = "<<distance[i]<<endl;
-        
-        if ( distance[i] < _options.initMatchRatio*best_dist )  {
-            frame1->_candidate_status[ valid_idx_ref[i] ] = CandidateStatus::WAIT_TRIANGULATION;
-            frame2->_candidate_status[i] = CandidateStatus::WAIT_TRIANGULATION;
-            matches.push_back( make_pair( valid_idx_ref[i], i) );
+    int i=0; 
+    LOG(INFO)<<"original matches: "<<matches.size()<<endl;
+    for ( auto iter=matches.begin(); iter!=matches.end(); i++ ) 
+    {
+        if ( distance[i] < _options.initMatchRatio*best_dist )  
+        {
             cnt_good++;
+            iter++;
         }
-        else  {
-            frame1->_candidate_status[ valid_idx_ref[i] ] = CandidateStatus::BAD;
-            frame2->_candidate_status[i] = CandidateStatus::BAD;
+        else  
+        {
+            iter = matches.erase( iter );
         }
     }
-    
     LOG(INFO) << "correct matches: "<<matches.size()<<endl;
-    
     return cnt_good;
 }
 
-int ORBMatcher::SearchForTriangulation ( 
+int Matcher::SearchForTriangulation ( 
     Frame* kf1, 
     Frame* kf2, 
     const Matrix3d& E12, 
     vector< pair< int, int > >& matched_points, 
     const bool& onlyStereo )
 {
-    LOG(INFO) << kf1->_map_point_candidates.size()<<","<<kf1->_descriptors.size()<<endl;
-    LOG(INFO) << kf2->_map_point_candidates.size()<<","<<kf2->_descriptors.size()<<endl;
-    
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
     
-    // 极点像素坐标
-    Vector2d c2_px = kf2->_camera->World2Pixel( kf1->GetCamCenter(), kf2->_T_c_w );
-
     // 计算匹配
     int matches = 0;
-    vector<bool> matched2( kf2->_map_point_candidates.size(), false ); 
-    vector<int> matches12( kf1->_map_point_candidates.size(), -1 );
+    vector<bool> matched2( kf2->_features.size(), false ); 
+    vector<int> matches12( kf1->_features.size(), -1 );
     vector<int> rotHist[ HISTO_LENGTH ];
+    
     for ( int i=0; i<HISTO_LENGTH; i++ ) {
         rotHist[i].reserve(500);
     }
@@ -122,32 +103,29 @@ int ORBMatcher::SearchForTriangulation (
             for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
                 const size_t idx1 = f1it->second[i1]; 
                 // 取出 kf1 中对应的特征点
-                if ( kf1->_candidate_status[idx1] != CandidateStatus::WAIT_TRIANGULATION ) {  // 该点已经三角化
+                if ( kf1->_features[idx1]->_mappoint )
                     continue;
-                }
                 
-                const cv::KeyPoint& kp1 = kf1->_map_point_candidates[idx1];
-                const cv::Mat& desp1 = kf1->_descriptors[idx1];
+                const Vector2d& kp1 = kf1->_features[idx1]->_pixel;
+                const Mat& desp1 = kf1->_features[idx1]->_desc;
                 
                 int bestDist = _options.th_low;
                 int bestIdx2 = -1;
                 
                 for ( size_t i2=0, iend2 = f2it->second.size(); i2<iend2; i2++ ) {
                     size_t idx2 = f2it->second[i2];
-                    Mat& desp2 = kf2->_descriptors[idx2];
+                    
+                    Mat& desp2 = kf2->_features[idx2]->_desc;
+                    
                     const int dist = DescriptorDistance( desp1, desp2 );
-                    
-                    const cv::KeyPoint& kp2 = kf2->_map_point_candidates[idx2];
-                    
-                    // LOG(INFO) << "dist = " << dist << endl;
+                    const Vector2d& kp2 = kf2->_features[idx2]->_pixel;
                     
                     if ( dist>_options.th_low || dist>bestDist ) 
                         continue;
                     
-                    
                     // 计算两个 keypoint 是否满足极线约束
-                    Vector3d pt1 = kf1->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) ); 
-                    Vector3d pt2 = kf2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) ); 
+                    Vector3d pt1 = kf1->_camera->Pixel2Camera( kp1 ); 
+                    Vector3d pt2 = kf2->_camera->Pixel2Camera( kp2 ); 
                     if ( CheckDistEpipolarLine(pt1, pt2, E12) ) {
                         // 极线约束成立
                         bestIdx2 = idx2;
@@ -156,12 +134,11 @@ int ORBMatcher::SearchForTriangulation (
                 }
                 
                 if ( bestIdx2 >=0 ) {
-                    const cv::KeyPoint& kp2 = kf2->_map_point_candidates[bestIdx2];
                     matches12[idx1] = bestIdx2;
                     matches++;
                     
                     if ( _options.checkOrientation ) {
-                        float rot = kp1.angle - kf2->_map_point_candidates[bestIdx2].angle;
+                        float rot = kf1->_features[idx1]->_angle - kf2->_features[bestIdx2]->_angle;
                         if ( rot<0 ) rot+=360;
                         int bin = round(rot*factor);
                         if ( bin == HISTO_LENGTH )
@@ -200,7 +177,10 @@ int ORBMatcher::SearchForTriangulation (
 }
 
 // 利用 Bag of Words 加速匹配
-int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
+int Matcher::SearchByBoW(
+    Frame* kf1, 
+    Frame* kf2, 
+    map<int,int>& matches )
 {
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
@@ -225,14 +205,14 @@ int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
             // 遍历 f1 中该 node 的特征点
             for ( size_t if1 = 0; if1<indices_f1.size(); if1++ ) {
                 const unsigned int real_idx_f1 = indices_f1[if1];
-                Mat desp_f1 = kf1->_descriptors[real_idx_f1];
+                Mat desp_f1 = kf1->_features[real_idx_f1]->_desc;
                 int bestDist1 = 256;  // 最好的距离
                 int bestIdxF2 = -1;
                 int bestDist2 = 256;  // 第二好的距离
                 
                 for ( size_t if2=0; if2<indices_f2.size(); if2++) {
                     const unsigned int real_idx_f2 = indices_f2[if2];
-                    const Mat& desp_f2 = kf2->_descriptors[real_idx_f2];
+                    const Mat& desp_f2 = kf2->_features[real_idx_f2]->_desc;
                     const int dist = DescriptorDistance( desp_f1, desp_f2 );
                     if ( dist < bestDist1 ) {
                         bestDist2 = bestDist1;
@@ -249,8 +229,7 @@ int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
                         // 最好的匹配明显比第二好的匹配好
                         matches[ real_idx_f1 ] = bestIdxF2;
                         if ( _options.checkOrientation ) {
-                            cv::KeyPoint& kp = kf1->_map_point_candidates[real_idx_f1];
-                            float rot = kp.angle - kf2->_map_point_candidates[bestIdxF2].angle;
+                            float rot = kf1->_features[real_idx_f1]->_angle - kf2->_features[bestIdxF2]->_angle;
                             if ( rot<0 ) rot+=360;
                             int bin = round(rot*factor);
                             if ( bin == HISTO_LENGTH )
@@ -296,8 +275,8 @@ int ORBMatcher::SearchByBoW(Frame* kf1, Frame* kf2, map<int,int>& matches)
     return cnt_matches;
 }
 
-
-void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, int& ind2, int& ind3)
+void Matcher::ComputeThreeMaxima(
+    vector<int>* histo, const int L, int& ind1, int& ind2, int& ind3)
 {
     int max1=0;
     int max2=0;
@@ -340,11 +319,9 @@ void ORBMatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int& ind1, 
     }
 }
 
-bool ORBMatcher::CheckDistEpipolarLine(const Vector3d& pt1, const Vector3d& pt2, const Matrix3d& E12)
+bool Matcher::CheckDistEpipolarLine(
+    const Vector3d& pt1, const Vector3d& pt2, const Matrix3d& E12)
 {
-    // double res = pt1.transpose() * E12 * pt2; 
-    // LOG(INFO) << "res = "<< res << endl;
-    
     const float a = pt1[0] * E12(0,0) + pt1[1] * E12(1,0) + E12(2,0);
     const float b = pt1[0] * E12(0,1) + pt1[1] * E12(1,1) + E12(2,1);
     const float c = pt1[0] * E12(0,2) + pt1[1] * E12(1,2) + E12(2,2);
@@ -360,6 +337,81 @@ bool ORBMatcher::CheckDistEpipolarLine(const Vector3d& pt1, const Vector3d& pt2,
     LOG(INFO) << "dsqr = "<<dsqr << endl;
     
     return fabs(dsqr) < 2e-4;
+}
+
+bool Matcher::FindDirectProjection(
+    Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr)
+{
+    Eigen::Matrix2d ACR;
+    Feature* fea = mp->_obs[ref->_keyframe_id];
+    Vector2d& px_ref = fea->_pixel;
+    Vector3d pt_ref = ref->_camera->Pixel2Camera( px_ref, fea->_depth );
+    SE3 TCR = curr->_TCW*ref->_TCW.inverse();
+    GetWarpAffineMatrix( ref, curr, px_ref, pt_ref, fea->_level, TCR, ACR );
+    int search_level = GetBestSearchLevel( ACR, curr->_option._pyramid_level-1 );
+    WarpAffine( ACR, ref->_pyramid[fea->_level], fea->_pixel, fea->_level, search_level, WarpHalfPatchSize+1, _patch_with_border );
+    // 去掉边界
+    uint8_t* ref_patch_ptr = _patch;
+    for ( int y=1; y<WarpPatchSize+1; ++y, ref_patch_ptr += WarpPatchSize )
+    {
+        uint8_t* ref_patch_border_ptr = _patch_with_border + y* ( WarpPatchSize+2 ) + 1;
+        for ( int x=0; x<WarpPatchSize; ++x )
+            ref_patch_ptr[x] = ref_patch_border_ptr[x];
+    }
+    Vector2d px_scaled = px_curr / (1<<search_level);
+    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, px_scaled); 
+    px_curr = px_scaled*(1<<search_level);
+    if ( !curr->InFrame(px_curr) ) 
+        return false;
+    return success;
+}
+
+void Matcher::GetWarpAffineMatrix(
+    const Frame* ref, const Frame* curr, 
+    const Vector2d& px_ref, const Vector3d& pt_ref, 
+    const int& level, const SE3& TCR, Matrix2d& ACR )
+{
+    Vector3d pt_ref_world = ref->_camera->Camera2World ( pt_ref, ref->_TCW );
+    // 偏移之后的3d点，深度取成和pt_ref一致
+    Vector3d pt_du_ref = ref->_camera->Pixel2Camera ( px_ref + Vector2d ( WarpHalfPatchSize, 0 ) * ( 1<<level ), pt_ref[2] );
+    Vector3d pt_dv_ref = ref->_camera->Pixel2Camera ( px_ref + Vector2d ( 0, WarpHalfPatchSize ) * ( 1<<level ), pt_ref[2] );
+
+    const Vector2d px_cur = curr->_camera->World2Pixel ( pt_ref_world, TCR );
+    const Vector2d px_du = curr->_camera->World2Pixel ( pt_du_ref, TCR );
+    const Vector2d px_dv = curr->_camera->World2Pixel ( pt_dv_ref, TCR );
+
+    ACR.col ( 0 ) = ( px_du - px_cur ) / WarpHalfPatchSize;
+    ACR.col ( 1 ) = ( px_dv - px_cur ) / WarpHalfPatchSize;
+}
+
+void Matcher::WarpAffine(
+    const Matrix2d& ACR, const Mat& img_ref, const Vector2d& px_ref, 
+    const int& level_ref, const int& search_level, 
+    const int& half_patch_size, uint8_t* patch)
+{
+    const int patch_size = half_patch_size*2;
+    const Eigen::Matrix2d ARC = ACR.inverse();
+
+    // Affine warp
+    uint8_t* patch_ptr = patch;
+    const Vector2d px_ref_pyr = px_ref / ( 1<<level_ref );
+    for ( int y=0; y<patch_size; y++ )
+    {
+        for ( int x=0; x<patch_size; x++, ++patch_ptr )
+        {
+            Vector2d px_patch ( x-half_patch_size, y-half_patch_size );
+            px_patch *= ( 1<<search_level );
+            const Vector2d px ( ARC*px_patch + px_ref_pyr );
+            if ( px[0]<0 || px[1]<0 || px[0]>=img_ref.cols-1 || px[1]>=img_ref.rows-1 )
+            {
+                *patch_ptr = 0;
+            }
+            else
+            {
+                *patch_ptr = cvutils::GetBilateralInterpUchar ( px[0], px[1], img_ref );
+            }
+        }
+    }
 }
 
 
