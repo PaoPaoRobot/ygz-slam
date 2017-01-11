@@ -66,12 +66,19 @@ public:
     // 用直接法判断能否从在当前图像上找到某地图点的投影
     bool FindDirectProjection( Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr );
     
+    // model based sparse image alignment
+    // 通过参照帧中观测到的3D点，预测当前帧的pose，稀疏直接法
+    bool SparseImageAlignment( Frame* ref, Frame* current );
+    
 private:
     // 内部函数
     // 计算旋转直方图中三个最大值
     void ComputeThreeMaxima( vector<int>* histo, const int L, int& ind1, int& ind2, int& ind3 );
     
     bool CheckDistEpipolarLine( const Vector3d& pt1, const Vector3d& pt2, const Eigen::Matrix3d& E12 );
+    
+    // 对每层金字塔计算的 image alignment 
+    bool SparseImageAlignmentInPyramid( Frame* ref, Frame* current, int pyramid );
     
     
     void GetWarpAffineMatrix (
@@ -110,10 +117,15 @@ private:
         return search_level;
     }
     
+    // 计算参照帧中的图像块
+    void PrecomputeReferencePatches( Frame* ref, int level ); 
+    
     // 匹配局部地图用的 patch, 默认8x8
     uchar _patch[WarpPatchSize*WarpPatchSize];
     // 带边界的，左右各1个像素
     uchar _patch_with_border[(WarpPatchSize+2)*(WarpPatchSize+2)];
+    
+    vector<uchar*> _patches_align;      // 等待推倒的patches
 
 };
     

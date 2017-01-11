@@ -414,6 +414,44 @@ void Matcher::WarpAffine(
     }
 }
 
+bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
+{
+
+}
+
+bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyramid)
+{
+
+}
+
+
+void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
+{
+    if ( !_patches_align.empty() ) {
+        for ( uchar* p: _patches_align )
+            delete[] p;
+        _patches_align.clear();
+    }
+    
+    Mat& img = ref->_pyramid[level];
+    int scale = 1<<level;
+    for ( Feature* fea: ref->_features ) 
+    {
+        if ( fea->_mappoint && !fea->_mappoint->_bad )
+        {
+            Vector2d px_ref = fea->_pixel/scale;
+            uchar * pixels = new uchar[PATTERN_SIZE];
+            for ( int k=0; k<PATTERN_SIZE; k++ ) 
+            {
+                double u = px_ref[0]+PATTERN_DX[k];
+                double v = px_ref[1]+PATTERN_DY[k];
+                pixels[k] = cvutils::GetBilateralInterpUchar( u, v, img );
+            }
+            _patches_align.push_back( pixels );
+        }
+    }
+}
+
 
 
     
