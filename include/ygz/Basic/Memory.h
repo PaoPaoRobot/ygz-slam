@@ -24,7 +24,10 @@ public:
     ~Memory() { 
         if ( _mem != nullptr )
             _mem->Clean();
+        _mem = nullptr;
     }
+    
+    static void Init() ;
     
     // register a frame into memory, allocate an ID to it
     // if already registered, you can choose whether to overwrite the exist one 
@@ -38,18 +41,28 @@ public:
     
     static MapPoint* GetMapPoint( const unsigned long& id );
     
-    static inline unordered_map<unsigned long, MapPoint*> & GetAllPoints() {
+    static inline map<unsigned long, MapPoint*> & GetAllPoints() {
         return _points;
     }
     
     void Clean();
     
+    static void PrintInfo() 
+    {
+        LOG(INFO)<<"Frames: "<<_frames.size()<<endl;
+        for ( auto& frame_pair: _frames )
+            LOG(INFO) << frame_pair.first<<endl;
+        LOG(INFO) << "Map Points: "<<_points.size()<<endl;
+        for ( auto& mp_pair: _points )
+            LOG(INFO) << mp_pair.first << endl;
+    }
+    
 private:
     Memory() {}
     
 private:
-    static unordered_map<unsigned long, Frame*>         _frames; 
-    static unordered_map<unsigned long, MapPoint*>      _points;
+    static map<unsigned long, Frame*>         _frames; 
+    static map<unsigned long, MapPoint*>      _points;
     static unsigned long _id_frame, _id_points; 
     static shared_ptr<Memory> _mem;
 };

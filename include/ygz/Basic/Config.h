@@ -26,6 +26,12 @@ public:
         return T( Config::_config->_file[key] );
     }
     
+    static void Release()
+    {
+        if ( _config )
+            _config.reset();
+        _config = nullptr;
+    }
 private:
     static shared_ptr<Config> _config; 
     cv::FileStorage _file;

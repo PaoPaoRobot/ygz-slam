@@ -6,15 +6,26 @@ namespace ygz {
     
 void Memory::Clean()
 {
-    for ( auto& frame_pair: _frames ) {
-        delete frame_pair.second;
-    }
-    _frames.clear();
+    LOG(INFO)<<"Cleaning memory"<<endl;
+    LOG(INFO) << "frames: "<<_frames.size()<<endl;
+    // for ( auto iter = _frames.begin(); iter!=_frames.end(); iter++ ) {
+        // LOG(INFO) << "delete frame "<<iter->first<<endl;
+        // delete iter->second;
+    // }
+    // LOG(INFO)<<"clear frames"<<endl;
+    // _frames.clear();
     
+    LOG(INFO) << "map points: "<<_points.size()<<endl;
+    /*
     for ( auto& point_pair: _points ) {
+        LOG(INFO)<<"delete map point "<<point_pair.first<<endl;
         delete point_pair.second;
     }
     _points.clear();
+    */
+    _frames.clear();
+    _points.clear();
+    LOG(INFO)<<"Cleaning memory returns"<<endl;
 }
 
 Frame* Memory::RegisterKeyFrame(Frame* frame, bool overwrite)
@@ -36,6 +47,8 @@ Frame* Memory::RegisterKeyFrame(Frame* frame, bool overwrite)
         frame->_keyframe_id = _id_frame; 
         _frames[ frame->_keyframe_id ] = frame; 
         _id_frame++;
+        
+        
         return frame; 
     }
 }
@@ -66,11 +79,17 @@ MapPoint* Memory::GetMapPoint( const unsigned long& id ) {
     return iter->second;
 }
 
-shared_ptr<Memory> Memory::_mem(new Memory) ;
+void Memory::Init()
+{
+    _mem = make_shared<Memory>();
+}
+
+
+shared_ptr<Memory> Memory::_mem( nullptr ) ;
 unsigned long Memory::_id_frame =0;
 unsigned long Memory::_id_points =0; 
 
-unordered_map<unsigned long, Frame*> Memory::_frames; 
-unordered_map<unsigned long, MapPoint*> Memory::_points;
+map<unsigned long, Frame*> Memory::_frames; 
+map<unsigned long, MapPoint*> Memory::_points;
 
 }

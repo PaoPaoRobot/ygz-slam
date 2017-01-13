@@ -1,6 +1,7 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm/Matcher.h"
 #include "ygz/Algorithm/CVUtils.h"
+#include "ygz/CeresTypes.h"
 
 namespace ygz {
     
@@ -12,6 +13,15 @@ Matcher::Matcher ()
     _options.init_low = Config::Get<int>("matcher.init_low");
     _options.init_high = Config::Get<int>("matcher.init_high");
     _options.knnRatio = Config::Get<int>("matcher.knnRatio");
+}
+
+Matcher::~Matcher()
+{
+    if ( !_patches_align.empty() ) {
+        for ( uchar* p: _patches_align )
+            delete[] p;
+        _patches_align.clear();
+    }
 }
 
 int Matcher::DescriptorDistance ( const Mat& a, const Mat& b )
@@ -416,17 +426,70 @@ void Matcher::WarpAffine(
 
 bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
 {
-
+    // from top to bottom 
+    _TCR_esti = SE3(); // reset estimation
+    
+    for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
+    {
+        LOG(INFO) << "aligning patches in level "<<level<<endl;
+        SparseImageAlignmentInPyramid( ref, current, level );
+        LOG(INFO)<<"TCR = \n"<<_TCR_esti.matrix()<<endl;
+    }
+    
+    if ( _TCR_esti.log().norm() > _options.max_alignment_motion ) {
+        _TCR_esti = SE3();
+        return false;
+    }
+    return true;
 }
 
 bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyramid)
 {
-
+    PrecomputeReferencePatches( ref, pyramid );
+    // solve the problem 
+    ceres::Problem problem;
+    Vector6d pose_curr;
+    pose_curr.head<3>() = _TCR_esti.translation();
+    pose_curr.tail<3>() = _TCR_esti.so3().log();
+    
+    int index = 0;
+    for ( Feature* fea: ref->_features )
+    {
+        if ( fea->_mappoint && !fea->_mappoint->_bad )
+        {
+            problem.AddResidualBlock(
+                new CeresReprojSparseDirectError(
+                    current->_pyramid[pyramid],
+                    _patches_align[index++],
+                    ref->_camera->Pixel2Camera( fea->_pixel, fea->_depth ),
+                    ref->_camera,
+                    1<<pyramid
+                ), 
+                nullptr, 
+                pose_curr.data()
+            );
+        }
+    }
+    
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    ceres::Solver::Summary summary;
+    ceres::Solve( options, &problem, &summary );
+    cout<<summary.FullReport()<<endl;
+    
+    // set the pose 
+    _TCR_esti = SE3( 
+        SO3::exp( pose_curr.tail<3>()),
+        pose_curr.head<3>()
+    );
+    
+    return true;
 }
 
 
 void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
 {
+    LOG(INFO) << "computing ref patches in level "<<level<<endl;
     if ( !_patches_align.empty() ) {
         for ( uchar* p: _patches_align )
             delete[] p;
@@ -450,6 +513,8 @@ void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
             _patches_align.push_back( pixels );
         }
     }
+    
+    LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
 }
 
 

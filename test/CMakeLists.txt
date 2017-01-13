@@ -4,6 +4,12 @@ target_link_libraries( test_feature_extraction
     ${THIRD_PARTY_LIBS}
 )
 
+add_executable( test_feature_alignment test_feature_alignment.cpp )
+target_link_libraries( test_feature_alignment 
+    ygz-core ygz-algorithm
+    ${THIRD_PARTY_LIBS}
+)
+
 # add_executable( test_tum_tracking test_tum_tracking.cpp )
 # target_link_libraries( test_tum_tracking 
 #     ygz-slam ${THIRD_PARTY_LIBS}

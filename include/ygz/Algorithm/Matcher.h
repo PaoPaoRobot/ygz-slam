@@ -26,6 +26,7 @@ public:
         int init_low = 30;              // 这两个在初始化时用于检测光流结果是否正确
         int init_high = 80;             
         
+        double max_alignment_motion = 0.2; // 稀疏匹配中能够接受的最大的运动
         
     } _options;
     
@@ -33,6 +34,7 @@ public:
     static const int HISTO_LENGTH = 30;  // 旋转直方图的size
     
     Matcher();
+    ~Matcher();
     
     // 特征点法的匹配
     // Computes the Hamming distance between two ORB descriptors
@@ -69,6 +71,11 @@ public:
     // model based sparse image alignment
     // 通过参照帧中观测到的3D点，预测当前帧的pose，稀疏直接法
     bool SparseImageAlignment( Frame* ref, Frame* current );
+    
+    SE3 GetTCR() const 
+    {
+        return _TCR_esti;
+    }
     
 private:
     // 内部函数
@@ -120,12 +127,16 @@ private:
     // 计算参照帧中的图像块
     void PrecomputeReferencePatches( Frame* ref, int level ); 
     
+private:
+    // Data 
+    
     // 匹配局部地图用的 patch, 默认8x8
     uchar _patch[WarpPatchSize*WarpPatchSize];
     // 带边界的，左右各1个像素
     uchar _patch_with_border[(WarpPatchSize+2)*(WarpPatchSize+2)];
     
     vector<uchar*> _patches_align;      // 等待推倒的patches
+    SE3 _TCR_esti;      // 待估计的TCR
 
 };
     

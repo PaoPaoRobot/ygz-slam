@@ -64,7 +64,7 @@ public:
             
             if ( visible ) 
             {
-                residuals[i] = _ref_pattern[i] - cvutils::GetBilateralInterp(u,v,_curr_img);
+                residuals[i] = _ref_pattern[i] - cvutils::GetBilateralInterpUchar(u,v,_curr_img);
                 if ( setJacobian ) 
                 {
                     double du = (cvutils::GetBilateralInterpUchar(u+1, v, _curr_img) - cvutils::GetBilateralInterpUchar(u-1,v,_curr_img))/2.0;
