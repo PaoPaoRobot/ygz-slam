@@ -65,9 +65,15 @@ typedef DBoW3::Vocabulary ORBVocabulary;
 // 常量定义
 
 // 稀疏直接法里用的pattern
-enum {PATTERN_SIZE = 8};
-const double PATTERN_DX[PATTERN_SIZE] = {0,-1,1,1,-2,0,2,0};
-const double PATTERN_DY[PATTERN_SIZE] = {0,-1,-1,1,0,-2,0,2};
+// 这是DSO用的pattern
+// enum {PATTERN_SIZE = 1};
+// const double PATTERN_DX[PATTERN_SIZE] = {0,-1,1,1,-2,0,2,0};
+// const double PATTERN_DY[PATTERN_SIZE] = {0,-1,-1,1,0,-2,0,2};
+
+// 这样用就只考虑一个像素
+enum {PATTERN_SIZE = 1};
+const double PATTERN_DX[PATTERN_SIZE] = {0};
+const double PATTERN_DY[PATTERN_SIZE] = {0};
 
 // Local mapping中使用的patch大小
 const int WarpHalfPatchSize = 4;    
