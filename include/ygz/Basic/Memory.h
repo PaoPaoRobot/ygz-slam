@@ -27,8 +27,6 @@ public:
         _mem = nullptr;
     }
     
-    static void Init() ;
-    
     // register a frame into memory, allocate an ID to it
     // if already registered, you can choose whether to overwrite the exist one 
     static Frame* RegisterKeyFrame( Frame* frame, bool overwrite=false );
@@ -37,33 +35,23 @@ public:
     
     static Frame* GetKeyFrame( const unsigned long& keyframe_id );
     
-    static inline int GetNumberFrames() { return _frames.size(); }
+    static inline int GetNumberFrames() { return _mem->_frames.size(); }
     
     static MapPoint* GetMapPoint( const unsigned long& id );
     
-    static inline map<unsigned long, MapPoint*> & GetAllPoints() {
-        return _points;
+    static inline unordered_map<unsigned long, MapPoint*> & GetAllPoints() {
+        return _mem->_points;
     }
     
     void Clean();
-    
-    static void PrintInfo() 
-    {
-        LOG(INFO)<<"Frames: "<<_frames.size()<<endl;
-        for ( auto& frame_pair: _frames )
-            LOG(INFO) << frame_pair.first<<endl;
-        LOG(INFO) << "Map Points: "<<_points.size()<<endl;
-        for ( auto& mp_pair: _points )
-            LOG(INFO) << mp_pair.first << endl;
-    }
     
 private:
     Memory() {}
     
 private:
-    static map<unsigned long, Frame*>         _frames; 
-    static map<unsigned long, MapPoint*>      _points;
-    static unsigned long _id_frame, _id_points; 
+    unordered_map<unsigned long, Frame*>         _frames; 
+    unordered_map<unsigned long, MapPoint*>      _points;
+    unsigned long _id_frame=0, _id_points=0; 
     static shared_ptr<Memory> _mem;
 };
     

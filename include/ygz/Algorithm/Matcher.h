@@ -26,7 +26,7 @@ public:
         int init_low = 30;              // 这两个在初始化时用于检测光流结果是否正确
         int init_high = 80;             
         
-        double max_alignment_motion = 0.2; // 稀疏匹配中能够接受的最大的运动
+        double max_alignment_motion = 0.5; // 稀疏匹配中能够接受的最大的运动
         
     } _options;
     
@@ -136,6 +136,7 @@ private:
     uchar _patch_with_border[(WarpPatchSize+2)*(WarpPatchSize+2)];
     
     vector<uchar*> _patches_align;      // 等待推倒的patches
+    vector<Vector2d*> _duv_ref;         // Reference 像素梯度
     SE3 _TCR_esti;      // 待估计的TCR
 
 };

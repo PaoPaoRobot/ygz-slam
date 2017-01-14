@@ -6,7 +6,8 @@
 
 using namespace std; 
 using namespace cv; 
-// 本程序测试sparse alignment的结果
+
+// 本程序测试 SVO sparse alignment 的结果
 
 int main( int argc, char** argv )
 {
@@ -66,18 +67,13 @@ int main( int argc, char** argv )
         
         fea->_depth = double(d)/1000.0;
         ygz::MapPoint* mp = ygz::Memory::CreateMapPoint();
-        // mp->_pos_world = frame->_camera->Pixel2World( pixel, frame->_TCW, fea->_depth );
-        // fea->_mappoint = mp;
-        // mp->_obs[frame->_keyframe_id] = fea;
+        mp->_pos_world = frame->_camera->Pixel2World( pixel, frame->_TCW, fea->_depth );
+        fea->_mappoint = mp;
+        mp->_obs[frame->_keyframe_id] = fea;
         cnt_mp++;
     }
     
     LOG(INFO) << "Set "<<cnt_mp<<" map points. "<<endl;
-    ygz::Memory::PrintInfo();
-    return 0;
-    
-    /*
-    
     
     // read the second frame 
     index +=2 ;
@@ -97,30 +93,26 @@ int main( int argc, char** argv )
     LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
     
     // plot the matched features 
-    // 这边plot之后会导致程序挂掉？如果删掉则没关系
+    Mat color1_show = frame->_color.clone();
+    Mat color2_show = frame2._color.clone();
+    
+    for ( ygz::Feature* fea: frame->_features ) 
     {
-        Mat color1_show = frame->_color.clone();
-        Mat color2_show = frame2._color.clone();
-        
-        for ( ygz::Feature* fea: frame->_features ) 
+        if ( fea->_mappoint )
         {
-            if ( fea->_mappoint )
-            {
-                circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
-                    2, Scalar(0,250,0), 2
-                );
-                
-                Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
-                circle( color2_show, Point2f(px2[0], px2[1]), 2, Scalar(0,250,0), 2);
-            }
+            circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
+                2, Scalar(0,250,0), 2
+            );
+            
+            Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
+            circle( color2_show, Point2f(px2[0], px2[1]), 2, Scalar(0,250,0), 2);
         }
-        imshow("point in frame 1", color1_show );
-        imshow("point in frame 2", color2_show );
-        waitKey();
-        destroyAllWindows();
     }
+    imshow("point in frame 1", color1_show );
+    imshow("point in frame 2", color2_show );
+    waitKey();
+    destroyAllWindows();
     
     delete cam;
     ygz::Config::Release();
-    */
 }

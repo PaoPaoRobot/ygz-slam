@@ -1,3 +1,4 @@
+#include <boost/timer.hpp>
 #include "ygz/Basic.h"
 #include "ygz/Algorithm/Matcher.h"
 #include "ygz/Algorithm/CVUtils.h"
@@ -437,6 +438,7 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
     }
     
     if ( _TCR_esti.log().norm() > _options.max_alignment_motion ) {
+        LOG(INFO)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
         _TCR_esti = SE3();
         return false;
     }
@@ -451,6 +453,8 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     Vector6d pose_curr;
     pose_curr.head<3>() = _TCR_esti.translation();
     pose_curr.tail<3>() = _TCR_esti.so3().log();
+    LOG(INFO)<<"start from "<<pose_curr.transpose()<<endl;
+    
     
     int index = 0;
     for ( Feature* fea: ref->_features )
@@ -459,11 +463,14 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
         {
             problem.AddResidualBlock(
                 new CeresReprojSparseDirectError(
+                    ref->_pyramid[pyramid],
                     current->_pyramid[pyramid],
                     _patches_align[index++],
+                    fea->_pixel,
                     ref->_camera->Pixel2Camera( fea->_pixel, fea->_depth ),
                     ref->_camera,
-                    1<<pyramid
+                    1<<pyramid,
+                    true
                 ), 
                 nullptr, 
                 pose_curr.data()
@@ -471,11 +478,16 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
         }
     }
     
+    boost::timer timer;
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.num_threads = 2;
+    options.num_linear_solver_threads =2;
+    options.linear_solver_type = ceres::DENSE_NORMAL_CHOLESKY;
+    // options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    cout<<summary.FullReport()<<endl;
+    // cout<<summary.FullReport()<<endl;
+    // LOG(INFO) << "Solve alignment cost time "<<timer.elapsed()<<endl;
     
     // set the pose 
     _TCR_esti = SE3( 
@@ -489,13 +501,21 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
 
 void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
 {
-    LOG(INFO) << "computing ref patches in level "<<level<<endl;
+    // LOG(INFO) << "computing ref patches in level "<<level<<endl;
     if ( !_patches_align.empty() ) {
         for ( uchar* p: _patches_align )
             delete[] p;
         _patches_align.clear();
     }
     
+    if (  !_duv_ref.empty() ) 
+    {
+        for ( Vector2d* d: _duv_ref )
+            delete[] d;
+        _duv_ref.clear();
+    }
+    
+    boost::timer timer; 
     Mat& img = ref->_pyramid[level];
     int scale = 1<<level;
     for ( Feature* fea: ref->_features ) 
@@ -513,6 +533,7 @@ void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
             _patches_align.push_back( pixels );
         }
     }
+    // LOG(INFO)<<"compute reference patches cost time: "<<timer.elapsed()<<endl;
     
     LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
 }

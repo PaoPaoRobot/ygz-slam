@@ -2,7 +2,6 @@
 #define YGZ_FRAME_H_
 
 #include "ygz/Basic/Common.h"
-#include "ygz/ORB/ORBVocabulary.h"
 
 
 namespace ygz {
