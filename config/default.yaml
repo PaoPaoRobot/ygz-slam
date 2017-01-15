@@ -1,5 +1,8 @@
 %YAML:1.0
 
+# 这是参数配置文件，将你希望可以改动的参数列在此文件中，然后用Config类读取
+# 注意，你也可以在每个类中配置 Option 结构，写入一些不希望改变的参数
+
 # System config 
 # sensor type 
 system.sensor: monocular
@@ -35,14 +38,17 @@ camera.cy: 249.7
 # 金字塔层数
 frame.pyramid: 3
 
+# Tracker参数
+tracker.min_features: 50
+
 # 初始化参数
 init.min_features: 100
 init.min_disparity: 30
 init.min_inliers: 40
 
 # 特征提取参数
-feature.cell: 30
-feature.detection_threshold: 30.0
+feature.cell: 20
+feature.detection_threshold: 20.0
 
 # 特征匹配参数
 matcher.th_low: 65

@@ -9,4 +9,5 @@ add_library( ygz-algorithm
     Algorithm/FeatureDetector.cpp 
     Algorithm/Matcher.cpp 
     Algorithm/CVUtils.cpp
+    Algorithm/Tracker.cpp
 )
