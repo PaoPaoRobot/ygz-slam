@@ -20,6 +20,8 @@ int main( int argc, char** argv )
     if ( argc == 3 )
         index = std::atoi(argv[2]);
     
+    google::InitGoogleLogging( argv[0] );
+    
     ifstream fin( string(argv[1])+"/associate.txt" ); 
     vector<string> rgbFiles, depthFiles;
     vector<double> rgbTime, depthTime; 

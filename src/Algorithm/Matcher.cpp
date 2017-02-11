@@ -470,7 +470,8 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
                     ref->_camera->Pixel2Camera( fea->_pixel, fea->_depth ),
                     ref->_camera,
                     1<<pyramid,
-                    true
+                    _TCR_esti,
+                    false        
                 ), 
                 nullptr, 
                 pose_curr.data()
@@ -478,7 +479,6 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
         }
     }
     
-    boost::timer timer;
     ceres::Solver::Options options;
     options.num_threads = 2;
     options.num_linear_solver_threads =2;
