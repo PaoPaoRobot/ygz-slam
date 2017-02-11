@@ -19,8 +19,8 @@ public:
     // 允许有一定程度的误匹配，但最好在调用之前已经检查匹配是否合理，并且有一定程度的视差
     // 成功初始化时，返回true
     bool TryInitialize(
-        const vector<Vector2d>& px1, 
-        const vector<Vector2d>& px2, 
+        vector<Vector2d>& px1, 
+        vector<Vector2d>& px2, 
         Frame* ref, 
         Frame* curr
     ); 
@@ -30,7 +30,9 @@ public:
     {
         float _sigma = 1.0;
         float _sigma2 = 1.0;
-        int _max_iter = 200;
+        int _max_iter = 200;    // 最大迭代次数
+        double _min_parallex =1.0;
+        int _min_triangulated_pts;      // 最少被三角化点的数量
     } _options;
     
 private:
@@ -55,7 +57,7 @@ private:
 
     // 分解H矩阵，并从分解后的多个解中找出合适的R，t
     bool ReconstructH( vector<bool> &inliers, Matrix3d &H21, Matrix3d &K,
-                      Matrix3d &R21, Matrix3d &t21, vector<cv::Point3f> &vP3D, 
+                      Matrix3d &R21, Vector3d &t21, vector<Vector3d> &vP3D, 
                       vector<bool> &triangulated, float minParallax, int minTriangulated );
 
     // 通过三角化方法，利用反投影矩阵将特征点恢复为3D点
@@ -81,7 +83,7 @@ private:
                 vector<Vector3d> &p3D,                  
                 float th2, 
                 vector<bool> &good, 
-                float &parallax );
+                double &parallax );
 
     // F矩阵通过结合内参可以得到Essential矩阵，该函数用于分解E矩阵，将得到4组解
     void DecomposeE(const Matrix3d &E, Matrix3d &R1, Matrix3d &R2, Vector3d &t);
@@ -90,10 +92,11 @@ private:
     vector<vector<size_t>> _set;
     
     SE3 _T21;                   // 估得的 T21
-    vector<Vector2d>* _px1=nullptr;
-    vector<Vector2d>* _px2=nullptr;
-    int _num_points=0   ;            // 总共匹配点的数量
-    Frame* _ref=nullptr, _curr=nullptr;
+    vector<Vector2d> _px1;
+    vector<Vector2d> _px2;
+    int _num_points=0;            // 总共匹配点的数量
+    Frame* _ref=nullptr; 
+    Frame* _curr=nullptr;
     
     struct HomographyDecomposition
     {

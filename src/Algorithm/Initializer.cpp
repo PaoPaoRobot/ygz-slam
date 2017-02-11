@@ -7,8 +7,8 @@ namespace ygz
  * @brief 并行地计算基础矩阵和单应性矩阵，选取其中一个模型，恢复出最开始两帧之间的相对姿态以及点云
  */
 bool Initializer::TryInitialize(
-    const vector< Vector2d >& px1, 
-    const vector< Vector2d >& px2, 
+    vector< Vector2d >& px1, 
+    vector< Vector2d >& px2, 
     Frame* ref, 
     Frame* curr
 )
@@ -16,8 +16,9 @@ bool Initializer::TryInitialize(
     assert(px1.size() == px2.size());
     _ref = ref; _curr=curr;
     _num_points = px1.size();
-    _px1 = &px1;
-    _px2 = &px2;
+    _px1 = px1;
+    _px2 = px2;
+    Matrix3d K = ref->_camera->GetCameraMatrix();
     
     _inliers = vector<bool>( px1.size(), true );
     _set = vector< vector<size_t> >(_options._max_iter, vector<size_t>(8,0) );
@@ -59,11 +60,16 @@ bool Initializer::TryInitialize(
     
     // 评价E和H哪个更好
     float rh = sh/(sh+sf);
-    // rh>0.4 认为
+    
+    Matrix3d R21;
+    Vector3d t21;
+    vector<Vector3d> p3D;
+    vector<bool> triangulated;
+    // rh>0.4 认为H更好，否则认为F更好
     if ( rh>0.4 )
-        return ReconstructH();
+        return ReconstructH( inlierH, H, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
     else 
-        return ReconstructF();
+        return ReconstructF( inlierF, F, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
     return false;
 }
 
@@ -75,8 +81,8 @@ void Initializer::FindHomography(
     // normalized points 
     vector<Vector2d> pn1, pn2; 
     Matrix3d T1, T2;
-    Normalize( *_px1, pn1, T1 );
-    Normalize( *_px2, pn2, T2 );
+    Normalize( _px1, pn1, T1 );
+    Normalize( _px2, pn2, T2 );
     Matrix3d T2inv = T2.inverse();
     
     // 最佳的inliers与评分
@@ -95,8 +101,8 @@ void Initializer::FindHomography(
         for ( size_t j=0; j<8; j++ )
         {
             int idx = _set[it][j];
-            pn1i = pn1[idx];
-            pn2i = pn2[idx];
+            pn1i[j] = pn1[idx];
+            pn2i[j] = pn2[idx];
         }
         
         // 从八个点算H
@@ -210,7 +216,11 @@ Matrix3d Initializer::ComputeH21(
     Eigen::MatrixXd V = svd.matrixV();
     
     assert( V.cols() == 9 && V.rows()==9 );
-    return V.block<9,1>(0,8).resize(3,3);       // V 最后一列
+    Matrix3d ret; 
+    ret<< V(0,8),V(1,8),V(2,8), 
+          V(3,8),V(4,8),V(5,8), 
+          V(6,8),V(7,8),V(8,8); 
+    return ret;       // V 最后一列
 }
 
 /**
@@ -298,11 +308,11 @@ float Initializer::CheckHomography(const Matrix3d& H21, const Matrix3d& H12, vec
  */
 bool Initializer::ReconstructH(
     vector< bool >& inliers, Matrix3d& H21, Matrix3d& K, 
-    Matrix3d& R21, Matrix3d& t21, vector< cv::Point3f >& vP3D, 
+    Matrix3d& R21, Vector3d& t21, vector<Vector3d>& vP3D, 
     vector< bool >& triangulated, float minParallax, int minTriangulated)
 {
     int N =0;
-    for ( bool& in: inliers )
+    for ( bool in: inliers )
         if ( in ) N++;
 
     Matrix3d invK = K.inverse();
@@ -414,7 +424,7 @@ bool Initializer::ReconstructH(
     // 这里没有按照原文的八选四、四选二、二选一，而是直接尝试三角化并统计哪个解最优
     for(size_t i=0; i<8; i++)
     {
-        float parallaxi;
+        double parallaxi=0;
         vector<Vector3d> vP3Di;
         vector<bool> vbTriangulatedi;
         int nGood = CheckRT( decomps[i].R, decomps[i].t, inliers, K,vP3Di, 4.0*_options._sigma2, vbTriangulatedi, parallaxi);
@@ -454,16 +464,16 @@ int Initializer::CheckRT(
     const Matrix3d& R, const Vector3d& t, 
     vector< bool >& inliers, const Matrix3d& K, 
     vector< Vector3d >& p3D, float th2, 
-    vector< bool >& good, float& parallax)
+    vector< bool >& good, double& parallax)
 {
     const double fx = K(0,0);
     const double fy = K(1,1);
     const double cx = K(0,2);
     const double cy = K(1,2);
     
-    good = vetor<bool>(_num_points, false );
+    good = vector<bool>(_num_points, false );
     p3D.resize( _num_points );
-    vecotr<float> vcosParallax;
+    vector<float> vcosParallax;
     vcosParallax.reserve( _num_points );
     
     // 第1个相机的投影矩阵
@@ -601,8 +611,8 @@ void Initializer::FindFundamental(
     // normalized points 
     vector<Vector2d> pn1, pn2; 
     Matrix3d T1, T2;
-    Normalize( *_px1, pn1, T1 );
-    Normalize( *_px2, pn2, T2 );
+    Normalize( _px1, pn1, T1 );
+    Normalize( _px2, pn2, T2 );
     Matrix3d T2inv = T2.inverse();
     
     // 最佳的inliers与评分
@@ -622,12 +632,12 @@ void Initializer::FindFundamental(
         for ( size_t j=0; j<8; j++ )
         {
             int idx = _set[it][j];
-            pn1i = pn1[idx];
-            pn2i = pn2[idx];
+            pn1i[j] = pn1[idx];
+            pn2i[j] = pn2[idx];
         }
         
         // 计算F矩阵
-        Matrix3d Hn = ComputeF21( pn1i, pn2i );
+        Matrix3d Fn = ComputeF21( pn1i, pn2i );
         F21i = T2inv*Fn*T1;
         
         // set score 
@@ -677,7 +687,10 @@ Matrix3d Initializer::ComputeF21(
     
     Eigen::JacobiSVD<Eigen::MatrixXd> svd ( A, Eigen::ComputeFullU|Eigen::ComputeFullV );
     Eigen::MatrixXd V = svd.matrixV();
-    Matrix3d Fpre = V.block<9,1>(0,8).resize(3,3);       // V 最后一列转化为3x3
+    Matrix3d Fpre;
+    Fpre << V(0,8),V(1,8),V(2,8), 
+            V(3,8),V(4,8),V(5,8), 
+            V(6,8),V(7,8),V(8,8);       // 最后一列转成3x3
     Eigen::JacobiSVD<Eigen::Matrix3d> svd_F ( Fpre, Eigen::ComputeFullU | Eigen::ComputeFullV);
     Vector3d sigma = svd_F.singularValues();
     
@@ -773,7 +786,7 @@ bool Initializer::ReconstructF(
     vector< bool >& vbTriangulated, float minParallax, int minTriangulated)
 {
     int N=0;
-    for ( bool& in: inliers )
+    for ( bool in: inliers )
         if ( in ) N++;
         
     Matrix3d E21 = K.transpose()*F21*K;
@@ -792,10 +805,10 @@ bool Initializer::ReconstructF(
     vector<bool> triangulated1, triangulated2, triangulated3, triangulated4;
     double parallax1, parallax2, parallax3, parallax4; 
     
-    int good1 = CheckRT( R1, t1, K, p3D1, 4.0*_options._sigma2, triangulated1, parallax1 ); 
-    int good2 = CheckRT( R2, t1, K, p3D2, 4.0*_options._sigma2, triangulated2, parallax2 ); 
-    int good3 = CheckRT( R1, t2, K, p3D3, 4.0*_options._sigma2, triangulated3, parallax3 ); 
-    int good4 = CheckRT( R2, t2, K, p3D4, 4.0*_options._sigma2, triangulated4, parallax4 ); 
+    int good1 = CheckRT( R1, t1, inliers,K, p3D1, 4.0*_options._sigma2, triangulated1, parallax1 ); 
+    int good2 = CheckRT( R2, t1, inliers,K, p3D2, 4.0*_options._sigma2, triangulated2, parallax2 ); 
+    int good3 = CheckRT( R1, t2, inliers,K, p3D3, 4.0*_options._sigma2, triangulated3, parallax3 ); 
+    int good4 = CheckRT( R2, t2, inliers,K, p3D4, 4.0*_options._sigma2, triangulated4, parallax4 ); 
     
     int maxGood = max(good1, max(good2, max(good3,good4)));
     int minGood = max( int(0.9*N), minTriangulated );
