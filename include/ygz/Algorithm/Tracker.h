@@ -20,10 +20,10 @@ public:
 
     struct Option 
     {
-        int _min_feature_tracking =50; // 最小追踪特征数量，小于此数目时认为丢失
+        int _min_feature_tracking = 50; // 最小追踪特征数量，小于此数目时认为丢失
         // KLT 参数
-        double klt_win_size = 30.0;
-        int klt_max_iter = 50;
+        double klt_win_size = 21.0;
+        int klt_max_iter = 30;
         double klt_eps = 0.001;
     } _option;
     

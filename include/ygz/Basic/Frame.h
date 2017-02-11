@@ -96,6 +96,12 @@ struct Frame {
     // 将备选点的描述转换成 bow
     void ComputeBoW();
     
+    // 设置字典
+    static void SetORBVocabulary( ORBVocabulary* orb_vocab )
+    {
+        _vocab = orb_vocab;
+    }
+    
     // 清理特征点
     void CleanAllFeatures(); 
     

@@ -8,13 +8,14 @@ namespace ygz
 {
  
 // 用于图像配准的Error，可以选择使用First Estimate Jacobian(同时也是逆向的，即在ref上计算)
-class CeresAlignmentError: public ceres::SizedCostFunction<PATTERN_SIZE, 2>
+class CeresAlignmentError: public ceres::SizedCostFunction<1, 2>
 {
 public:
     CeresAlignmentError( uint8_t* ref_patch, const Mat& curr_img, bool use_fej = true )
     : _ref_patch(ref_patch), _curr_img(curr_img), _use_fej(use_fej) {
         // 不管用不用都得算一下
         int step = 2*WarpHalfPatchSize;
+        _fej[0] = _fej[1] = 0;
         for ( int i=0; i<PATTERN_SIZE; i++ ) {
             int ref_x = WarpPatchSize + PATTERN_DX[i];
             int ref_y = WarpPatchSize + PATTERN_DY[i];
@@ -77,7 +78,7 @@ public:
 private:
     uint8_t* _ref_patch=nullptr; 
     const Mat& _curr_img; 
-    double _fej[PATTERN_SIZE][2];
+    double _fej[2];
     bool _use_fej = true;
     bool _enable = true; 
 };
