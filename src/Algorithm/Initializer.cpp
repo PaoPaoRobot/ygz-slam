@@ -21,7 +21,7 @@ bool Initializer::TryInitialize(
     Matrix3d K = ref->_camera->GetCameraMatrix();
     
     _inliers = vector<bool>( px1.size(), true );
-    _set = vector< vector<size_t> >(_options._max_iter, vector<size_t>(8,0) );
+    _set = vector< vector<size_t> >(_options._max_iter, vector<size_t>(8,0) ); // 被选中的点
     
     // 使用RANSAC求解初始化
     vector<size_t> allIndices;  // 所有匹配点的索引
@@ -49,14 +49,23 @@ bool Initializer::TryInitialize(
     
     // 对于选出的八对匹配，分别计算F和H
     vector<bool> inlierH, inlierF; 
-    float sh, sf;       // h和e的评分
+    float sh=0, sf=0;       // h和e的评分
     Matrix3d H,F;
     
+    /*
     thread threadH( &Initializer::FindHomography, this, std::ref(inlierH), std::ref(sh), std::ref(H) ); 
     thread threadF( &Initializer::FindFundamental, this, std::ref(inlierF), std::ref(sf), std::ref(F) ); 
     
     threadH.join();
     threadF.join();
+    */
+    
+    // 调试阶段不要并行
+    FindHomography( inlierH, sh, H );
+    FindFundamental( inlierF, sf, F );
+    
+    LOG(INFO)<<"H = \n"<<H<<endl;
+    LOG(INFO)<<"F = \n"<<F<<endl;
     
     // 评价E和H哪个更好
     float rh = sh/(sh+sf);
@@ -106,6 +115,7 @@ void Initializer::FindHomography(
         }
         
         // 从八个点算H
+        // 结果应该是 p2 = H21*p1
         Matrix3d Hn = ComputeH21( pn1i, pn2i );
         H21i = T2inv*Hn*T1;
         H12i = H21i.inverse();
@@ -182,8 +192,8 @@ void Initializer::Normalize(
 Matrix3d Initializer::ComputeH21(
     const vector<Vector2d>& vP1, const vector<Vector2d>& vP2)
 {
-    Eigen::MatrixXd A(2*_num_points, 9);
-    for ( int i=0; i<_num_points; i++ ) 
+    Eigen::MatrixXd A(2*vP1.size(), 9);
+    for ( int i=0; i<vP1.size(); i++ ) 
     {
         const double u1 = vP1[i][0];
         const double v1 = vP1[i][1];
@@ -215,7 +225,8 @@ Matrix3d Initializer::ComputeH21(
     Eigen::JacobiSVD<Eigen::MatrixXd> svd ( A, Eigen::ComputeFullU|Eigen::ComputeFullV );
     Eigen::MatrixXd V = svd.matrixV();
     
-    assert( V.cols() == 9 && V.rows()==9 );
+    // Eigen的SVD是U*S*V^T = A ，所以取V最后一列
+    
     Matrix3d ret; 
     ret<< V(0,8),V(1,8),V(2,8), 
           V(3,8),V(4,8),V(5,8), 
@@ -335,14 +346,17 @@ bool Initializer::ReconstructH(
     
     vector<HomographyDecomposition> decomps;     // 八个分解情况
     
-    double    x1_PM = sqrt((d1*d1 - d2*d2) / (d1*d1 - d3*d3));
-    double    x2    = 0;
-    double    x3_PM = sqrt((d2*d2 - d3*d3) / (d1*d1 - d3*d3));
-    
-    double e1[4] = {1.0,-1.0, 1.0,-1.0};
-    double e3[4] = {1.0, 1.0,-1.0,-1.0};
-    
-    Vector3d np;        // 法线
+    float aux1 = sqrt((d1*d1-d2*d2)/(d1*d1-d3*d3));
+    float aux3 = sqrt((d2*d2-d3*d3)/(d1*d1-d3*d3));
+    float x1[] = {aux1,aux1,-aux1,-aux1};
+    float x3[] = {aux3,-aux3,aux3,-aux3};
+
+    //case d'=d2
+    // 计算ppt中公式19
+    float aux_stheta = sqrt((d1*d1-d2*d2)*(d2*d2-d3*d3))/((d1+d3)*d2);
+
+    float ctheta = (d2*d2+d1*d3)/((d1+d3)*d2);
+    float stheta[] = {aux_stheta, -aux_stheta, -aux_stheta, aux_stheta};
     
     // 计算旋转矩阵 R‘，计算ppt中公式18
     //      | costheta      0   -sintheta|       | aux1|
@@ -360,53 +374,68 @@ bool Initializer::ReconstructH(
     //      | ctheta      0   -aux_stheta|       |-aux1|
     // Rp = |    0        1       0      |  tp = |  0  |
     //      | aux_stheta  0    ctheta    |       | aux3|
-    for(size_t signs=0; signs<4; signs++)
+    for(size_t i=0; i<4; i++)
     {
         // Eq 13
         HomographyDecomposition decomp;
-        decomp.R = Eigen::Matrix3d::Identity();
-        double dSinTheta = (d1 - d3) * x1_PM * x3_PM * e1[signs] * e3[signs] / d2;
-        double dCosTheta = (d1 * x3_PM * x3_PM + d3 * x1_PM * x1_PM) / d2;
-        decomp.R(0,0) = dCosTheta;
-        decomp.R(0,2) = -dSinTheta;
-        decomp.R(2,0) = dSinTheta;
-        decomp.R(2,2) = dCosTheta;
-
+        Matrix3d Rp = Matrix3d::Identity();
+        Rp(0,0) = ctheta;
+        Rp(0,2) = -stheta[i];
+        Rp(2,0) = stheta[i];
+        Rp(2,2) = ctheta;
+        decomp.R = s*U*Rp*V.transpose();
+        
         // Eq 14
-        decomp.t[0] = (d1 - d3) * x1_PM * e1[signs];
+        decomp.t[0] = x1[i];
         decomp.t[1] = 0.0;
-        decomp.t[2] = (d1 - d3) * -x3_PM * e3[signs];
+        decomp.t[2] = -x3[i];
+        decomp.t = decomp.t*(d1-d3);
+        decomp.t = U*decomp.t;
+        decomp.t = decomp.t/decomp.t.norm();
 
-        np[0] = x1_PM * e1[signs];
-        np[1] = x2;
-        np[2] = x3_PM * e3[signs];
+        Vector3d np;
+        np[0] = x1[i];
+        np[1] = 0;
+        np[2] = x3[i];
         decomp.n = V * np;
-
+        if ( decomp.n[2]<0 ) 
+            decomp.n=-decomp.n;
         decomps.push_back(decomp);
     }
     
+    float aux_sphi = sqrt((d1*d1-d2*d2)*(d2*d2-d3*d3))/((d1-d3)*d2);
+    float cphi = (d1*d3-d2*d2)/((d1-d3)*d2);
+    float sphi[] = {aux_sphi, -aux_sphi, -aux_sphi, aux_sphi};
     // case d' < 0
-    for(size_t signs=0; signs<4; signs++)
+    for(size_t i=0; i<4; i++)
     {
         // Eq 15
         HomographyDecomposition decomp;
-        decomp.R = -1 * Eigen::Matrix3d::Identity();
-        double dSinPhi = (d1 + d3) * x1_PM * x3_PM * e1[signs] * e3[signs] / d2;
-        double dCosPhi = (d3 * x1_PM * x1_PM - d1 * x3_PM * x3_PM) / d2;
-        decomp.R(0,0) = dCosPhi;
-        decomp.R(0,2) = dSinPhi;
-        decomp.R(2,0) = dSinPhi;
-        decomp.R(2,2) = -dCosPhi;
+        Matrix3d Rp = Matrix3d::Identity();
+        Rp(0,0) = cphi;
+        Rp(0,2) = sphi[i];
+        Rp(1,1) = -1;
+        Rp(2,0) = sphi[i];
+        Rp(2,2) = -cphi;
+        decomp.R = s*U*Rp*V.transpose();
 
         // Eq 16
-        decomp.t[0] = (d1 + d3) * x1_PM * e1[signs];
-        decomp.t[1] = 0.0;
-        decomp.t[2] = (d1 + d3) * x3_PM * e3[signs];
-
-        np[0] = x1_PM * e1[signs];
-        np[1] = x2;
-        np[2] = x3_PM * e3[signs];
+        Vector3d tp;
+        tp[0] = x1[i];
+        tp[1] = 0;
+        tp[2] = x3[i];
+        tp = tp*(d1+d3);
+        decomp.t = U*tp;
+        decomp.t = decomp.t/decomp.t.norm();
+        
+        Vector3d np;
+        np[0] = x1[i];
+        np[1] = 0;
+        np[2] = x3[i];
         decomp.n = V * np;
+        
+        if ( decomp.n[2]<0 )
+            decomp.n = -decomp.n;
 
         decomps.push_back(decomp);
     }
@@ -427,6 +456,10 @@ bool Initializer::ReconstructH(
         double parallaxi=0;
         vector<Vector3d> vP3Di;
         vector<bool> vbTriangulatedi;
+        
+        LOG(INFO) << "R = \n"<<decomps[i].R<<endl;
+        LOG(INFO) << "t = "<<decomps[i].t.transpose()<<endl;
+        
         int nGood = CheckRT( decomps[i].R, decomps[i].t, inliers, K,vP3Di, 4.0*_options._sigma2, vbTriangulatedi, parallaxi);
 
         // 保留最优的和次优的
@@ -666,8 +699,8 @@ Matrix3d Initializer::ComputeF21(
     const vector< Vector2d >& vP1, 
     const vector< Vector2d >& vP2 ) 
 {
-    Eigen::MatrixXd A(_num_points, 9);
-    for ( int i=0; i<_num_points; i++ ) 
+    Eigen::MatrixXd A(vP1.size(), 9);
+    for ( int i=0; i<vP1.size(); i++ ) 
     {
         const double u1 = vP1[i][0];
         const double v1 = vP1[i][1];

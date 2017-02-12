@@ -18,6 +18,7 @@ public:
     // 传入已经匹配好的两组点，以及参考帧与当前帧的指针
     // 允许有一定程度的误匹配，但最好在调用之前已经检查匹配是否合理，并且有一定程度的视差
     // 成功初始化时，返回true
+    // 请注意生成的3D点要单独获取，这里并不会自动向地图中添加地图点
     bool TryInitialize(
         vector<Vector2d>& px1, 
         vector<Vector2d>& px2, 
@@ -31,8 +32,8 @@ public:
         float _sigma = 1.0;
         float _sigma2 = 1.0;
         int _max_iter = 200;    // 最大迭代次数
-        double _min_parallex =1.0;
-        int _min_triangulated_pts;      // 最少被三角化点的数量
+        double _min_parallex =1.0;         // 最小平行夹角
+        int _min_triangulated_pts=10;      // 最少被三角化点的数量
     } _options;
     
 private:
