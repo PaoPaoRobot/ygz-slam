@@ -16,6 +16,12 @@ target_link_libraries( test_LK_tracking
     ${THIRD_PARTY_LIBS}
 )
 
+add_executable( test_initializer test_initializer.cpp )
+target_link_libraries( test_initializer 
+    ygz-core ygz-algorithm
+    ${THIRD_PARTY_LIBS}
+)
+
 # add_executable( test_tum_tracking test_tum_tracking.cpp )
 # target_link_libraries( test_tum_tracking 
 #     ygz-slam ${THIRD_PARTY_LIBS}

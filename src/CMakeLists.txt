@@ -10,4 +10,5 @@ add_library( ygz-algorithm
     Algorithm/Matcher.cpp 
     Algorithm/CVUtils.cpp
     Algorithm/Tracker.cpp
+    Algorithm/Initializer.cpp
 )
