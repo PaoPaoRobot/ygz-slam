@@ -8,6 +8,9 @@
 using namespace std;
 using namespace cv;
 
+// 本程序测试LK光流的追踪效果
+// 在两图像相距较大时，光流无法保证每个追踪点都是正确的
+
 int main( int argc, char** argv ) 
 {
     if ( argc< 2 ) {
