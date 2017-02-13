@@ -1,12 +1,13 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm.h"
+
 using namespace std; 
 using namespace ygz; 
 using namespace cv;
 
 // 本程序测试初始化，使用仿真数据
-// 路标点，位于z=2的平面上，用以测试
-double landmarks[12][3] = 
+// 路标点，位于z=2的平面上，用以测试H的情况
+double landmarks_H[12][3] = 
 {
     { -1, -1, 2 },
     { -1, 0, 2 },
@@ -24,7 +25,26 @@ double landmarks[12][3] =
     { 1, 2, 2 },
 };
 
-// 相机数据使用配置文件的参数
+// 路标点，位于z=2,3,4的不同层中，用以测试F的情况
+double landmarks_F[12][3] = 
+{
+    { -1, -1, 2 },
+    { -1, 1, 2 },
+    { 1, -1, 2 },
+    { 1, 1, 2 },
+    
+    { -1,-1, 3 },
+    { -1, 1, 3 },
+    { 1, -1, 3 },
+    { 1,  1, 3 },
+    
+    { -1,-1, 4 },
+    { -1, 1, 4 },
+    { 1, -1, 4 },
+    { 1,  1, 4 },
+};
+
+// 相机内参使用配置文件的参数
 
 int main( int argc, char** argv )
 {
@@ -46,26 +66,38 @@ int main( int argc, char** argv )
     
     cv::RNG rng;
     // 生成观测数据
-    vector<Vector2d> px1, px2;
-    px1.resize(12);
-    px2.resize(12);
+    vector<Vector2d> px1H, px2H;
+    vector<Vector2d> px1F, px2F;
+    px1H.resize(12);
+    px2H.resize(12);
+    px1F.resize(12);
+    px2F.resize(12);
+    
     for ( int i=0; i<12; i++ )
     {
-        px1[i] = cam->World2Pixel( 
-            Vector3d(landmarks[i][0], landmarks[i][1], landmarks[i][2]), pose1 )
-            + Vector2d( rng.gaussian(1), rng.gaussian(1) )     // 加噪声 
-        ;
-        px2[i] = cam->World2Pixel( 
-            Vector3d(landmarks[i][0], landmarks[i][1], landmarks[i][2]), pose2 )
-            + Vector2d( rng.gaussian(1), rng.gaussian(1) )     // 加噪声 
-        ;
+        px1H[i] = cam->World2Pixel( 
+            Vector3d(landmarks_H[i][0], landmarks_H[i][1], landmarks_H[i][2]), pose1 );
+        
+        px2H[i] = cam->World2Pixel( 
+            Vector3d(landmarks_H[i][0], landmarks_H[i][1], landmarks_H[i][2]), pose2 );
+        
+        px1F[i] = cam->World2Pixel( 
+            Vector3d(landmarks_F[i][0], landmarks_F[i][1], landmarks_F[i][2]), pose1 );
+        
+        px2F[i] = cam->World2Pixel( 
+            Vector3d(landmarks_F[i][0], landmarks_F[i][1], landmarks_F[i][2]), pose2 );
+        
+        px1H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
+        px2H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
+        px1F[i] += Vector2d( rng.gaussian(0.1), rng.gaussian(0.1) );    // 加噪声 
+        px2F[i] += Vector2d( rng.gaussian(0.1), rng.gaussian(0.1) );    // 加噪声 
     }
     
     LOG(INFO) << "Data generated, test initializer" <<endl;
     ygz::Initializer* init = new ygz::Initializer();
     
     bool ret = init->TryInitialize(
-        px1, px2, 
+        px1F, px2F, 
         frame1, frame2
     );
     
@@ -73,6 +105,13 @@ int main( int argc, char** argv )
         LOG(INFO)<<"Initialize succeeded."<<endl;
     else
         LOG(INFO)<<"Initialize failed."<<endl;
+    
+    if ( ret ) 
+    {
+        LOG(INFO) << "T21 estimated = \n"<<init->GetT21().matrix()<<endl;
+    }
+    
+    
     
     delete cam; 
     delete frame1;
