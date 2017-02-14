@@ -22,6 +22,11 @@ target_link_libraries( test_initializer
     ${THIRD_PARTY_LIBS}
 )
 
+add_executable( test_orb_match test_orb_match.cpp )
+target_link_libraries( test_orb_match 
+    ygz-core ygz-algorithm ${THIRD_PARTY_LIBS}
+)
+
 # add_executable( test_tum_tracking test_tum_tracking.cpp )
 # target_link_libraries( test_tum_tracking 
 #     ygz-slam ${THIRD_PARTY_LIBS}
@@ -32,11 +37,7 @@ target_link_libraries( test_initializer
 #     ygz-slam ${THIRD_PARTY_LIBS}
 # )
 # 
-# add_executable( test_orb_match test_orb_match.cpp )
-# target_link_libraries( test_orb_match 
-#     ygz-slam ${THIRD_PARTY_LIBS}
-# )
-# 
+
 # # 带字典的匹配
 # add_executable( test_orb_vocab_match test_orb_vocab_match.cpp )
 # target_link_libraries( test_orb_vocab_match 

@@ -18,7 +18,7 @@ public:
     struct Options {
         int th_high = 100;       // 这两个在搜索匹配时用
         int th_low = 50;         // 低阈值
-        float knnRatio = 0.8;    // knn 时的比例
+        float knnRatio = 0.9;    // knn 时的比例，在SearchByBoW中用于计算最优和次优的差别
         
         bool checkOrientation = false;  // 除了检测描述之外是否检查旋转
         

@@ -6,10 +6,8 @@
 
 #include <boost/timer.hpp>
 
-#include "ygz/config.h"
-#include "ygz/frame.h"
-#include "ygz/ORB/ORBExtractor.h"
-#include "ygz/feature_detector.h"
+#include "ygz/Basic.h"
+#include "ygz/Algorithm.h"
 
 using namespace std; 
 using namespace cv; 
@@ -24,6 +22,7 @@ int main ( int argc, char** argv )
         cout <<"usage: test_orb_match path_to_TUM_dataset [index1] [index2]" <<endl;
         return 1;
     }
+    
     int index1 = 1;
     int index2 = 2;
     
@@ -49,101 +48,75 @@ int main ( int argc, char** argv )
             break;
     }
     
-    ygz::Config::setParameterFile("./config/default.yaml");
+    ygz::Config::SetParameterFile("./config/default.yaml");
     
     Mat color1 = imread( string(argv[1])+string("/")+rgbFiles[index1] );
     Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index2] );
     
-    ygz::ORBExtractor orb;
+    ygz::FeatureDetector detector;
+    detector.LoadParams();
+    
     ygz::Frame frame1, frame2;
     frame1._color = color1;
     frame2._color = color2;
     frame1.InitFrame();
     frame2.InitFrame();
     
-    ygz::FeatureDetector detector;
-    
     boost::timer timer;
     detector.Detect( &frame1 );
     detector.Detect( &frame2 );
     cout<<"detect cost time: "<<timer.elapsed()<<endl;
-    cout<<"features: "<<frame1._map_point_candidates.size()<<endl;
+    cout<<"features: "<<frame1._features.size()<<", "<<frame2._features.size()<<endl;
     
-    cout<<"computing descriptors"<<endl;
+    // compute the BoW vector
+    ORBVocabulary vocab;
+    vocab.loadFromBinaryFile("./vocab/ORBvoc.bin");
+    ygz::Frame::SetORBVocabulary(&vocab);
+    frame1.ComputeBoW();
+    frame2.ComputeBoW();
+    
+    ygz::Matcher matcher;
+    map<int, int> matches; 
     timer.restart();
-    orb.Compute( &frame1 );
-    orb.Compute( &frame2 );
-    cout<<"compute cost time: "<<timer.elapsed()<<endl;
+    matcher.SearchByBoW( &frame1, &frame2, matches );
+    LOG(INFO)<<"Match BoW cost time: "<<timer.elapsed()<<endl;
+    LOG(INFO) << "Total matches: "<<matches.size()<<endl;
     
-    // call bf matcher to match them 
-    Mat desp1, desp2; 
-    desp1 = frame1.GetAllDescriptors();
-    desp2 = frame2.GetAllDescriptors();
+    // Draw the matches 
+    Mat img_show(color1.rows, 2*color1.cols, CV_8UC3); 
+    color1.copyTo( img_show(Rect(0,0,color1.cols,color1.rows)) );
+    color2.copyTo( img_show(Rect(color1.cols,0,color1.cols,color1.rows)) );
     
-    // cout<<desp1<<endl;
-    // cout<<desp2<<endl;
-    
-    // cv::BFMatcher matcher( cv::NORM_HAMMING, true );
-    cv::BFMatcher matcher( cv::NORM_HAMMING2, true );
-    vector<DMatch> matches;
-    timer.restart();
-    matcher.match( desp1, desp2, matches );
-    cout<<"match cost time: "<<timer.elapsed()<<endl;
-    cout<<"matches: "<<matches.size()<<endl;
-    
-    vector<KeyPoint> kp1, kp2; 
-    for ( KeyPoint& kp: frame1._map_point_candidates ) {
-        kp1.push_back( kp );
-    }
-    for ( KeyPoint& kp: frame2._map_point_candidates ) {
-        kp2.push_back( kp );
+    for ( ygz::Feature* fea : frame1._features )
+    {
+        circle( img_show, 
+            Point2f(fea->_pixel[0], fea->_pixel[1]),
+            2,Scalar(0,0,250),2 );
     }
     
-    Mat img_show;
-    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, matches, img_show );
-    imshow("matches", img_show);
-    waitKey(0);
-    
-    // select good matches 
-    float min_dis = min_element( matches.begin(), matches.end(), 
-        [](const DMatch& m1, const DMatch& m2) {return m1.distance<m2.distance;}
-    )->distance;
-    min_dis = min_dis<15?15:min_dis;
-    cout<<"min dis = "<<min_dis<<endl;
-    
-    vector<DMatch> good;
-    for ( DMatch& m:matches ) {
-        if ( m.distance < 3.0*min_dis )
-            good.push_back(m);
+    for ( ygz::Feature* fea : frame2._features )
+    {
+        circle( img_show, 
+            Point2f(color2.cols+fea->_pixel[0], fea->_pixel[1]),
+            2,Scalar(0,0,250),2 );
     }
     
-    Mat img_show_good;
-    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, good, img_show_good );
-    imshow("good matches", img_show_good);
+    for ( auto& m:matches ) 
+    {
+        circle( img_show, 
+            Point2f(frame1._features[m.first]->_pixel[0], frame1._features[m.first]->_pixel[1]),
+            2,Scalar(0,250,0),2 );
+        circle( img_show, 
+            Point2f(color1.cols+frame2._features[m.second]->_pixel[0], frame2._features[m.second]->_pixel[1]), 
+            2,Scalar(0,250,0),2 );
+        line( img_show,
+            Point2f(frame1._features[m.first]->_pixel[0], frame1._features[m.first]->_pixel[1]),
+            Point2f(color2.cols+frame2._features[m.second]->_pixel[0], frame2._features[m.second]->_pixel[1]), 
+            Scalar(0,250,0),1
+        );
+    }
+    imshow("matches", img_show );
     waitKey(0);
     
-    
-    // 原生ORB是什么样的？
-    // origin ORB 
-    kp1.clear();
-    kp2.clear();
-    Ptr<ORB> orb_cv = ORB::create(500, 2.0f, 3, 20 );
-    desp1 = Mat(); desp2 = Mat(); 
-    
-    timer.restart();
-    orb_cv->detect( frame1._color, kp1 );
-    orb_cv->detect( frame2._color, kp2 );
-    cout<<"ORB in OpenCV detect time: "<<timer.elapsed()<<endl;
-    cout<<"features: "<<kp1.size()<<endl;
-    
-    timer.restart();
-    orb_cv->compute( frame1._color, kp1, desp1 );
-    orb_cv->compute( frame2._color, kp2, desp2 );
-    cout<<"ORB in OpenCV compute time: "<<timer.elapsed()<<endl;
-    
-    matcher.match( desp1, desp2, matches );
-    Mat img_show_cv;
-    cv::drawMatches( frame1._color, kp1, frame2._color, kp2, matches, img_show_cv );
-    imshow("matches cv", img_show_cv );
-    waitKey(0);
+    return 0;
 }
