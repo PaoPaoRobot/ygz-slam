@@ -12,11 +12,10 @@ bool Align2DCeres(
     const Mat& cur_img, uint8_t* ref_patch, 
     Vector2d& cur_px_estimate)
 {
-    // LOG(INFO) << "initial estimate: " << cur_px_estimate.transpose()<<endl;
     ceres::Problem problem;
     Vector2d px = cur_px_estimate;
     CeresAlignmentError* p = new CeresAlignmentError(
-        ref_patch, cur_img
+        ref_patch, cur_img, false
     );
     
     problem.AddResidualBlock(
@@ -44,6 +43,7 @@ bool Align2DCeres(
     // LOG(INFO)<<"retrying"<<endl;
     // 尝试不使用FeJ重新算一遍
     
+    /*
     cur_px_estimate = px; 
     p->SetFej( false );
     ceres::Solve( options, &problem, &summary );
@@ -54,6 +54,8 @@ bool Align2DCeres(
     if ( summary.final_cost > 2000 ) 
         return false;
     return true;
+    */
+    return false;
 }
 
     

@@ -432,13 +432,11 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
     
     for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
     {
-        LOG(INFO) << "aligning patches in level "<<level<<endl;
         SparseImageAlignmentInPyramid( ref, current, level );
-        LOG(INFO)<<"TCR = \n"<<_TCR_esti.matrix()<<endl;
     }
     
     if ( _TCR_esti.log().norm() > _options.max_alignment_motion ) {
-        LOG(INFO)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
+        LOG(WARNING)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
         _TCR_esti = SE3();
         return false;
     }

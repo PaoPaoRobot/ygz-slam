@@ -6,6 +6,8 @@ ygz-slam  一锅粥－SLAM
 - 需要提供词典，词典文件见vocab/ORBvoc.bin 
 - 结论：词典可以加速匹配（因为每个特征所属的单词是已知的，只需匹配一样的单词下的特征即可）。但是现在的特征提取部分用了grid，导致feature points重复性比较差，所以匹配数量不多。
 
+- 开始测试2D align的问题，类似于光流的做法，但是如何用Ceres实现呢？
+
 ## 17.2.13 
 - 增加了初始化部分代码，主要来自ORB-SLAM，见include/ygz/Initializer.h和src/Algorithm/Initializer.cpp文件。
 - 测试文件为test/test_initializer.cpp，使用仿真数据。
