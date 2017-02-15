@@ -39,6 +39,11 @@ struct Frame {
         _camera = camera; 
     }
     
+    static PinholeCamera* GetCamera() const 
+    {
+        return _camera;
+    }
+    
     // create the image pyramid, etc 
     void InitFrame();
     
