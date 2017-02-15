@@ -370,7 +370,7 @@ bool Matcher::FindDirectProjection(
             ref_patch_ptr[x] = ref_patch_border_ptr[x];
     }
     Vector2d px_scaled = px_curr / (1<<search_level);
-    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, px_scaled); 
+    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, _patch_with_border, px_scaled); 
     px_curr = px_scaled*(1<<search_level);
     if ( !curr->InFrame(px_curr) ) 
         return false;

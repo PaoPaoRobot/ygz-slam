@@ -97,16 +97,19 @@ int main( int argc, char** argv )
     // 求ref中地图点在frame2中的投影
     auto& all_points = ygz::Memory::GetAllPoints();
     vector<Vector2d> px_frame2, px_frame2_reproj;       // align之后和之前的（重投影的）像素位置
+    timer.restart();
+    int cnt_good_projection = 0;
     for ( auto& map_point: all_points )
     {
         ygz::MapPoint* mp = map_point.second;
         Vector2d px2 = frame2._camera->World2Pixel( mp->_pos_world, frame2._TCW );
-        LOG(INFO)<<"before px2 = "<<px2.transpose()<<endl;
         px_frame2_reproj.push_back(px2);
-        matcher.FindDirectProjection( frame, &frame2, mp, px2 );
-        LOG(INFO)<<"after px2 = "<<px2.transpose()<<endl;
+        if ( matcher.FindDirectProjection( frame, &frame2, mp, px2 ) )
+            cnt_good_projection++;
         px_frame2.push_back(px2);
     }
+    LOG(INFO) << "total points: "<<all_points.size()<<", succeed: "<<cnt_good_projection<<endl;
+    LOG(INFO) << "project "<<all_points.size()<<" point cost time: "<<timer.elapsed()<<endl;
     
     // plot the matched features 
     Mat color1_show = frame->_color.clone();

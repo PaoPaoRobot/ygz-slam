@@ -1,6 +1,14 @@
 ygz-slam  一锅粥－SLAM
 
 # 日志
+## 17.2.15
+- 重写了CeresAlignmentError.h。通过test/test_feature_projection进行测试。这个测试是先用DSO的pattern进行位姿估计，然后用Matcher::FindDirectProjection寻找地图点的投影
+- Matcher又调用了CVUtils::Align2D进行块配准，其中又用了Ceres计算一个Affine warped的块匹配
+- 结论：
+Align的时候要选大一点的块，匹配才会准。SVO里选用64x64是有道理的。
+Ceres优化速度似乎比直接算GaussNewton慢一些？现在匹配200个点基本需要50多毫秒。
+
+
 ## 17.2.14
 - 增加了ORB的计算以及基于BoW的匹配，见test/_test_orb_match.cpp。 
 - 需要提供词典，词典文件见vocab/ORBvoc.bin 
