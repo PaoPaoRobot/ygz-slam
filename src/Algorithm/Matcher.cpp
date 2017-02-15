@@ -469,7 +469,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
                     ref->_camera,
                     1<<pyramid,
                     _TCR_esti,
-                    false        
+                    true        
                 ), 
                 nullptr, 
                 pose_curr.data()
@@ -484,7 +484,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     // options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    // cout<<summary.FullReport()<<endl;
+    LOG(INFO)<<summary.FullReport()<<endl;
     // LOG(INFO) << "Solve alignment cost time "<<timer.elapsed()<<endl;
     
     // set the pose 

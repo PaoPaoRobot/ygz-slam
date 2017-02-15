@@ -6,5 +6,6 @@
 #include "ygz/Algorithm/CVUtils.h"
 #include "ygz/Algorithm/Tracker.h"
 #include "ygz/Algorithm/Initializer.h"
+#include "ygz/Algorithm/BA.h"
 
 #endif

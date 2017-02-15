@@ -27,7 +27,7 @@ void TwoViewBACeres(
     vector<CeresReprojectionError*> errors_reproj; 
     vector<CeresReprojectionErrorPointOnly*> errors_reproj_point_only; 
     
-    for ( size_t i=0; i<px_ref; i++ ) 
+    for ( size_t i=0; i<px_ref.size(); i++ ) 
     {
         auto error1 = new CeresReprojectionErrorPointOnly( cam->Pixel2Camera2D(px_ref[i]), ref );
         // ref frame, point only, pose is fixed 
@@ -37,13 +37,47 @@ void TwoViewBACeres(
             pts_ref[i].data()
         );
         // curr frame, both point and pose 
-        auto error2 = new CeresReprojectionError( px_curr[i] );
+        auto error2 = new CeresReprojectionError( cam->Pixel2Camera2D( px_curr[i] ));
         problem.AddResidualBlock(
-            new ceres::AutoDiffCostFunction<CeresReprojectionError, 2,6,3>
-        )
+            new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3>(
+                error2 ), 
+            nullptr, 
+            pose_curr.data(), 
+            pts_ref[i].data()
+        );
     }
     
-
+    // 膜拜 ORB 的四遍优化 ... 我就先做一遍吧，效果不好的话再说
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    ceres::Solver::Summary summary;
+    ceres::Solve( options, &problem, &summary );
+    
+    LOG(INFO)<<summary.FullReport()<<endl;
+    // check the inliers 
+    double ch2 = 5.991; // threshold for reprojection inliers 
+    
+    int cnt_inliers=0;
+    for ( size_t i=0; i<px_ref.size(); i++ )
+    {
+        Vector2d e1 = px_ref[i] - cam->World2Pixel(pts_ref[i], ref );
+        Vector2d e2 = px_curr[i] - cam->World2Pixel( pts_ref[i], curr );
+        
+        if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 )
+        {
+            inlier[i] = false;
+        }
+        else 
+        {
+            inlier[i] = true;
+            cnt_inliers++;
+        }
+    }
+    
+    // update the current frame pose
+    curr = SE3( SO3::exp(pose_curr.tail<3>()), pose_curr.head<3>() );
+    
+    LOG(INFO)<<"inliers: "<<cnt_inliers<<endl;
 }
 
     

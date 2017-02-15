@@ -35,11 +35,11 @@ public:
         const T* const pose, 
         const T* const pt_world,
         T* residuals
-    )
+    ) const
     {
         if ( _enable == false )
         {
-            residuals[0] = residuals[1] = 0;
+            residuals[0] = residuals[1] = T(0);
             return true;
         }
         

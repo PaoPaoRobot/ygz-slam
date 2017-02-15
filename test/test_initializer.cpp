@@ -89,8 +89,8 @@ int main( int argc, char** argv )
         
         px1H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
         px2H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
-        px1F[i] += Vector2d( rng.gaussian(0.1), rng.gaussian(0.1) );    // 加噪声 
-        px2F[i] += Vector2d( rng.gaussian(0.1), rng.gaussian(0.1) );    // 加噪声 
+        px1F[i] += Vector2d( rng.gaussian(1.0), rng.gaussian(1.0) );    // 加噪声 
+        px2F[i] += Vector2d( rng.gaussian(1.0), rng.gaussian(1.0) );    // 加噪声 
     }
     
     LOG(INFO) << "Data generated, test initializer" <<endl;
@@ -111,7 +111,11 @@ int main( int argc, char** argv )
         LOG(INFO) << "T21 estimated = \n"<<init->GetT21().matrix()<<endl;
     }
     
-    
+    frame2->_TCW = init->GetT21();
+    vector<bool> inliers; 
+    vector<Vector3d> pts_ref; 
+    init->GetTriangluatedPoints( pts_ref, inliers );
+    // ba::TwoViewBACeres();
     
     delete cam; 
     delete frame1;

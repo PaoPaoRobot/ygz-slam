@@ -6,7 +6,7 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm/CVUtils.h"
 
-// 我也真是把ceres玩出花的男人
+// 我真是把ceres玩出花的男人
 // 只优化Point的Error
 namespace ygz 
 {
@@ -50,7 +50,7 @@ public:
         
         if ( _enable == false )
         {
-            residuals[0] = residuals[1] = 0;
+            residuals[0] = residuals[1] = T(0);
             return true;
         }
         

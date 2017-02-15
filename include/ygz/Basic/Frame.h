@@ -39,7 +39,7 @@ struct Frame {
         _camera = camera; 
     }
     
-    static PinholeCamera* GetCamera() const 
+    static PinholeCamera* GetCamera() 
     {
         return _camera;
     }
