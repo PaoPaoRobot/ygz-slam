@@ -30,18 +30,23 @@ void TwoViewBACeres(
     for ( size_t i=0; i<px_ref.size(); i++ ) 
     {
         auto error1 = new CeresReprojectionErrorPointOnly( cam->Pixel2Camera2D(px_ref[i]), ref );
+        
+        if ( inlier[i] == false )
+            pts_ref[i] = Vector3d(0,0,1);
+        
         // ref frame, point only, pose is fixed 
         problem.AddResidualBlock(
             new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly, 2,3> ( error1 ), 
-            nullptr, 
+            inlier[i]==true?nullptr:new ceres::HuberLoss(0.1),
             pts_ref[i].data()
         );
+        
         // curr frame, both point and pose 
         auto error2 = new CeresReprojectionError( cam->Pixel2Camera2D( px_curr[i] ));
         problem.AddResidualBlock(
             new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3>(
                 error2 ), 
-            nullptr, 
+            inlier[i]==true?nullptr:new ceres::HuberLoss(0.1),
             pose_curr.data(), 
             pts_ref[i].data()
         );
@@ -49,18 +54,20 @@ void TwoViewBACeres(
     
     // 膜拜 ORB 的四遍优化 ... 我就先做一遍吧，效果不好的话再说
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.trust_region_strategy_type = ceres::DOGLEG;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
     
-    LOG(INFO)<<summary.FullReport()<<endl;
+    // update the current frame pose
+    curr = SE3( SO3::exp(pose_curr.tail<3>()), pose_curr.head<3>() );
+    
     // check the inliers 
     double ch2 = 5.991; // threshold for reprojection inliers 
     
-    int cnt_inliers=0;
     for ( size_t i=0; i<px_ref.size(); i++ )
     {
-        Vector2d e1 = px_ref[i] - cam->World2Pixel(pts_ref[i], ref );
+        Vector2d e1 = px_ref[i] - cam->World2Pixel( pts_ref[i], ref );
         Vector2d e2 = px_curr[i] - cam->World2Pixel( pts_ref[i], curr );
         
         if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 )
@@ -70,14 +77,8 @@ void TwoViewBACeres(
         else 
         {
             inlier[i] = true;
-            cnt_inliers++;
         }
     }
-    
-    // update the current frame pose
-    curr = SE3( SO3::exp(pose_curr.tail<3>()), pose_curr.head<3>() );
-    
-    LOG(INFO)<<"inliers: "<<cnt_inliers<<endl;
 }
 
     

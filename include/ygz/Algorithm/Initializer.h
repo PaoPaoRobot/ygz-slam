@@ -92,13 +92,28 @@ private:
 
     // ReconstructH调用该函数进行cheirality check，从而进一步找出H分解后最合适的解
     // 返回好的点的个数
+    /**
+     * @brief check whether the estimated R,t is valid
+     * @param[in] R rotation matrix
+     * @param[in] t translation vector
+     * @param[in] inliers inliers given by CheckHomography or CheckFundamental
+     * @param[in] K camera intrinsics
+     * @param[out] p3D triangulated 3D points 
+     * @param[out] th2 reprojection ch2 error threshold 
+     * @param[out] good good points in triangulation
+     * @param[out] parallax max parallax angle
+     * @param[in] check_reprojection whether need to check the reprojection error
+     * @return number of good points 
+     */
     int CheckRT( const Matrix3d &R, const Vector3d &t,  // H分解得到的R,t 
                 vector<bool> &inliers,                  // 每个点是否为inliers
                 const Matrix3d& K,                      
                 vector<Vector3d> &p3D,                  
                 float th2, 
                 vector<bool> &good, 
-                double &parallax );
+                double &parallax,
+                bool check_reprojection = true          // C++ 必须要把带默认值的参数搁后面。。。
+    );
 
     // F矩阵通过结合内参可以得到Essential矩阵，该函数用于分解E矩阵，将得到4组解
     void DecomposeE(const Matrix3d &E, Matrix3d &R1, Matrix3d &R2, Vector3d &t);

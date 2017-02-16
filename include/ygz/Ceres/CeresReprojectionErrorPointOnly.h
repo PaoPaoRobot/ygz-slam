@@ -64,14 +64,16 @@ public:
         p[1] += (T) _TCW[1]; 
         p[2] += (T) _TCW[2]; 
         
+        /*
         if ( p[2] < T(0) ) {
             // 这里一定要有这个检查，否则平行度较高的会被优化成负深度值
+            LOG(INFO)<<"invalid depth"<<endl;
             residuals[0] = residuals[1] = T(0);
             return false;
         }
-        
-        residuals[0] = _pt_cam[0] - p[0]/p[2];
-        residuals[1] = _pt_cam[1] - p[1]/p[2];
+        */
+        residuals[0] = T(_pt_cam[0]) - p[0]/p[2];
+        residuals[1] = T(_pt_cam[1]) - p[1]/p[2];
         return true; 
     }
     

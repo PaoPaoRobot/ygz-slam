@@ -1,9 +1,17 @@
 # 日志
+## 17.2.16
+- 修复了initializer里，对F初始化时，对噪声太过敏感的问题。去除了由F计算R,t时的重投影检查。
+- 开始写Visual Odometry部分。单目，关键帧特征点＋普通帧直接法。
+- 测试了初始化后的双视图BA，程序加到test/test_initializer中。
+- 结论：
+Two View BA可能导致尺度发生变化，所以请在优化后重新归一尺度。
+在有噪声的情况下，地图点越远，估计出来的结果越不准确。
+
 ## 17.2.15
 - 重写了CeresAlignmentError.h。通过test/test_feature_projection进行测试。这个测试是先用DSO的pattern进行位姿估计，然后用Matcher::FindDirectProjection寻找地图点的投影
 - Matcher又调用了CVUtils::Align2D进行块配准，其中又用了Ceres计算一个Affine warped的块匹配
 - 结论：
-Align的时候要选大一点的块，匹配才会准。SVO里选用64x64是有道理的。
+Align的时候要选大一点的块，匹配才会准。SVO里选用64大小的patch是有道理的。
 Ceres优化速度似乎比直接算GaussNewton慢一些？现在匹配200个点基本需要50多毫秒。
 - 发现sparse alignment里居然忘了设pattern，一直用的一个点。。。现在改成了DSO那种八个点的pattern了，耗时约28ms/250个点。ceres真有效率问题
 

@@ -76,9 +76,9 @@ bool Initializer::TryInitialize(
         ret = ReconstructH( inlierH, H, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
     else 
         ret = ReconstructF( inlierF, F, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
+    _T21 = SE3(R21, t21);
     if ( ret == true )
     {
-        _T21 = SE3(R21, t21);
         _inliers = triangulated;
         _pts_triangulated = p3D;
         return true;
@@ -506,7 +506,7 @@ int Initializer::CheckRT(
     const Matrix3d& R, const Vector3d& t, 
     vector< bool >& inliers, const Matrix3d& K, 
     vector< Vector3d >& p3D, float th2, 
-    vector< bool >& good, double& parallax)
+    vector< bool >& good, double& parallax, bool check_reprojection_error )
 {
     const double fx = K(0,0);
     const double fy = K(1,1);
@@ -534,13 +534,14 @@ int Initializer::CheckRT(
     int cntGood=0;      // 好点的数量
     for ( int i=0; i<_num_points; i++ )
     {
-        if ( inliers[i] == false )
-            continue;
+        // if ( inliers[i] == false )
+            // continue;
         Vector3d p3dC1; // C1 坐标系下的3D点
         Triangulate( _px1[i], _px2[i], P1, P2, p3dC1 );
         if ( !isfinite(p3dC1[0]) ) // check the result 
         {
             good[i] = false;
+            inliers[i] = false;
             continue;
         }
         // check parallax 
@@ -552,37 +553,55 @@ int Initializer::CheckRT(
         
         double cosParallax = normal1.dot(normal2) / (dist1*dist2);
         if ( p3dC1[2]<0 && cosParallax<0.99998 )
+        {
+            inliers[i]=false;
             continue; 
+        }
         
         Vector3d p3dC2 = R*p3dC1 + t;
         if ( p3dC2[2]<0 && cosParallax<0.99998 )
+        {
+            inliers[i]=false;
             continue;
+        }
         
         // check reprojection error
-        // in image1 
-        double im1x, im1y;
-        double invZ1 = 1.0/p3dC1[2];
-        im1x = fx*p3dC1[0]*invZ1 + cx;
-        im1y = fy*p3dC1[1]*invZ1 + cy;
-        double squareError1 = ( im1x-_px1[i][0] )*( im1x-_px1[i][0] ) + ( im1y-_px1[i][1] )*( im1y-_px1[i][1] );
-        if ( squareError1 > th2 )
-            continue;
-        
-        // in image2
-        double im2x, im2y;
-        double invZ2 = 1.0/p3dC2[2];
-        im2x = fx*p3dC2[0]*invZ2 + cx;
-        im2y = fy*p3dC2[1]*invZ2 + cy;
-        double squareError2 = ( im2x-_px2[i][0] )*( im2x-_px2[i][0] ) + ( im2y-_px2[i][1] )*( im2y-_px2[i][1] );
-        if ( squareError2 > th2 )
-            continue;
+        if ( check_reprojection_error )
+        {
+            // in image1 
+            double im1x, im1y;
+            double invZ1 = 1.0/p3dC1[2];
+            im1x = fx*p3dC1[0]*invZ1 + cx;
+            im1y = fy*p3dC1[1]*invZ1 + cy;
+            double squareError1 = ( im1x-_px1[i][0] )*( im1x-_px1[i][0] ) + ( im1y-_px1[i][1] )*( im1y-_px1[i][1] );
+            if ( squareError1 > th2 )
+            {
+                inliers[i] = false;
+                continue;
+            }
+            
+            // in image2
+            double im2x, im2y;
+            double invZ2 = 1.0/p3dC2[2];
+            im2x = fx*p3dC2[0]*invZ2 + cx;
+            im2y = fy*p3dC2[1]*invZ2 + cy;
+            double squareError2 = ( im2x-_px2[i][0] )*( im2x-_px2[i][0] ) + ( im2y-_px2[i][1] )*( im2y-_px2[i][1] );
+            if ( squareError2 > th2 )
+            {
+                inliers[i] = false;
+                continue;
+            }
+        }
         
         vcosParallax.push_back( cosParallax );
         p3D[i] = p3dC1;
         cntGood++;
         
         if ( cosParallax<0.99998 )
+        {
+            inliers[i] = true;
             good[i] = true;
+        }
     }
     
     if ( cntGood > 0 )
@@ -850,10 +869,12 @@ bool Initializer::ReconstructF(
     vector<bool> triangulated1, triangulated2, triangulated3, triangulated4;
     double parallax1, parallax2, parallax3, parallax4; 
     
-    int good1 = CheckRT( R1, t1, inliers,K, p3D1, 8.0*_options._sigma2, triangulated1, parallax1 ); 
-    int good2 = CheckRT( R2, t1, inliers,K, p3D2, 8.0*_options._sigma2, triangulated2, parallax2 ); 
-    int good3 = CheckRT( R1, t2, inliers,K, p3D3, 8.0*_options._sigma2, triangulated3, parallax3 ); 
-    int good4 = CheckRT( R2, t2, inliers,K, p3D4, 8.0*_options._sigma2, triangulated4, parallax4 ); 
+    // 注意F的分解容易受噪声影响，所以这里不妨把重投影的那个误差阈值调高一些(但是调太高会出现过多的similar)
+    // 建议在检测F的时候不要用重投影，交给后面的BA来优化
+    int good1 = CheckRT( R1, t1, inliers,K, p3D1, 24.0*_options._sigma2, triangulated1, parallax1, false ); 
+    int good2 = CheckRT( R2, t1, inliers,K, p3D2, 24.0*_options._sigma2, triangulated2, parallax2, false ); 
+    int good3 = CheckRT( R1, t2, inliers,K, p3D3, 24.0*_options._sigma2, triangulated3, parallax3, false ); 
+    int good4 = CheckRT( R2, t2, inliers,K, p3D4, 24.0*_options._sigma2, triangulated4, parallax4, false ); 
     
     int maxGood = max(good1, max(good2, max(good3,good4)));
     int minGood = max( int(0.9*N), minTriangulated );

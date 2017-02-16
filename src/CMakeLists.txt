@@ -15,3 +15,8 @@ add_library( ygz-algorithm SHARED
     Algorithm/Initializer.cpp
     Algorithm/BA.cpp
 )
+
+# modules
+add_library( ygz-module SHARED 
+    Module/VisualOdometry.cpp
+)

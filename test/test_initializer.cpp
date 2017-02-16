@@ -5,7 +5,7 @@ using namespace std;
 using namespace ygz; 
 using namespace cv;
 
-// 本程序测试初始化，使用仿真数据
+// 本程序测试初始化，使用仿真数据。测试initializer是否正常工作，以及init之后用一次Two view BA是否有精度提升。
 // 路标点，位于z=2的平面上，用以测试H的情况
 double landmarks_H[12][3] = 
 {
@@ -89,8 +89,8 @@ int main( int argc, char** argv )
         
         px1H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
         px2H[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
-        px1F[i] += Vector2d( rng.gaussian(1.0), rng.gaussian(1.0) );    // 加噪声 
-        px2F[i] += Vector2d( rng.gaussian(1.0), rng.gaussian(1.0) );    // 加噪声 
+        px1F[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
+        px2F[i] += Vector2d( rng.gaussian(2.0), rng.gaussian(2.0) );    // 加噪声 
     }
     
     LOG(INFO) << "Data generated, test initializer" <<endl;
@@ -106,16 +106,34 @@ int main( int argc, char** argv )
     else
         LOG(INFO)<<"Initialize failed."<<endl;
     
-    if ( ret ) 
-    {
-        LOG(INFO) << "T21 estimated = \n"<<init->GetT21().matrix()<<endl;
-    }
+    LOG(INFO) << "T21 estimated by initializer = \n"<<init->GetT21().matrix()<<endl;
     
     frame2->_TCW = init->GetT21();
     vector<bool> inliers; 
     vector<Vector3d> pts_ref; 
     init->GetTriangluatedPoints( pts_ref, inliers );
-    // ba::TwoViewBACeres();
+    ba::TwoViewBACeres( frame1->_TCW, frame2->_TCW, px1F, px2F, inliers, pts_ref );
+    
+    // normalize the scale 
+    double scale = frame2->_TCW.translation().norm();
+    LOG(INFO) << "scale = "<<scale<<endl;
+    frame2->_TCW.translation() = frame2->_TCW.translation()/scale;
+    
+    LOG(INFO) << "pose 2 true value = \n"<<pose2.matrix()<<"\nestimated = \n"<<frame2->_TCW.matrix()<<endl;
+    
+    for ( size_t i=0; i<pts_ref.size(); i++ ) 
+    {
+        LOG(INFO) << "map point "<<i<<"\ntrue value = "<<
+            landmarks_F[i][0] << ", "<<
+            landmarks_F[i][1] << ", "<<
+            landmarks_F[i][2] << "\nestimated value = "<<pts_ref[i].transpose()/scale<<endl;
+    }
+    
+    int cnt_inlier = 0;
+    for ( bool in:inliers )
+        if (in) cnt_inlier++;
+        
+    LOG(INFO) << "inliers: "<<cnt_inlier<<endl;
     
     delete cam; 
     delete frame1;
