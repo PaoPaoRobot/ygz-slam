@@ -39,7 +39,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
     {
         // case 1: set first frame 
         _ref_frame = frame;
-        SetKeyframe( frame );
+        SetKeyframe( frame );   // this will detect features on frame
         _status = VO_INITING;
         _tracker->SetReference( _ref_frame );
         return true;
@@ -174,7 +174,7 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     frame->_is_keyframe = true;
     frame = Memory::RegisterKeyFrame( frame );
     
-    _detector->Detect( frame );
+    _detector->Detect( frame, false );
     _last_key_frame = frame;
 }
 
@@ -184,11 +184,41 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
     vector< Vector3d >& pts_triangulated, 
     vector< bool >& inliers )
 {
+    assert( features_ref.size() == pixels_curr.size() == pts_triangulated.size() == inliers.size() );
+    // compute the scale 
+    
+    
+    
+    for ( size_t i=0; i<features_ref.size(); i++ ) 
+    {
+        if ( inliers[i] == true ) 
+        {
+            // create the map points 
+            MapPoint* mp = Memory::CreateMapPoint();
+            mp->_cnt_found = mp->_cnt_visible = 2; 
+            mp->_pos_world = pts_triangulated[i];
+            mp->_last_seen = _curr_frame->_id;
+            mp->_obs[_ref_frame->_id] = features_ref[i];
+            features_ref[i]->_mappoint = mp;
+            
+            // create the features in current 
+            Feature* new_feature = new Feature(
+                pixels_curr[i], features_ref[i]->_level, features_ref[i]->_score
+            );
+            new_feature->_frame = _curr_frame;
+            mp->_obs[_curr_frame->_id] = new_feature;
+            _curr_frame->_features.push_back( new_feature );
+        }
+    }
+    
+    // compute the angles and descriptors in current frame 
+    _detector->ComputeAngleAndDescriptor( _curr_frame );
 }
 
 bool VisualOdometry::TrackRefFrame()
 {
-    // 使用 matcher 的sparse alignment 追踪参考帧中的
+    // 使用 matcher 的 sparse alignment 追踪参考帧中的观测点
+    
 }
     
 

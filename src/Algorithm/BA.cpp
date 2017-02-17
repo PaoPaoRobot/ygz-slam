@@ -69,8 +69,10 @@ void TwoViewBACeres(
     {
         Vector2d e1 = px_ref[i] - cam->World2Pixel( pts_ref[i], ref );
         Vector2d e2 = px_curr[i] - cam->World2Pixel( pts_ref[i], curr );
+        double depth1 = cam->World2Camera( pts_ref[i], ref )[2];
+        double depth2 = cam->World2Camera( pts_ref[i], curr )[2];
         
-        if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 )
+        if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 || depth1<0 || depth2<0 )
         {
             inlier[i] = false;
         }
