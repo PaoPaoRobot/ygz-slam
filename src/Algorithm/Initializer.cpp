@@ -27,7 +27,7 @@ bool Initializer::TryInitialize(
     vector<size_t> allIndices;  // 所有匹配点的索引
     allIndices.reserve( px1.size() );
     vector<size_t> availableIndices; 
-    for ( int i=0; i<px1.size(); i++ )
+    for ( size_t i=0; i<px1.size(); i++ )
         allIndices.push_back( i );
     
     cv::RNG rng;
@@ -52,20 +52,15 @@ bool Initializer::TryInitialize(
     float sh=0, sf=0;       // h和e的评分
     Matrix3d H,F;
     
-    /*
     thread threadH( &Initializer::FindHomography, this, std::ref(inlierH), std::ref(sh), std::ref(H) ); 
     thread threadF( &Initializer::FindFundamental, this, std::ref(inlierF), std::ref(sf), std::ref(F) ); 
     
     threadH.join();
     threadF.join();
-    */
     
     // 调试阶段不要并行
-    FindHomography( inlierH, sh, H );
-    FindFundamental( inlierF, sf, F );
-    
-    LOG(INFO)<<"H = \n"<<H<<endl;
-    LOG(INFO)<<"F = \n"<<F<<endl;
+    // FindHomography( inlierH, sh, H );
+    // FindFundamental( inlierF, sf, F );
     
     // 评价E和H哪个更好
     float rh = sh/(sh+sf);
@@ -74,11 +69,20 @@ bool Initializer::TryInitialize(
     Vector3d t21;
     vector<Vector3d> p3D;
     vector<bool> triangulated;
+    
     // rh>0.4 认为H更好，否则认为F更好
+    bool ret = false;
     if ( rh>0.4 )
-        return ReconstructH( inlierH, H, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
+        ret = ReconstructH( inlierH, H, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
     else 
-        return ReconstructF( inlierF, F, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
+        ret = ReconstructF( inlierF, F, K, R21, t21, p3D, triangulated, _options._min_parallex, _options._min_triangulated_pts );
+    _T21 = SE3(R21, t21);
+    if ( ret == true )
+    {
+        _inliers = triangulated;
+        _pts_triangulated = p3D;
+        return true;
+    }
     return false;
 }
 
@@ -193,7 +197,7 @@ Matrix3d Initializer::ComputeH21(
     const vector<Vector2d>& vP1, const vector<Vector2d>& vP2)
 {
     Eigen::MatrixXd A(2*vP1.size(), 9);
-    for ( int i=0; i<vP1.size(); i++ ) 
+    for ( size_t i=0; i<vP1.size(); i++ ) 
     {
         const double u1 = vP1[i][0];
         const double v1 = vP1[i][1];
@@ -305,6 +309,8 @@ float Initializer::CheckHomography(const Matrix3d& H21, const Matrix3d& H12, vec
             inliers[i] = true;
         }
     }
+    
+    return score;
 }
 
 // H矩阵分解常见有两种方法：Faugeras SVD-based decomposition 和 Zhang SVD-based decomposition
@@ -329,14 +335,16 @@ bool Initializer::ReconstructH(
     Matrix3d invK = K.inverse();
     Matrix3d A = invK * H21 * K;
     Eigen::JacobiSVD<Matrix3d> svd( A, Eigen::ComputeFullU|Eigen::ComputeFullV );
+    
     Matrix3d V = svd.matrixV();
-    Matrix3d U = svd.matrixV();
+    Matrix3d U = svd.matrixU();
+    
     Eigen::Vector3d sigma = svd.singularValues();
-    double d1 = fabs( sigma[0] );
-    double d2 = fabs( sigma[1] );
-    double d3 = fabs( sigma[2] );
-
+    double d1 = ( sigma[0] );
+    double d2 = ( sigma[1] );
+    double d3 = ( sigma[2] );
     double s = U.determinant() * V.determinant();
+    
     if ( d1/d2 < 1.00001 || d2/d3<1.00001 )
     {
         // 这种情况不应出现
@@ -345,6 +353,7 @@ bool Initializer::ReconstructH(
     }
     
     vector<HomographyDecomposition> decomps;     // 八个分解情况
+    decomps.reserve(8);
     
     float aux1 = sqrt((d1*d1-d2*d2)/(d1*d1-d3*d3));
     float aux3 = sqrt((d2*d2-d3*d3)/(d1*d1-d3*d3));
@@ -352,13 +361,12 @@ bool Initializer::ReconstructH(
     float x3[] = {aux3,-aux3,aux3,-aux3};
 
     //case d'=d2
-    // 计算ppt中公式19
     float aux_stheta = sqrt((d1*d1-d2*d2)*(d2*d2-d3*d3))/((d1+d3)*d2);
 
     float ctheta = (d2*d2+d1*d3)/((d1+d3)*d2);
     float stheta[] = {aux_stheta, -aux_stheta, -aux_stheta, aux_stheta};
     
-    // 计算旋转矩阵 R‘，计算ppt中公式18
+    // 计算旋转矩阵 R'
     //      | costheta      0   -sintheta|       | aux1|
     // Rp = |    0        1       0      |  tp = |  0  |
     //      | stheta  0    costheta      |       |-aux3|
@@ -457,9 +465,6 @@ bool Initializer::ReconstructH(
         vector<Vector3d> vP3Di;
         vector<bool> vbTriangulatedi;
         
-        LOG(INFO) << "R = \n"<<decomps[i].R<<endl;
-        LOG(INFO) << "t = "<<decomps[i].t.transpose()<<endl;
-        
         int nGood = CheckRT( decomps[i].R, decomps[i].t, inliers, K,vP3Di, 4.0*_options._sigma2, vbTriangulatedi, parallaxi);
 
         // 保留最优的和次优的
@@ -478,7 +483,11 @@ bool Initializer::ReconstructH(
         }
     }
     
-    if ( secondBestGood<0.75*bestGood && bestParallax>=minParallax && bestGood>minTriangulated && bestGood > 0.9*_num_points )
+    LOG(INFO) << "best R = \n"<<decomps[bestSolutionIdx].R<<endl;
+    LOG(INFO) << "best t = "<<decomps[bestSolutionIdx].t.transpose()<<endl;
+    
+    if ( secondBestGood<0.75*bestGood && bestParallax>=minParallax 
+        && bestGood>minTriangulated && bestGood > _options.good_point_ratio_H*_num_points )
     {
         // 这个条件还是蛮苛刻的，特别是90％的特征点都必须正确这一项
         R21 = decomps[bestSolutionIdx].R;
@@ -497,7 +506,7 @@ int Initializer::CheckRT(
     const Matrix3d& R, const Vector3d& t, 
     vector< bool >& inliers, const Matrix3d& K, 
     vector< Vector3d >& p3D, float th2, 
-    vector< bool >& good, double& parallax)
+    vector< bool >& good, double& parallax, bool check_reprojection_error )
 {
     const double fx = K(0,0);
     const double fy = K(1,1);
@@ -523,63 +532,83 @@ int Initializer::CheckRT(
     Vector3d O2 = -R.transpose()*t;
     
     int cntGood=0;      // 好点的数量
-    for ( size_t i=0; i<_num_points; i++ )
+    for ( int i=0; i<_num_points; i++ )
     {
-        if ( inliers[i] == false )
-            continue;
+        // if ( inliers[i] == false )
+            // continue;
         Vector3d p3dC1; // C1 坐标系下的3D点
         Triangulate( _px1[i], _px2[i], P1, P2, p3dC1 );
         if ( !isfinite(p3dC1[0]) ) // check the result 
         {
             good[i] = false;
+            inliers[i] = false;
             continue;
         }
         // check parallax 
         Vector3d normal1 = p3dC1 - O1;
         double dist1 = normal1.norm();
         
-        Vector3d normal2 = p3dC1 = O2; 
+        Vector3d normal2 = p3dC1 - O2; 
         double dist2 = normal2.norm();
         
         double cosParallax = normal1.dot(normal2) / (dist1*dist2);
         if ( p3dC1[2]<0 && cosParallax<0.99998 )
+        {
+            inliers[i]=false;
             continue; 
+        }
+        
         Vector3d p3dC2 = R*p3dC1 + t;
         if ( p3dC2[2]<0 && cosParallax<0.99998 )
+        {
+            inliers[i]=false;
             continue;
+        }
         
         // check reprojection error
-        // in image1 
-        double im1x, im1y;
-        double invZ1 = 1.0/p3dC1[2];
-        im1x = fx*p3dC1[0]*invZ1 + cx;
-        im1y = fy*p3dC1[1]*invZ1 + cy;
-        double squareError1 = ( im1x-_px1[i][0] )*( im1x-_px1[i][0] ) + ( im1y-_px1[i][1] )*( im1y-_px1[i][1] );
-        if ( squareError1 > th2 )
-            continue;
-        
-        // in image2
-        double im2x, im2y;
-        double invZ2 = 1.0/p3dC2[2];
-        im2x = fx*p3dC2[0]*invZ2 + cx;
-        im2y = fy*p3dC2[1]*invZ2 + cy;
-        double squareError2 = ( im2x-_px2[i][0] )*( im2x-_px2[i][0] ) + ( im2y-_px2[i][1] )*( im2y-_px2[i][1] );
-        if ( squareError2 > th2 )
-            continue;
+        if ( check_reprojection_error )
+        {
+            // in image1 
+            double im1x, im1y;
+            double invZ1 = 1.0/p3dC1[2];
+            im1x = fx*p3dC1[0]*invZ1 + cx;
+            im1y = fy*p3dC1[1]*invZ1 + cy;
+            double squareError1 = ( im1x-_px1[i][0] )*( im1x-_px1[i][0] ) + ( im1y-_px1[i][1] )*( im1y-_px1[i][1] );
+            if ( squareError1 > th2 )
+            {
+                inliers[i] = false;
+                continue;
+            }
+            
+            // in image2
+            double im2x, im2y;
+            double invZ2 = 1.0/p3dC2[2];
+            im2x = fx*p3dC2[0]*invZ2 + cx;
+            im2y = fy*p3dC2[1]*invZ2 + cy;
+            double squareError2 = ( im2x-_px2[i][0] )*( im2x-_px2[i][0] ) + ( im2y-_px2[i][1] )*( im2y-_px2[i][1] );
+            if ( squareError2 > th2 )
+            {
+                inliers[i] = false;
+                continue;
+            }
+        }
         
         vcosParallax.push_back( cosParallax );
         p3D[i] = p3dC1;
         cntGood++;
         
         if ( cosParallax<0.99998 )
+        {
+            inliers[i] = true;
             good[i] = true;
+        }
     }
     
     if ( cntGood > 0 )
     {
         sort( vcosParallax.begin(), vcosParallax.end() );
         size_t idx = min(50, int(vcosParallax.size()-1));
-        parallax = acos( vcosParallax[idx]*180/M_PI );
+        parallax = acos(vcosParallax[idx])*180/M_PI;
     }
     else
         parallax = 0;
@@ -646,7 +675,7 @@ void Initializer::FindFundamental(
     Matrix3d T1, T2;
     Normalize( _px1, pn1, T1 );
     Normalize( _px2, pn2, T2 );
-    Matrix3d T2inv = T2.inverse();
+    Matrix3d T2t = T2.transpose();
     
     // 最佳的inliers与评分
     score = 0;
@@ -671,7 +700,10 @@ void Initializer::FindFundamental(
         
         // 计算F矩阵
         Matrix3d Fn = ComputeF21( pn1i, pn2i );
-        F21i = T2inv*Fn*T1;
+        F21i = T2t*Fn*T1;
+        
+        // 这里应该是 pn2i^T Fn pn1i = 0 
+        // 或者 _px2&T F21i _px1 = 0
         
         // set score 
         currentScore = CheckFundamental( F21i, currentInliers, _options._sigma );
@@ -700,7 +732,7 @@ Matrix3d Initializer::ComputeF21(
     const vector< Vector2d >& vP2 ) 
 {
     Eigen::MatrixXd A(vP1.size(), 9);
-    for ( int i=0; i<vP1.size(); i++ ) 
+    for ( size_t i=0; i<vP1.size(); i++ ) 
     {
         const double u1 = vP1[i][0];
         const double v1 = vP1[i][1];
@@ -726,7 +758,6 @@ Matrix3d Initializer::ComputeF21(
             V(6,8),V(7,8),V(8,8);       // 最后一列转成3x3
     Eigen::JacobiSVD<Eigen::Matrix3d> svd_F ( Fpre, Eigen::ComputeFullU | Eigen::ComputeFullV);
     Vector3d sigma = svd_F.singularValues();
-    
     return svd_F.matrixU()*Eigen::DiagonalMatrix<double,3>(sigma[0], sigma[1],0)*svd_F.matrixV().transpose(); // 第3个奇异值设零
 }
 
@@ -838,10 +869,12 @@ bool Initializer::ReconstructF(
     vector<bool> triangulated1, triangulated2, triangulated3, triangulated4;
     double parallax1, parallax2, parallax3, parallax4; 
     
-    int good1 = CheckRT( R1, t1, inliers,K, p3D1, 4.0*_options._sigma2, triangulated1, parallax1 ); 
-    int good2 = CheckRT( R2, t1, inliers,K, p3D2, 4.0*_options._sigma2, triangulated2, parallax2 ); 
-    int good3 = CheckRT( R1, t2, inliers,K, p3D3, 4.0*_options._sigma2, triangulated3, parallax3 ); 
-    int good4 = CheckRT( R2, t2, inliers,K, p3D4, 4.0*_options._sigma2, triangulated4, parallax4 ); 
+    // 注意F的分解容易受噪声影响，所以这里不妨把重投影的那个误差阈值调高一些(但是调太高会出现过多的similar)
+    // 建议在检测F的时候不要用重投影，交给后面的BA来优化
+    int good1 = CheckRT( R1, t1, inliers,K, p3D1, 24.0*_options._sigma2, triangulated1, parallax1, false ); 
+    int good2 = CheckRT( R2, t1, inliers,K, p3D2, 24.0*_options._sigma2, triangulated2, parallax2, false ); 
+    int good3 = CheckRT( R1, t2, inliers,K, p3D3, 24.0*_options._sigma2, triangulated3, parallax3, false ); 
+    int good4 = CheckRT( R2, t2, inliers,K, p3D4, 24.0*_options._sigma2, triangulated4, parallax4, false ); 
     
     int maxGood = max(good1, max(good2, max(good3,good4)));
     int minGood = max( int(0.9*N), minTriangulated );
@@ -919,6 +952,7 @@ void Initializer::DecomposeE(
     W(0,1) = -1;
     W(1,0) = 1;
     W(2,2) = 1;
+    
     R1 = U*W*V.transpose();
     if ( R1.determinant() < 0 )
         R1 = -R1; 

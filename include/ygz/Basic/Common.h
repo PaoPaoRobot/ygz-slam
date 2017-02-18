@@ -32,8 +32,6 @@ using Eigen::Matrix4d;
 typedef Eigen::Matrix<double, 6, 1> Vector6d; 
 
 #include <Eigen/StdVector> // for vector of Eigen objects 
-typedef vector<Vector3d, Eigen::aligned_allocator<Vector3d>> VecVector3d;
-
 // for Sophus
 #include <sophus/se3.h>
 #include <sophus/so3.h>
@@ -66,14 +64,14 @@ typedef DBoW3::Vocabulary ORBVocabulary;
 
 // 稀疏直接法里用的pattern
 // 这是DSO用的pattern
-// enum {PATTERN_SIZE = 1};
-// const double PATTERN_DX[PATTERN_SIZE] = {0,-1,1,1,-2,0,2,0};
-// const double PATTERN_DY[PATTERN_SIZE] = {0,-1,-1,1,0,-2,0,2};
+enum {PATTERN_SIZE = 8};
+const double PATTERN_DX[PATTERN_SIZE] = {0,-1,1,1,-2,0,2,0};
+const double PATTERN_DY[PATTERN_SIZE] = {0,-1,-1,1,0,-2,0,2};
 
 // 这样用就只考虑一个像素
-enum {PATTERN_SIZE = 1};
-const double PATTERN_DX[PATTERN_SIZE] = {0};
-const double PATTERN_DY[PATTERN_SIZE] = {0};
+// enum {PATTERN_SIZE = 1};
+// const double PATTERN_DX[PATTERN_SIZE] = {0};
+// const double PATTERN_DY[PATTERN_SIZE] = {0};
 
 // Local mapping中使用的patch大小
 const int WarpHalfPatchSize = 4;    

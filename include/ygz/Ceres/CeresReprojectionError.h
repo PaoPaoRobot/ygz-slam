@@ -35,11 +35,11 @@ public:
         const T* const pose, 
         const T* const pt_world,
         T* residuals
-    )
+    ) const
     {
         if ( _enable == false )
         {
-            residuals[0] = residuals[1] = 0;
+            residuals[0] = residuals[1] = T(0);
             return true;
         }
         
@@ -53,11 +53,14 @@ public:
         p[1] += pose[1]; 
         p[2] += pose[2]; 
         
+        /*
         if ( p[2] < T(0) ) {
             // 这个必须 check 否则点容易被优化到负深度上去
             residuals[0] = residuals[1] = T(0);
+            LOG(INFO)<<"invalid depth "<<p[2]<<endl;
             return false;
         }
+        */
         
         residuals[0] = _weight* (_pt_cam[0] - p[0]/p[2]);
         residuals[1] = _weight* (_pt_cam[1] - p[1]/p[2]);

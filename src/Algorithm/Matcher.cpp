@@ -370,7 +370,7 @@ bool Matcher::FindDirectProjection(
             ref_patch_ptr[x] = ref_patch_border_ptr[x];
     }
     Vector2d px_scaled = px_curr / (1<<search_level);
-    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, px_scaled); 
+    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, _patch_with_border, px_scaled); 
     px_curr = px_scaled*(1<<search_level);
     if ( !curr->InFrame(px_curr) ) 
         return false;
@@ -432,13 +432,11 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
     
     for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
     {
-        LOG(INFO) << "aligning patches in level "<<level<<endl;
         SparseImageAlignmentInPyramid( ref, current, level );
-        LOG(INFO)<<"TCR = \n"<<_TCR_esti.matrix()<<endl;
     }
     
     if ( _TCR_esti.log().norm() > _options.max_alignment_motion ) {
-        LOG(INFO)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
+        LOG(WARNING)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
         _TCR_esti = SE3();
         return false;
     }
@@ -471,7 +469,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
                     ref->_camera,
                     1<<pyramid,
                     _TCR_esti,
-                    false        
+                    true        
                 ), 
                 nullptr, 
                 pose_curr.data()
@@ -486,7 +484,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     // options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    // cout<<summary.FullReport()<<endl;
+    LOG(INFO)<<summary.FullReport()<<endl;
     // LOG(INFO) << "Solve alignment cost time "<<timer.elapsed()<<endl;
     
     // set the pose 

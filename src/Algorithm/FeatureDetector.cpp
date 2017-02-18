@@ -575,6 +575,19 @@ void FeatureDetector::ComputeOrbDescriptor(
 
 }
 
+void FeatureDetector::ComputeAngleAndDescriptor(Frame* frame)
+{
+    for ( Feature* fea: frame->_features )
+    {
+        if ( fea->_desc.empty() )
+        {
+            // compute the angle and descriptor 
+            fea->_angle = IC_Angle( frame->_pyramid[fea->_level], fea->_pixel/(1<<fea->_level), _umax );
+            ComputeOrbDescriptor( fea, frame->_pyramid[fea->_level], &_pattern[0], fea->_desc.data );
+        }
+    }
+}
+
 
 
 }

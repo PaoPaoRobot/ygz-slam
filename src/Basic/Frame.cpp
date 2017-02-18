@@ -189,9 +189,14 @@ Mat Frame::GetAllDescriptors()
 
 void Frame::ComputeBoW()
 {
-    if ( _vocab && _bow_vec.empty() ) 
+    if ( _vocab!=nullptr && _bow_vec.empty() ) 
     {
-        _vocab->transform( GetAllDescriptors(), _bow_vec, _feature_vec, 4);
+        vector<Mat> alldesp;
+        for ( Feature* fea: _features ) 
+        {
+            alldesp.push_back(fea->_desc);
+        }
+        _vocab->transform( alldesp, _bow_vec, _feature_vec, 4);
     }
 }
 

@@ -127,9 +127,19 @@ inline Eigen::Matrix<double,2,6> JacobXYZ2Pixel ( const Vector3d& xyz,  PinholeC
 // *************************************************************************************
 // 图像配准
 // Alignment using Ceres
+// TODO 对Ceres的效率深表怀疑
+/**
+ * @brief Align an image patch(in ref) with the current image
+ * @param[in] cur_img The current image 
+ * @param[in] ref_patch the patch in reference frame, by default is 64x64
+ * @param[in] ref_patch_with_boarder the patch with boarder, used to compute the gradient (or FEJ)
+ * @param[out] cur_px_estimate the estimated position in current image, must have an initial value
+ * @return True if successful
+ */
 bool Align2DCeres( 
     const Mat& cur_img, 
     uint8_t* ref_patch, 
+    uint8_t* ref_patch_with_boarder, 
     Vector2d& cur_px_estimate 
 );
 

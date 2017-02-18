@@ -6,8 +6,8 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm/CVUtils.h"
 
-// 我也真是把ceres玩出花的男人
-
+// 我真是把ceres玩出花的男人
+// 只优化Point的Error
 namespace ygz 
 {
     
@@ -15,6 +15,13 @@ class CeresReprojectionErrorPointOnly
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW 
+    
+    /** 
+     * @brief constructor 
+     * @param[in] pt_cam point in camera corrdinate, non-homography
+     * @param[in] TCW the pose of this frame 
+     */
+    // 注意这里的pt_cam是相机坐标系下的值，单位是米，如果你用像素坐标，请用camera->Pixel2Camera2D进行转换
     CeresReprojectionErrorPointOnly( 
         const Vector2d& pt_cam, const SE3& TCW
     ): _pt_cam(pt_cam)  
@@ -43,7 +50,7 @@ public:
         
         if ( _enable == false )
         {
-            residuals[0] = residuals[1] = 0;
+            residuals[0] = residuals[1] = T(0);
             return true;
         }
         
@@ -57,13 +64,16 @@ public:
         p[1] += (T) _TCW[1]; 
         p[2] += (T) _TCW[2]; 
         
+        /*
         if ( p[2] < T(0) ) {
+            // 这里一定要有这个检查，否则平行度较高的会被优化成负深度值
+            LOG(INFO)<<"invalid depth"<<endl;
             residuals[0] = residuals[1] = T(0);
             return false;
         }
-        
-        residuals[0] = _pt_cam[0] - p[0]/p[2];
-        residuals[1] = _pt_cam[1] - p[1]/p[2];
+        */
+        residuals[0] = T(_pt_cam[0]) - p[0]/p[2];
+        residuals[1] = T(_pt_cam[1]) - p[1]/p[2];
         return true; 
     }
     

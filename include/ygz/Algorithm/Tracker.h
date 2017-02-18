@@ -31,6 +31,7 @@ public:
     Tracker();
     
     // set the reference to track 
+    // 会拷贝ref中的特征到一个缓存区
     void SetReference( Frame* ref );
     
     // track the frame, call it after setting the reference
@@ -40,6 +41,11 @@ public:
     float MeanDisparity() const ;
     
     // 获取 Tracker 得到的特征
+    // 注意第一个帧中不是所有的特征都会被跟踪，有些被遮挡的就会丢失
+    /**
+     * @param[out] feature1 tracked features in frame 1
+     * @param[out] pixels2 tracked pixels in frame 2
+     */
     void GetTrackedPixel (
         vector<Feature*>& feature1, 
         vector<Vector2d>& pixels2 

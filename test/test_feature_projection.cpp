@@ -7,7 +7,7 @@
 using namespace std; 
 using namespace cv; 
 
-// 本程序测试 SVO sparse alignment 的结果
+// 本程序测试地图点投影的结果
 
 int main( int argc, char** argv )
 {
@@ -45,6 +45,7 @@ int main( int argc, char** argv )
     ygz::FeatureDetector detector; 
     detector.LoadParams();
     
+    // 这是reference 
     ygz::Frame* frame = new ygz::Frame(); 
     frame->_color = color;
     frame->_depth = depth;
@@ -84,13 +85,31 @@ int main( int argc, char** argv )
     frame2.InitFrame();
     
     ygz::Matcher matcher;
-    
     LOG(INFO)<<"doing sparse alignment"<<endl;
     boost::timer timer;
     matcher.SparseImageAlignment( frame, &frame2 );
     LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
     SE3 TCR = matcher.GetTCR();
     LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
+    
+    frame2._TCW = TCR; 
+    
+    // 求ref中地图点在frame2中的投影
+    auto& all_points = ygz::Memory::GetAllPoints();
+    vector<Vector2d> px_frame2, px_frame2_reproj;       // align之后和之前的（重投影的）像素位置
+    timer.restart();
+    int cnt_good_projection = 0;
+    for ( auto& map_point: all_points )
+    {
+        ygz::MapPoint* mp = map_point.second;
+        Vector2d px2 = frame2._camera->World2Pixel( mp->_pos_world, frame2._TCW );
+        px_frame2_reproj.push_back(px2);
+        if ( matcher.FindDirectProjection( frame, &frame2, mp, px2 ) )
+            cnt_good_projection++;
+        px_frame2.push_back(px2);
+    }
+    LOG(INFO) << "total points: "<<all_points.size()<<", succeed: "<<cnt_good_projection<<endl;
+    LOG(INFO) << "project "<<all_points.size()<<" point cost time: "<<timer.elapsed()<<endl;
     
     // plot the matched features 
     Mat color1_show = frame->_color.clone();
@@ -103,11 +122,19 @@ int main( int argc, char** argv )
             circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
                 2, Scalar(0,250,0), 2
             );
-            
-            Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
-            circle( color2_show, Point2f(px2[0], px2[1]), 2, Scalar(0,250,0), 2);
         }
     }
+    
+    // 红色是重投影的，绿点是对齐过后的
+    for ( size_t i=0; i<px_frame2.size(); i++ )
+    {
+        Vector2d px2 = px_frame2[i];
+        Vector2d px2r = px_frame2_reproj[i];
+        circle( color2_show, Point2f(px2r[0], px2r[1]), 1, Scalar(0,0,250), 2);
+        circle( color2_show, Point2f(px2[0], px2[1]), 1, Scalar(0,250,0), 2);
+        line( color2_show, Point2f(px2[0], px2[1]), Point2f(px2r[0],px2r[1]), Scalar(0,0,250), 1 );
+    }
+    
     imshow("point in frame 1", color1_show );
     imshow("point in frame 2", color2_show );
     waitKey();

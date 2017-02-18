@@ -26,14 +26,28 @@ public:
         Frame* curr
     ); 
     
+    // 获得估计的解
+    SE3 GetT21() const 
+    {
+        return _T21;
+    }
+    
+    // 获得3D点和内点
+    void GetTriangluatedPoints( vector<Vector3d>& pts_3d, vector<bool>& inliers )
+    {
+        pts_3d = _pts_triangulated;
+        inliers = _inliers;
+    }
+    
     // 配置参数
     struct Option 
     {
-        float _sigma = 1.0;
-        float _sigma2 = 1.0;
+        float _sigma = 2.0;     // 误差方差
+        float _sigma2 = 4.0;    // 误差方差平方
         int _max_iter = 200;    // 最大迭代次数
         double _min_parallex =1.0;         // 最小平行夹角
-        int _min_triangulated_pts=10;      // 最少被三角化点的数量
+        int _min_triangulated_pts=8;      // 最少被三角化点的数量
+        double good_point_ratio_H = 0.9;   // 在分解H时，好点占总点数的最小比例
     } _options;
     
 private:
@@ -78,27 +92,45 @@ private:
 
     // ReconstructH调用该函数进行cheirality check，从而进一步找出H分解后最合适的解
     // 返回好的点的个数
+    /**
+     * @brief check whether the estimated R,t is valid
+     * @param[in] R rotation matrix
+     * @param[in] t translation vector
+     * @param[in] inliers inliers given by CheckHomography or CheckFundamental
+     * @param[in] K camera intrinsics
+     * @param[out] p3D triangulated 3D points 
+     * @param[out] th2 reprojection ch2 error threshold 
+     * @param[out] good good points in triangulation
+     * @param[out] parallax max parallax angle
+     * @param[in] check_reprojection whether need to check the reprojection error
+     * @return number of good points 
+     */
     int CheckRT( const Matrix3d &R, const Vector3d &t,  // H分解得到的R,t 
                 vector<bool> &inliers,                  // 每个点是否为inliers
                 const Matrix3d& K,                      
                 vector<Vector3d> &p3D,                  
                 float th2, 
                 vector<bool> &good, 
-                double &parallax );
+                double &parallax,
+                bool check_reprojection = true          // C++ 必须要把带默认值的参数搁后面。。。
+    );
 
     // F矩阵通过结合内参可以得到Essential矩阵，该函数用于分解E矩阵，将得到4组解
     void DecomposeE(const Matrix3d &E, Matrix3d &R1, Matrix3d &R2, Vector3d &t);
     
     vector<bool> _inliers;      // 判断匹配点对是否为inlier
-    vector<vector<size_t>> _set;
-    
+    vector<Vector3d> _pts_triangulated; // 三角化的点
     SE3 _T21;                   // 估得的 T21
+    
+    vector<vector<size_t>> _set;        
     vector<Vector2d> _px1;
     vector<Vector2d> _px2;
     int _num_points=0;            // 总共匹配点的数量
+    
     Frame* _ref=nullptr; 
     Frame* _curr=nullptr;
     
+    // 分解H得到的结果
     struct HomographyDecomposition
     {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -106,9 +138,6 @@ private:
         Eigen::Matrix3d R;
         Eigen::Vector3d n;
     };
-    
-    
-    
 };
 
 }

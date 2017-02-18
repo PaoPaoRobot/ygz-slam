@@ -27,9 +27,7 @@ struct Feature
     int      _level=-1;    // 特征点所属金字塔层数
     double   _angle=0;    // 旋转角（2D图像中使用）
     Mat      _desc=cv::Mat(1,32,CV_8UC1);     // ORB 描述子
-    
     Frame*   _frame =nullptr;    // 所属的帧，一个特征只属于一个帧
-    
     // 一个特征只能对应到一个地图点，但一个地图点可对应多个帧
     MapPoint* _mappoint =nullptr;        // 对应的地图点
     

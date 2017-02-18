@@ -61,6 +61,11 @@ public:
 
     // 提取一个帧中的特征点，记录于 frame->_features 中,同时会计算描述
     void Detect ( Frame* frame, bool overwrite_existing_features=true );
+    
+    // 计算frame中关键点的旋转和描述子
+    // 这种情况出现在初始化追踪完成时。由于光流只能追踪特征点的图像坐标，所以从初始化的第一个帧到第二个帧时，需要把
+    // 第二个帧的像素点转化为带有特征描述的特征点
+    void ComputeAngleAndDescriptor( Frame* frame );
 
 private:
     // 设置已有特征的网格
