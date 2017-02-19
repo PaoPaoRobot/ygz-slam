@@ -5,6 +5,7 @@ namespace ygz
     
 LocalMapping::LocalMapping() 
 {
+    _matcher = new Matcher;
     
 }
     
@@ -22,8 +23,87 @@ void LocalMapping::AddMapPoint ( MapPoint* mp )
 
 bool LocalMapping::TrackLocalMap( Frame* current )
 {
+    // 寻找候选点
+    map<Feature*, Vector2d> candidates = FindCandidates( current );
     
+    // 投影候选点
+    ProjectMapPoints( current, candidates );
+    
+    // optimize the current pose and structure, remove outliers 
+    OptimizeCurrent( current );
+    
+    return true;
 }
+
+std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
+{
+    map<Feature*, Vector2d> candidates; // 每个特征以及对应的投影位置
+    int cnt_candidate =0;
+    // 遍历local map points，寻找在当前帧视野范围内，而且能匹配上patch的那些点
+    for ( auto it = _local_map_points.begin(); it!=_local_map_points.end(); it++ )
+    {
+        MapPoint* map_point = *it;
+        if ( map_point->_bad == true )
+            continue;
+        
+        Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_TCW );
+        Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
+        if ( pt_curr[2] < 0 || !current->InFrame(px_curr,20) ) { // 在相机后面或不在视野内 
+            map_point->_track_in_view = false;
+            continue;
+        }
+        map_point->_cnt_visible++;
+        
+        // 检查local frame中有没有共视的
+        for ( auto& obs_pair: map_point->_obs ) 
+        {
+            if ( _local_keyframes.find(obs_pair.second->_frame) 
+                != _local_keyframes.end() )
+            {
+                // 有共视，设为候选
+                candidates[obs_pair.second] = px_curr;
+            }
+        }
+    }
+}
+    
+void LocalMapping::ProjectMapPoints(
+    Frame* current, 
+    std::map< Feature*, Vector2d >& candidates)
+{
+    set<MapPoint*> matched_mps; // matched map points 
+    for ( auto& candidate: candidates )
+    {
+        if ( matched_mps.find(candidate.first->_mappoint) != matched_mps.end() )
+            continue;   // already matched 
+        bool ret = _matcher->FindDirectProjection(
+            candidate.first->_frame, 
+            current, 
+            candidate.first->_mappoint,
+            candidate.second
+        );
+        
+        if ( ret == true ) // 发现正确匹配
+        {
+            matched_mps.insert( candidate.first->_mappoint );
+            // add a new feature in current 
+            Feature* feature = new Feature(
+                candidate.second, 
+                candidate.first->_level,
+                candidate.first->_score
+            );
+            feature->_frame = current;
+            feature->_mappoint = candidate.first->_mappoint;
+            current->_features.push_back( feature );
+        }
+    }
+}
+
+void LocalMapping::OptimizeCurrent(Frame* current)
+{
+    // use BA to optimize the current frame's pose
+}
+
 
 void LocalMapping::LocalBA( Frame* current )
 {
@@ -98,6 +178,7 @@ void LocalMapping::Run()
 {
     // while (1) {
     // 调通之后改成多线程形式
+    /*
     while ( _new_keyframes.size() != 0 ) {
         // 将关键帧插入 memory 并处理共视关系
         ProcessNewKeyFrame(); 
@@ -126,6 +207,7 @@ void LocalMapping::Run()
         // 把这个帧加到闭环检测队列中
     } 
     // TODO 添加多线程功能
+    */
     
     //}
     
@@ -170,6 +252,7 @@ void LocalMapping::MapPointCulling()
 
 void LocalMapping::CreateNewMapPoints()
 {
+    /*
     int nn = 20;
     vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
     
@@ -195,7 +278,6 @@ void LocalMapping::CreateNewMapPoints()
         // F12 = K^{-T} t_12^x R_12 K^{-1} 
         // E12 = t_12^x R_12, epipolar constraint: y1^T t12^x R12 y2 
         Eigen::Matrix3d E12 = SO3::hat( T12.translation() )*T12.rotation_matrix();
-        LOG(INFO) << "E12 = "<<E12<<endl;
         
         vector<pair<int, int>> matched_pairs; 
         Matcher matcher;
@@ -207,23 +289,12 @@ void LocalMapping::CreateNewMapPoints()
             int i1 = matched_pairs[im].first;
             int i2 = matched_pairs[im].second;
             
-            CandidateStatus& s1 = _current_kf->_candidate_status[i1];
-            CandidateStatus& s2 = f2->_candidate_status[i2];
-            
-            assert(s1 == CandidateStatus::WAIT_TRIANGULATION );
+            Feature* fea1 = _current_kf->_features[i1];
+            Feature* fea2 = _current_kf->_features[i2];
             
             cv::KeyPoint& kp1 = _current_kf->_map_point_candidates[i1];
             cv::KeyPoint& kp2 = f2->_map_point_candidates[i2];
             
-            Mat ref_show = _current_kf->_color.clone();
-            Mat curr_show = f2->_color.clone();
-            
-            cv::circle( ref_show, kp1.pt, 2, cv::Scalar(0,250,0), 2 );
-            cv::circle( curr_show, kp2.pt, 2, cv::Scalar(0,250,0), 2 );
-            cv::imshow("triangulate ref", ref_show);
-            cv::imshow("triangulate curr", curr_show);
-            cv::waitKey(0);
-                    
             
             if ( s2 == CandidateStatus::WAIT_TRIANGULATION || s2==CandidateStatus::BAD ) {
                 
@@ -298,11 +369,11 @@ void LocalMapping::CreateNewMapPoints()
                 s1 = CandidateStatus::TRIANGULATED;
             }
             
-            
         }
     }
     
     LOG(INFO) << "New map points: " << cnt_new_mappoints << endl;
+    */
 }
 
 void LocalMapping::SearchInNeighbors()
@@ -326,15 +397,15 @@ void LocalMapping::KeyFrameCulling()
         int redundant_observations = 0; 
         int mappoints = 0;
         
-        for( auto& obs: frame->_obs ) {
-            MapPoint* mp = Memory::GetMapPoint( obs.first );
-            if ( mp->_bad == false ) {
+        for( Feature* fea: frame->_features ) {
+            if ( fea->_mappoint && fea->_mappoint->_bad==false )
+            {
                 int nobs = 0;
                 mappoints++;
-                if ( mp->_obs.size() > th_obs ) {
+                if ( fea->_mappoint->_obs.size() > th_obs ) {
                     // 至少被三个帧看到
-                    for ( auto& obs_mp : mp->_obs ) {
-                        Frame* obs_frame = Memory::GetFrame( obs_mp.first );
+                    for ( auto& obs_mp : fea->_mappoint->_obs ) {
+                        Frame* obs_frame = obs_mp.second->_frame;
                         if ( obs_frame == frame ) 
                             continue;
                         nobs++;
@@ -343,17 +414,12 @@ void LocalMapping::KeyFrameCulling()
                 
                 if ( nobs >= th_obs )
                     redundant_observations++;
+                
             }
         }
-        
         if ( redundant_observations > 0.9*mappoints )
             frame->_bad = true; 
     }
-    
 }
-
-}
-    
-
     
 }

@@ -8,6 +8,7 @@ namespace ygz
 {
 
 class System;     
+class LocalMapping;     
 
 /**
  * @brief VisualOdometry 视觉里程计模块
@@ -37,8 +38,8 @@ public:
         double _min_keyframe_trans=0;
         int _min_keyframe_features=0;
         
-        float _min_init_disparity =40; // 初始化时最小平均视差，大于它才会调用初始化
-        int _min_init_features =40;   // 最小初始化时误差
+        float _min_init_disparity =30; // 初始化时最小平均视差，大于它才会调用初始化
+        int _min_init_features =40;   // 初始化时最少特征数量 
         int _processed_frames=0;      // 已经处理过的帧，用于判断是否插入关键帧
     } _options;
     
@@ -54,6 +55,11 @@ public:
      * @returns true if tracked correctly
      */
     bool AddFrame( Frame* frame );
+    
+    Status GetStatus() const { return _status;}
+    
+    Frame* GetRefFrame() const { return _ref_frame;}
+    Frame* GetCurrFrame() const { return _curr_frame;}
     
 private:
     // 设置新的关键帧。注意我们仅在关键帧中提取新特征点
@@ -75,8 +81,7 @@ private:
     void ResetCurrentObservation(); 
     
     // 初始化中，根据描述子检测两个帧跟踪的点是否成立
-    // 如果成立的话，将在地图中新增一些地图点
-    bool CheckInitializationByDescriptors( );  
+    bool CheckInitializationByDescriptors( vector<bool>& inliers );  
     
     // 添加关键帧时，通过描述来计算某个关键帧的观测量是否正确
     bool CheckObservationByDescriptors(); 
@@ -92,7 +97,6 @@ private:
         vector<bool>& inliers
     ); 
     
-    
 private:
     Status _status =VO_NOT_READY;               // current status 
     Status _last_status=VO_NOT_READY;           // last status 
@@ -105,6 +109,7 @@ private:
     ygz::Matcher*       _matcher=nullptr;
     FeatureDetector*    _detector=nullptr;         // feature detection 
     System*             _system=nullptr;
+    LocalMapping*      _local_mapping = nullptr;
     
     SE3 _TCR_estimated;   // estimated transform from ref to current 
     

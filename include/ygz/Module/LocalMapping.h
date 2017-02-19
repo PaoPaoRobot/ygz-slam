@@ -57,6 +57,15 @@ private:
     // Local Bundle Adjustment 
     void LocalBA( Frame* current ); 
     
+    // Optimize current frame and the associated features 
+    void OptimizeCurrent( Frame* current );
+    
+    // Find candidates in local map points 
+    map<Feature*, Vector2d> FindCandidates( Frame* current );
+    
+    // Project map points into current 
+    void ProjectMapPoints( Frame* current, map<Feature*, Vector2d>& candidates );
+    
 private:
     // Data 
     // 局部关键帧和地图点，用于tracking
@@ -72,6 +81,9 @@ private:
     
     // 新增的一些地图点
     std::list<MapPoint*> _recent_mappoints;
+    
+    // 匹配算法
+    Matcher* _matcher =nullptr;
 };
     
 }

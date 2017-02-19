@@ -64,7 +64,7 @@ void TwoViewBACeres(
     
     // check the inliers 
     double ch2 = 5.991; // threshold for reprojection inliers 
-    
+    int cnt_outlier_reproj =0, cnt_outlier_invalid_depth=0;
     for ( size_t i=0; i<px_ref.size(); i++ )
     {
         Vector2d e1 = px_ref[i] - cam->World2Pixel( pts_ref[i], ref );
@@ -72,15 +72,24 @@ void TwoViewBACeres(
         double depth1 = cam->World2Camera( pts_ref[i], ref )[2];
         double depth2 = cam->World2Camera( pts_ref[i], curr )[2];
         
-        if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 || depth1<0 || depth2<0 )
+        if ( e1.dot(e1)>ch2 || e2.dot(e2)>ch2 )
         {
             inlier[i] = false;
+            cnt_outlier_reproj++;
+        }
+        else if (depth1<0 || depth2<0)
+        {
+            inlier[i] = false;
+            cnt_outlier_invalid_depth++;
         }
         else 
         {
             inlier[i] = true;
         }
     }
+    
+    LOG(INFO) << "outlier of reprojection: "<<cnt_outlier_reproj<<
+        ", invalid depth: "<<cnt_outlier_invalid_depth<<endl;
 }
 
     

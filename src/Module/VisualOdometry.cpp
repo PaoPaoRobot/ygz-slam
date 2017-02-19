@@ -1,6 +1,7 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm.h"
 #include "ygz/Module/VisualOdometry.h"
+#include "ygz/Module/LocalMapping.h"
 #include "ygz/System/System.h"
 
 namespace ygz 
@@ -19,6 +20,7 @@ VisualOdometry::VisualOdometry( System* system )
     _detector->LoadParams();
     _tracker = new Tracker();
     _matcher = new Matcher();
+    _local_mapping = new LocalMapping();
 }
     
 VisualOdometry::~VisualOdometry()
@@ -51,7 +53,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
     if ( _status == VO_INITING )
     {
         bool success = MonocularInitialization();
-        if ( success != VO_GOOD )       // 光流跟踪丢了
+        if ( success == false )       // 光流跟踪丢了
             return false; 
         else 
             _status = VO_GOOD;
@@ -162,6 +164,7 @@ bool VisualOdometry::MonocularInitialization()
                 // set current frame as a key-frame 
                 SetKeyframe( _curr_frame );
                 
+                _ref_frame = _curr_frame; 
                 return true; 
             } // endif init_success 
         } // endif min_disparity>_options._min_init_disparity
@@ -186,7 +189,7 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
     vector< Vector3d >& pts_triangulated, 
     vector< bool >& inliers )
 {
-    assert( features_ref.size() == pixels_curr.size() == pts_triangulated.size() == inliers.size() );
+    // LOG(INFO)<<features_ref.size()<<","<<pixels_curr.size()<<","<<pts_triangulated.size()<<","<<inliers.size()<<endl;
     
     // compute the scale and create the map points 
     double mean_depth = 0;
@@ -212,6 +215,7 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
             );
             new_feature->_frame = _curr_frame;
             new_feature->_depth = _curr_frame->_camera->World2Camera( mp->_pos_world, _curr_frame->_TCW )[2];
+            new_feature->_mappoint = mp;
             mp->_obs[_curr_frame->_id] = new_feature;
             _curr_frame->_features.push_back( new_feature );
             
@@ -224,7 +228,15 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
     mean_depth /= cnt_valid;
     for ( Feature* fea : features_ref)
         if ( fea->_mappoint )
+        {
             fea->_mappoint->_pos_world = fea->_mappoint->_pos_world/mean_depth;
+            fea->_depth /= mean_depth;
+        }
+    for ( Feature* fea: _curr_frame->_features )
+        if ( fea->_mappoint )
+            fea->_depth /= mean_depth; 
+        
+    LOG(INFO)<<"inlier features: "<<cnt_valid<<endl;
     // ... and the pose 
     _curr_frame->_TCW.translation() = _curr_frame->_TCW.translation()/mean_depth;
     
@@ -235,9 +247,33 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
 bool VisualOdometry::TrackRefFrame()
 {
     // 使用 matcher 的 sparse alignment 追踪参考帧中的观测点
+    bool ret = _matcher->SparseImageAlignment( _ref_frame, _curr_frame );
+    if ( ret == false )
+        return false;
     
+    SE3 TCR = _matcher->GetTCR();
+    _curr_frame->_TCW = TCR * _ref_frame->_TCW;
+    return true;
 }
     
+bool VisualOdometry::NeedNewKeyFrame()
+{
+    return false;
+}
+    
+bool VisualOdometry::TrackLocalMap() 
+{
+    return _local_mapping->TrackLocalMap( _curr_frame );
+    return false;
+}
+
+bool VisualOdometry::CheckInitializationByDescriptors(
+    vector< bool >& inliers)
+{
+    
+    return true;
+}
+
 
     
 }
