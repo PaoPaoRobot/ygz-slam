@@ -17,6 +17,7 @@ add_library( ygz-algorithm SHARED
 )
 
 # modules
-add_library( ygz-module SHARED 
-    Module/VisualOdometry.cpp
-)
+# add_library( ygz-module SHARED 
+    # Module/VisualOdometry.cpp
+    # Module/LocalMapping.cpp
+# )

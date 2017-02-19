@@ -151,6 +151,8 @@ bool VisualOdometry::MonocularInitialization()
                     return false;
                 }
                 
+                _curr_frame->_TCW = T21;
+                
                 // initialization is good, set the map points
                 CreateMapPointsAfterMonocularInitialization(
                     features_ref, pixels_curr, 
@@ -185,9 +187,10 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
     vector< bool >& inliers )
 {
     assert( features_ref.size() == pixels_curr.size() == pts_triangulated.size() == inliers.size() );
-    // compute the scale 
     
-    
+    // compute the scale and create the map points 
+    double mean_depth = 0;
+    int cnt_valid = 0;
     
     for ( size_t i=0; i<features_ref.size(); i++ ) 
     {
@@ -200,16 +203,30 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
             mp->_last_seen = _curr_frame->_id;
             mp->_obs[_ref_frame->_id] = features_ref[i];
             features_ref[i]->_mappoint = mp;
+            features_ref[i]->_depth = _ref_frame->_camera->World2Camera( mp->_pos_world, _ref_frame->_TCW )[2];
             
             // create the features in current 
             Feature* new_feature = new Feature(
-                pixels_curr[i], features_ref[i]->_level, features_ref[i]->_score
+                pixels_curr[i], features_ref[i]->_level, 
+                features_ref[i]->_score
             );
             new_feature->_frame = _curr_frame;
+            new_feature->_depth = _curr_frame->_camera->World2Camera( mp->_pos_world, _curr_frame->_TCW )[2];
             mp->_obs[_curr_frame->_id] = new_feature;
             _curr_frame->_features.push_back( new_feature );
+            
+            mean_depth += features_ref[i]->_depth;
+            cnt_valid++;
         }
     }
+    
+    // rescale the map to keep the mean_depth=1 
+    mean_depth /= cnt_valid;
+    for ( Feature* fea : features_ref)
+        if ( fea->_mappoint )
+            fea->_mappoint->_pos_world = fea->_mappoint->_pos_world/mean_depth;
+    // ... and the pose 
+    _curr_frame->_TCW.translation() = _curr_frame->_TCW.translation()/mean_depth;
     
     // compute the angles and descriptors in current frame 
     _detector->ComputeAngleAndDescriptor( _curr_frame );

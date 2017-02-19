@@ -33,8 +33,6 @@ struct Feature
     
     bool     _bad =false;       // bad flag
     double   _score=0;          // 分数
-    
-    
 };
     
 }

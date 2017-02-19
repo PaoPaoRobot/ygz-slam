@@ -91,6 +91,9 @@ int Matcher::SearchForTriangulation (
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
     
+    LOG(INFO)<<fv1.size()<<","<<fv2.size()<<endl;
+    assert( !fv1.empty() && !fv2.empty() );
+    
     // 计算匹配
     int matches = 0;
     vector<bool> matched2( kf2->_features.size(), false ); 
@@ -113,14 +116,12 @@ int Matcher::SearchForTriangulation (
             // 同属一个节点
             for ( size_t i1=0; i1<f1it->second.size(); i1++ ) {
                 const size_t idx1 = f1it->second[i1]; 
-                // 取出 kf1 中对应的特征点
-                if ( kf1->_features[idx1]->_mappoint )
-                    continue;
                 
+                // 取出 kf1 中对应的特征点
                 const Vector2d& kp1 = kf1->_features[idx1]->_pixel;
                 const Mat& desp1 = kf1->_features[idx1]->_desc;
                 
-                int bestDist = _options.th_low;
+                int bestDist = 256;
                 int bestIdx2 = -1;
                 
                 for ( size_t i2=0, iend2 = f2it->second.size(); i2<iend2; i2++ ) {
@@ -141,6 +142,10 @@ int Matcher::SearchForTriangulation (
                         // 极线约束成立
                         bestIdx2 = idx2;
                         bestDist = dist;
+                    } 
+                    else 
+                    {
+                        LOG(INFO)<<"rejected by check epipolar line"<<endl;
                     }
                 }
                 
@@ -157,7 +162,6 @@ int Matcher::SearchForTriangulation (
                         assert( bin>=0 &&  bin<HISTO_LENGTH );
                         rotHist[bin].push_back( bestIdx2 );
                     }
-                    
                 }
                 
             }
@@ -340,14 +344,12 @@ bool Matcher::CheckDistEpipolarLine(
     const float num = a * pt2[0] + b * pt2[1] + c;
     const float den = a*a+b*b;
     
-    LOG(INFO) << "den = "<<den;
     if ( den < 1e-6 )
         return false; 
     
     const float dsqr = num*num/den;
-    LOG(INFO) << "dsqr = "<<dsqr << endl;
     
-    return fabs(dsqr) < 2e-4;
+    return fabs(dsqr) < _options._epipolar_dsqr;
 }
 
 bool Matcher::FindDirectProjection(
@@ -435,8 +437,9 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
         SparseImageAlignmentInPyramid( ref, current, level );
     }
     
-    if ( _TCR_esti.log().norm() > _options.max_alignment_motion ) {
+    if ( _TCR_esti.log().norm() > _options._max_alignment_motion ) {
         LOG(WARNING)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
+        LOG(INFO)<<"TCR = \n"<<_TCR_esti.matrix()<<endl;
         _TCR_esti = SE3();
         return false;
     }
@@ -451,8 +454,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     Vector6d pose_curr;
     pose_curr.head<3>() = _TCR_esti.translation();
     pose_curr.tail<3>() = _TCR_esti.so3().log();
-    LOG(INFO)<<"start from "<<pose_curr.transpose()<<endl;
-    
+    // LOG(INFO)<<"start from "<<pose_curr.transpose()<<endl;
     
     int index = 0;
     for ( Feature* fea: ref->_features )
@@ -484,7 +486,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     // options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    LOG(INFO)<<summary.FullReport()<<endl;
+    // LOG(INFO)<<summary.FullReport()<<endl;
     // LOG(INFO) << "Solve alignment cost time "<<timer.elapsed()<<endl;
     
     // set the pose 
@@ -533,7 +535,7 @@ void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
     }
     // LOG(INFO)<<"compute reference patches cost time: "<<timer.elapsed()<<endl;
     
-    LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
+    // LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
 }
 
 
