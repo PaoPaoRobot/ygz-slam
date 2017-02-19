@@ -29,7 +29,19 @@ void TwoViewBACeres(
     vector<Vector3d>& pts_ref
 );
 
+/**
+ * @brief Optimize the pose of current frame and the observed map points 
+ * @param[in] current Current frame
+ * Note that the outlier features will be set the bag flag
+ */
+void OptimizeCurrent( Frame* current );
 
+/**
+ * @brief only optimize the pose of current frame, not moving the map points 
+ * @param[in] current the current frame 
+ * Note that the outlier features will be set the bag flag
+ */
+void OptimizeCurrentPoseOnly( Frame* current );
 
 }
 

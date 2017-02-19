@@ -179,6 +179,10 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     frame->_is_keyframe = true;
     frame = Memory::RegisterKeyFrame( frame );
     
+    // _local_mapping->AddKeyFrame( frame );
+    _local_mapping->UpdateLocalKeyframes( frame );
+    _local_mapping->UpdateLocalMapPoints( frame );
+    
     _detector->Detect( frame, false );
     _last_key_frame = frame;
 }
@@ -264,7 +268,6 @@ bool VisualOdometry::NeedNewKeyFrame()
 bool VisualOdometry::TrackLocalMap() 
 {
     return _local_mapping->TrackLocalMap( _curr_frame );
-    return false;
 }
 
 bool VisualOdometry::CheckInitializationByDescriptors(

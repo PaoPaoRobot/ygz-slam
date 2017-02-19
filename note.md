@@ -3,6 +3,7 @@
 - visual odometry和local mapping还在编写中。有不少工作要做。最好是每个重要算法都有测试。
 - 测试了Matcher.SearchForTriangulation部分代码。它在BoW匹配基础上，检查了极线是否满足约束。在test/test_match_for_triangulation中测试了它的表现，通常在200个特征点中选出30左右的匹配（pose相近的话会更多一些）。
 - 测试中发现Sparse Image Alignment在pose相差较大时似乎仍能工作，所以调高了检查结果合理性的那个阈值。但是它对深度噪声比较敏感。
+- 增加了vo.init和vo.trackRefFrame，vo.TrackLocalMap的测试，见test目录下相应文件。 vo逻辑和svo差不多，一次track ref frame加一次track local map。接下来需要测试新增关键帧和地图点部分代码。
 
 ## 17.2.16
 - 修复了initializer里，对F初始化时，对噪声太过敏感的问题。去除了由F计算R,t时的重投影检查。

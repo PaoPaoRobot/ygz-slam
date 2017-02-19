@@ -459,7 +459,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     int index = 0;
     for ( Feature* fea: ref->_features )
     {
-        if ( fea->_mappoint && !fea->_mappoint->_bad )
+        if ( fea->_mappoint && !fea->_mappoint->_bad && !fea->_bad )
         {
             problem.AddResidualBlock(
                 new CeresReprojSparseDirectError(
@@ -486,8 +486,6 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     // options.minimizer_progress_to_stdout = true;
     ceres::Solver::Summary summary;
     ceres::Solve( options, &problem, &summary );
-    // LOG(INFO)<<summary.FullReport()<<endl;
-    // LOG(INFO) << "Solve alignment cost time "<<timer.elapsed()<<endl;
     
     // set the pose 
     _TCR_esti = SE3( 

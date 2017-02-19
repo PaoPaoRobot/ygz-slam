@@ -429,7 +429,7 @@ void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features)
         if ( fea ) {
             cnt_new_features++;
             frame->_features.push_back( fea );
-            
+            fea->_frame = frame;
             // compute the angle and descriptor 
             fea->_angle = IC_Angle( frame->_pyramid[fea->_level], fea->_pixel/(1<<fea->_level), _umax );
             ComputeOrbDescriptor( fea, frame->_pyramid[fea->_level], &_pattern[0], fea->_desc.data );

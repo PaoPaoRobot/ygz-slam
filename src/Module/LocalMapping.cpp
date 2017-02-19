@@ -25,6 +25,7 @@ bool LocalMapping::TrackLocalMap( Frame* current )
 {
     // 寻找候选点
     map<Feature*, Vector2d> candidates = FindCandidates( current );
+    LOG(INFO)<<"find total "<<candidates.size()<<" candidates."<<endl;
     
     // 投影候选点
     ProjectMapPoints( current, candidates );
@@ -61,10 +62,13 @@ std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
                 != _local_keyframes.end() )
             {
                 // 有共视，设为候选
+                cnt_candidate++;
                 candidates[obs_pair.second] = px_curr;
             }
         }
     }
+    LOG(INFO)<<"Find "<<cnt_candidate<<" candidates."<<endl;
+    return candidates;
 }
     
 void LocalMapping::ProjectMapPoints(
@@ -83,7 +87,7 @@ void LocalMapping::ProjectMapPoints(
             candidate.second
         );
         
-        if ( ret == true ) // 发现正确匹配
+        if ( ret == true ) 
         {
             matched_mps.insert( candidate.first->_mappoint );
             // add a new feature in current 
@@ -102,6 +106,8 @@ void LocalMapping::ProjectMapPoints(
 void LocalMapping::OptimizeCurrent(Frame* current)
 {
     // use BA to optimize the current frame's pose
+    // ba::OptimizeCurrent( current );
+    ba::OptimizeCurrentPoseOnly( current );
 }
 
 

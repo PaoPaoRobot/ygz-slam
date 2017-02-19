@@ -9,6 +9,7 @@ namespace ygz
 
 class System;     
 class LocalMapping;     
+class TestVOTrack;
 
 /**
  * @brief VisualOdometry 视觉里程计模块
@@ -116,6 +117,15 @@ private:
     // 上一个关键帧，这在判断是否产生新关键帧时有用
     Frame* _last_key_frame = nullptr;
     
+// debug only 
+    friend class TestVOTrack;
+};
+
+/** debug only **/ 
+class TestVOTrack 
+{
+public:
+    int Main( int argc, char** argv );
 };
     
 }
