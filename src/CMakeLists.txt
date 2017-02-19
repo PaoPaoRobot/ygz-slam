@@ -16,7 +16,17 @@ add_library( ygz-algorithm SHARED
     Algorithm/BA.cpp
 )
 
+target_link_libraries( ygz-algorithm 
+    ygz-core ${THIRD_PARTY_LIBS}
+)
+    
+
 # modules
 add_library( ygz-module SHARED 
-    Module/VisualOdometry.cpp
+  Module/VisualOdometry.cpp
+  Module/LocalMapping.cpp
+)
+
+target_link_libraries( ygz-module
+    ygz-core ygz-algorithm ${THIRD_PARTY_LIBS}
 )

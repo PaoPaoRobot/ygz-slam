@@ -31,3 +31,13 @@ add_executable( test_feature_projection test_feature_projection.cpp )
 target_link_libraries( test_feature_projection 
     ygz-core ygz-algorithm ${THIRD_PARTY_LIBS}
 )
+
+add_executable( test_match_for_triangulation test_match_for_triangulation.cpp ) 
+target_link_libraries( test_match_for_triangulation 
+    ygz-core ygz-algorithm ${THIRD_PARTY_LIBS}
+)
+
+add_executable( test_vo_init test_vo_init.cpp ) 
+target_link_libraries( test_vo_init 
+    ygz-core ygz-algorithm ygz-module ${THIRD_PARTY_LIBS}
+)
