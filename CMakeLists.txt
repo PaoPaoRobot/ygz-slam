@@ -31,7 +31,7 @@ include_directories( ${PROJECT_SOURCE_DIR}/include )
 # Eigen
 include_directories( "/usr/include/eigen3" )
 # OpenCV
-find_package( OpenCV 3.1 REQUIRED )
+find_package( OpenCV 3.1 REQUIRED HINTS /home/hitcm/opencv3)
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 # Sophus 
 find_package( Sophus REQUIRED )
