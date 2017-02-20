@@ -21,13 +21,14 @@ inline bool DepthFromTriangulation (
     const Vector3d& f_cur,
     double& depth1, 
     double& depth2, 
-    const double& determinant_th=1e-4
+    const double& determinant_th=1e-6
 )
 {
     Eigen::Matrix<double,3,2> A;
     A << T_search_ref.rotation_matrix() * f_ref, -f_cur;
     Eigen::Matrix2d AtA = A.transpose() *A;
     if ( AtA.determinant() < determinant_th ) {
+        LOG(INFO)<<"rejected, determinant = "<<AtA.determinant()<<endl;
         return false;
     }
     Vector2d depth2d = - AtA.inverse() *A.transpose() *T_search_ref.translation();

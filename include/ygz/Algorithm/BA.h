@@ -43,6 +43,11 @@ void OptimizeCurrent( Frame* current );
  */
 void OptimizeCurrentPoseOnly( Frame* current );
 
+/**
+ * @brief only optimize the structure of current frame, not moving its pose
+ * @param[in] current the current frame 
+ */
+void OptimizeCurrentPointOnly( Frame* current );
 }
 
 };

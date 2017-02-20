@@ -94,7 +94,7 @@ void Frame::UpdateConnections()
         for ( auto& obs_mp: mp->_obs ) 
         {
             // 自己和自己不算共视
-            if ( obs_mp.first == _id )  
+            if ( obs_mp.first == _keyframe_id )  
                 continue; 
             kfCounter[ Memory::GetKeyFrame(obs_mp.first) ] ++;
         }

@@ -63,6 +63,7 @@ bool VisualOdometry::AddFrame( Frame* frame )
         bool OK = false;
         if ( _status == VO_GOOD )
         {
+            _curr_frame->_TCW = _ref_frame->_TCW;   // set the last pose as initial value
             OK = TrackRefFrame(); // sparse image alignment 
             if ( OK )
             {
@@ -84,6 +85,8 @@ bool VisualOdometry::AddFrame( Frame* frame )
                     // 普通帧
                 }
                 _ref_frame = _curr_frame;
+                
+                _processed_frames++;
             }
             else 
             {
@@ -178,13 +181,31 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     // 向memory注册这个关键帧，提取新的特征点，更新Local Keyframes and local map points 
     frame->_is_keyframe = true;
     frame = Memory::RegisterKeyFrame( frame );
+    // set the map point observation 
+    for ( Feature* fea: frame->_features )
+    {
+        if ( !fea->_bad && fea->_mappoint && !fea->_mappoint->_bad )
+        {
+            MapPoint* mp = fea->_mappoint;
+            mp->_last_seen = frame->_keyframe_id;
+            mp->_obs[frame->_keyframe_id] = fea;
+        }
+    }
+    _detector->ComputeAngleAndDescriptor( frame );
+    // 新增特征点(2D)
+    _detector->Detect( frame, false );
+    assert( frame->_bow_vec.empty() );
+    frame->ComputeBoW();
     
-    // _local_mapping->AddKeyFrame( frame );
+    _local_mapping->AddKeyFrame( frame );
+    _local_mapping->Run();
+    
     _local_mapping->UpdateLocalKeyframes( frame );
     _local_mapping->UpdateLocalMapPoints( frame );
     
-    _detector->Detect( frame, false );
     _last_key_frame = frame;
+    
+    _processed_frames = 0;
 }
 
 void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
@@ -240,7 +261,7 @@ void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
         if ( fea->_mappoint )
             fea->_depth /= mean_depth; 
         
-    LOG(INFO)<<"inlier features: "<<cnt_valid<<endl;
+    // LOG(INFO)<<"inlier features: "<<cnt_valid<<endl;
     // ... and the pose 
     _curr_frame->_TCW.translation() = _curr_frame->_TCW.translation()/mean_depth;
     
@@ -255,14 +276,32 @@ bool VisualOdometry::TrackRefFrame()
     if ( ret == false )
         return false;
     
-    SE3 TCR = _matcher->GetTCR();
-    _curr_frame->_TCW = TCR * _ref_frame->_TCW;
+    _TCR_estimated = _matcher->GetTCR();
+    
+    _curr_frame->_TCW = _TCR_estimated * _ref_frame->_TCW;
+    LOG(INFO) << "current pose estimated by sparse alignment: \n"<<_curr_frame->_TCW.matrix()<<endl;
+    // _curr_frame->_TCW = TCR;
+    
     return true;
 }
     
 bool VisualOdometry::NeedNewKeyFrame()
 {
-    return false;
+    if ( _processed_frames < 5 )
+        return false;
+    
+    SE3 deltaT = _last_key_frame->_TCW.inverse()*_curr_frame->_TCW;
+    double dRotNorm = deltaT.so3().log().norm();
+    double dTransNorm = deltaT.translation().norm();
+    
+    LOG(INFO) << "rot = "<<dRotNorm << ", t = "<< dTransNorm<<endl;
+    if ( dRotNorm < _options._min_keyframe_rot && dTransNorm < _options._min_keyframe_trans ) // 平移或旋转都很小
+        return false; 
+    
+    if ( _curr_frame->_features.size() < 30 )   // 跟踪快挂了
+        return true;
+    
+    return true;
 }
     
 bool VisualOdometry::TrackLocalMap() 

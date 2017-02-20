@@ -1,4 +1,8 @@
 # 日志
+## 17.2.29
+- 调试VO中，测试了vo.trackRefFrame和TrackLocalMap的结果。现在工作正常但效果不好。
+- 添加关键帧处理的代码。
+
 ## 17.2.19
 - visual odometry和local mapping还在编写中。有不少工作要做。最好是每个重要算法都有测试。
 - 测试了Matcher.SearchForTriangulation部分代码。它在BoW匹配基础上，检查了极线是否满足约束。在test/test_match_for_triangulation中测试了它的表现，通常在200个特征点中选出30左右的匹配（pose相近的话会更多一些）。

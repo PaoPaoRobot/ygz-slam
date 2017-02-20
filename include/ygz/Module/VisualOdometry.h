@@ -117,6 +117,8 @@ private:
     // 上一个关键帧，这在判断是否产生新关键帧时有用
     Frame* _last_key_frame = nullptr;
     
+    int _processed_frames =0;
+    
 // debug only 
     friend class TestVOTrack;
 };

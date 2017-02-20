@@ -190,9 +190,12 @@ void OptimizeCurrentPoseOnly ( Frame* current )
     pose.head<3>() = t;
     pose.tail<3>() = r;
 
-    const float chi2Mono = 5.991;
+    const float chi2Mono = 5.991*2;
+    
+    Vector6d pose_backup = pose;
 
     ceres::Problem problem;
+    map<Feature*, CeresReprojectionErrorPoseOnly*> errors;
     for ( Feature* fea: current->_features ) {
         assert ( fea->_mappoint != nullptr );
         auto cost = new CeresReprojectionErrorPoseOnly (
@@ -202,9 +205,85 @@ void OptimizeCurrentPoseOnly ( Frame* current )
 
         problem.AddResidualBlock (
             new ceres::AutoDiffCostFunction< CeresReprojectionErrorPoseOnly, 2,6 > ( cost ),
-            new ceres::HuberLoss ( 0.1 ),
+            // new ceres::HuberLoss ( 0.1 ),
+            nullptr,
             pose.data()
         );
+        
+        errors[fea] = cost;
+    }
+    
+    // 学orb用四步优化
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    ceres::Solver::Summary summary;
+    int cntInlier = 0;
+    for ( int it=0; it<4; it++ )
+    {
+        pose = pose_backup;
+        ceres::Solve ( options, &problem, &summary );
+        cntInlier = 0;
+        for ( auto& fea_and_error: errors )
+        {
+            Feature* fea = fea_and_error.first;
+            Vector2d px = current->_camera->World2Pixel ( fea->_mappoint->_pos_world, current->_TCW );
+            Vector2d delta = ( px - fea->_pixel );
+            double error2 = delta.dot ( delta );
+            if ( error2 > chi2Mono ) 
+            {
+                fea->_bad = true;
+                fea_and_error.second->SetEnable(false);
+            }
+            else 
+            {
+                // only optimize the inliers
+                fea->_depth = current->_camera->World2Camera( fea->_mappoint->_pos_world, current->_TCW )[2];
+                fea->_bad = false;
+                cntInlier++;
+                fea_and_error.second->SetEnable(true);
+            }
+        }
+        
+        if ( cntInlier<10 )
+            break;
+        current->_TCW = SE3 ( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
+    }
+
+    // set the pose and inliers
+    // current->_TCW = SE3 ( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
+    LOG ( INFO ) <<"inliers in current BA: "<<cntInlier<<" in total "<<current->_features.size()<<endl;
+}
+
+void OptimizeCurrentPointOnly(Frame* current)
+{
+    ceres::Problem problem;
+    for ( Feature* fea: current->_features ) {
+        if ( fea->_bad )
+            continue;
+        
+        auto cost = new CeresReprojectionErrorPointOnly (
+            current->_camera->Pixel2Camera2D ( fea->_pixel ), current->_TCW );
+
+        problem.AddResidualBlock (
+            new ceres::AutoDiffCostFunction< CeresReprojectionErrorPointOnly, 2,3 > ( cost ),
+            nullptr,
+            fea->_mappoint->_pos_world.data()
+        );
+
+        // and the covisible key frames
+        for ( auto obs_pair: fea->_mappoint->_obs ) {
+            Frame* frame = Memory::GetKeyFrame ( obs_pair.first );
+            problem.AddResidualBlock (
+                new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly, 2, 3> (
+                    new CeresReprojectionErrorPointOnly (
+                        frame->_camera->Pixel2Camera2D ( obs_pair.second->_pixel ),
+                        frame->_TCW
+                    )
+                ),
+                nullptr,
+                fea->_mappoint->_pos_world.data()
+            );
+        }
     }
 
     ceres::Solver::Options options;
@@ -212,25 +291,7 @@ void OptimizeCurrentPoseOnly ( Frame* current )
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
 
-    // set the pose and inliers
-    int cntInlier = 0;
-    current->_TCW = SE3 ( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
-
-    for ( Feature* fea: current->_features ) {
-        Vector2d px = current->_camera->World2Pixel ( fea->_mappoint->_pos_world, current->_TCW );
-        Vector2d delta = ( px - fea->_pixel );
-        double error2 = delta.dot ( delta );
-        if ( error2 > chi2Mono ) {
-            fea->_bad = true;
-        } else {
-            fea->_depth = current->_camera->World2Camera( fea->_mappoint->_pos_world, current->_TCW )[2];
-            cntInlier++;
-        }
-    }
-
-    LOG ( INFO ) <<"inliers in current BA: "<<cntInlier<<" in total "<<current->_features.size()<<endl;
 }
-
 
 
 

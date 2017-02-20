@@ -399,6 +399,7 @@ void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features)
             if ( _old_features[k] ) 
             {
                 // 这个点有过去提取的特征,则跳过
+                // LOG(INFO) << "skip old features."<<endl;
                 continue; 
             }
             else if ( _new_features[k] )
@@ -579,12 +580,9 @@ void FeatureDetector::ComputeAngleAndDescriptor(Frame* frame)
 {
     for ( Feature* fea: frame->_features )
     {
-        if ( fea->_desc.empty() )
-        {
-            // compute the angle and descriptor 
-            fea->_angle = IC_Angle( frame->_pyramid[fea->_level], fea->_pixel/(1<<fea->_level), _umax );
-            ComputeOrbDescriptor( fea, frame->_pyramid[fea->_level], &_pattern[0], fea->_desc.data );
-        }
+        // compute the angle and descriptor 
+        fea->_angle = IC_Angle( frame->_pyramid[fea->_level], fea->_pixel/(1<<fea->_level), _umax );
+        ComputeOrbDescriptor( fea, frame->_pyramid[fea->_level], &_pattern[0], fea->_desc.data );
     }
 }
 

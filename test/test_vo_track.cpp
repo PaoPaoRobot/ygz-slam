@@ -81,17 +81,19 @@ int TestVOTrack::Main ( int argc, char** argv )
         mp->_obs[frame->_keyframe_id] = fea;
         cnt_mp++;
     }
+    frame->ComputeBoW();
     LOG ( INFO ) << "Set "<<cnt_mp<<" map points. "<<endl;
 
     vo._status = VisualOdometry::VO_GOOD;
     vo._ref_frame = frame;
     vo._curr_frame = frame;
+    vo._last_key_frame = frame;
     vo._local_mapping->UpdateLocalKeyframes ( frame );
     vo._local_mapping->UpdateLocalMapPoints ( frame );
 
     // track the following frames
     for ( size_t i=1; i<rgbFiles.size(); i++ ) {
-        LOG ( INFO ) << "image "<<i<<endl;
+        LOG ( INFO ) << "\nimage "<<i<<endl;
         Mat color = imread ( string ( argv[1] ) +string ( "/" ) +rgbFiles[i] );
         if ( color.data == nullptr ) {
             continue;
@@ -107,14 +109,36 @@ int TestVOTrack::Main ( int argc, char** argv )
             
             // Plot the track features
             Mat img_show = pf->_color.clone();
+            // the map point projection 
+            auto allpts = Memory::GetAllPoints();
+            for ( auto pt: allpts )
+            {
+                Vector2d px = pf->_camera->World2Pixel( pt.second->_pos_world, pf->_TCW );
+                circle ( img_show,
+                            Point2f ( px[0], px[1] ),
+                            1, Scalar ( 0,0,250 ),
+                            2
+                        );
+                
+            }
+            
+            // and the tracked features 
             for ( Feature* fea: pf->_features ) {
-                if ( fea->_mappoint && !fea->_bad && !fea->_mappoint->_bad ) {
-                    circle ( img_show,
-                             Point2f ( fea->_pixel[0], fea->_pixel[1] ),
-                             2, Scalar ( 0,250,0 ),
-                             2
-                           );
-                    LOG(INFO)<<"depth = "<<fea->_depth<<endl;
+                if ( fea->_mappoint )
+                {
+                    if ( fea->_bad == false )
+                    {
+                        // 正确投影的为绿色
+                        circle ( img_show, Point2f ( fea->_pixel[0], fea->_pixel[1] ),
+                                1, Scalar ( 0,250,0 ), 2 );
+                    }
+                    else
+                    {
+                        // 被BA剔除的点为蓝色
+                        circle ( img_show, Point2f ( fea->_pixel[0], fea->_pixel[1] ),
+                                1, Scalar ( 250,0,0 ), 2 );
+                    }
+                            
                 }
             }
 

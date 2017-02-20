@@ -29,9 +29,12 @@ bool LocalMapping::TrackLocalMap( Frame* current )
     
     // 投影候选点
     ProjectMapPoints( current, candidates );
+    LOG(INFO)<<"project total "<<current->_features.size()<<" points"<<endl;
     
     // optimize the current pose and structure, remove outliers 
     OptimizeCurrent( current );
+    LOG(INFO)<<"optimized pose = \n"<<current->_TCW.matrix()<<endl;
+    
     
     return true;
 }
@@ -67,7 +70,6 @@ std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
             }
         }
     }
-    LOG(INFO)<<"Find "<<cnt_candidate<<" candidates."<<endl;
     return candidates;
 }
     
@@ -80,11 +82,13 @@ void LocalMapping::ProjectMapPoints(
     {
         if ( matched_mps.find(candidate.first->_mappoint) != matched_mps.end() )
             continue;   // already matched 
+        int level=0;
         bool ret = _matcher->FindDirectProjection(
             candidate.first->_frame, 
             current, 
             candidate.first->_mappoint,
-            candidate.second
+            candidate.second,
+            level
         );
         
         if ( ret == true ) 
@@ -93,7 +97,7 @@ void LocalMapping::ProjectMapPoints(
             // add a new feature in current 
             Feature* feature = new Feature(
                 candidate.second, 
-                candidate.first->_level,
+                level,
                 candidate.first->_score
             );
             feature->_frame = current;
@@ -108,6 +112,7 @@ void LocalMapping::OptimizeCurrent(Frame* current)
     // use BA to optimize the current frame's pose
     // ba::OptimizeCurrent( current );
     ba::OptimizeCurrentPoseOnly( current );
+    // ba::OptimizeCurrentPointOnly( current );
 }
 
 
@@ -184,9 +189,8 @@ void LocalMapping::Run()
 {
     // while (1) {
     // 调通之后改成多线程形式
-    /*
     while ( _new_keyframes.size() != 0 ) {
-        // 将关键帧插入 memory 并处理共视关系
+        // 将关键帧插入 local keyframes 并处理共视关系
         ProcessNewKeyFrame(); 
         
         // 剔除不合格的 map points 
@@ -213,7 +217,6 @@ void LocalMapping::Run()
         // 把这个帧加到闭环检测队列中
     } 
     // TODO 添加多线程功能
-    */
     
     //}
     
@@ -258,7 +261,6 @@ void LocalMapping::MapPointCulling()
 
 void LocalMapping::CreateNewMapPoints()
 {
-    /*
     int nn = 20;
     vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
     
@@ -266,6 +268,7 @@ void LocalMapping::CreateNewMapPoints()
     // Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();
     
     int cnt_new_mappoints = 0;
+    int cnt_associate_mps = 0;
     
     // 计算当前关键帧和别的关键帧之间的特征匹配关系
     for ( size_t i=0; i<neighbour_kf.size(); i++ ) {
@@ -287,6 +290,8 @@ void LocalMapping::CreateNewMapPoints()
         
         vector<pair<int, int>> matched_pairs; 
         Matcher matcher;
+        
+        LOG(INFO)<<"searching "<<_current_kf->_keyframe_id<<" with "<<f2->_keyframe_id<<endl;
         int matches = matcher.SearchForTriangulation( _current_kf, f2, E12, matched_pairs);
         
         // 对每个匹配点进行三角化
@@ -296,90 +301,117 @@ void LocalMapping::CreateNewMapPoints()
             int i2 = matched_pairs[im].second;
             
             Feature* fea1 = _current_kf->_features[i1];
-            Feature* fea2 = _current_kf->_features[i2];
+            Feature* fea2 = f2->_features[i2];
             
-            cv::KeyPoint& kp1 = _current_kf->_map_point_candidates[i1];
-            cv::KeyPoint& kp2 = f2->_map_point_candidates[i2];
+            /*
+            Mat color1_show = _current_kf->_color.clone();
+            Mat color2_show = f2->_color.clone();
             
+            cv::circle( color1_show, 
+                cv::Point2f(fea1->_pixel[0], fea1->_pixel[1]), 
+                2, cv::Scalar(0,250,0), 2
+            );
             
-            if ( s2 == CandidateStatus::WAIT_TRIANGULATION || s2==CandidateStatus::BAD ) {
-                
-                // 第二帧中的点未被三角化，那么新建地图点
-                Vector3d pt1 = _current_kf->_camera->Pixel2Camera( Vector2d(kp1.pt.x, kp1.pt.y) );
-                Vector3d pt1_world = _current_kf->_camera->Camera2World( pt1, _current_kf->_T_c_w ); 
-                Vector3d pt2 = f2->_camera->Pixel2Camera( Vector2d(kp2.pt.x, kp2.pt.y) );
-                Vector3d pt2_world = f2->_camera->Camera2World( pt2, f2->_T_c_w ); 
+            cv::circle( color2_show, 
+                cv::Point2f(fea2->_pixel[0], fea2->_pixel[1]), 
+                2, cv::Scalar(0,250,0), 2
+            );
+            imshow("point in frame 1", color1_show );
+            imshow("point in frame 2", color2_show );
+            cv::waitKey();
+            */
+            
+            if ( fea2->_mappoint == nullptr && fea1->_mappoint==nullptr ) {
+                // 两个帧中的点均未被三角化，那么新建地图点
+                Vector3d pt1 = _current_kf->_camera->Pixel2Camera( fea1->_pixel );
+                Vector3d pt1_world = _current_kf->_camera->Camera2World( pt1, _current_kf->_TCW ); 
+                Vector3d pt2 = f2->_camera->Pixel2Camera( fea2->_pixel );
+                Vector3d pt2_world = f2->_camera->Camera2World( pt2, f2->_TCW ); 
                 
                 double cos_para_rays = pt1.dot(pt2) / (pt1.norm()*pt2.norm()) ;
                 if ( cos_para_rays >= 0.9998 ) // 两条线平行性太强，不好三角化
                     continue; 
                 double depth1 = 0, depth2=0;
-                bool ret = utils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
+                bool ret = cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
                 if ( ret==false || depth1 <0 || depth2<0 )
                     continue; 
                 // 计算三角化点的重投影误差
                 Vector3d pt1_triangulated = pt1*depth1;
                 Vector2d px2_reproj = f2->_camera->Camera2Pixel( T12.inverse()*pt1_triangulated );
-                double reproj_error = (px2_reproj - Vector2d(kp2.pt.x, kp2.pt.y) ).norm();
+                double reproj_error = (px2_reproj - fea2->_pixel ).norm();
                 
                 if ( reproj_error > 5.991 ) { // 重投影太大
                     LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
-                
                 // 什么是尺度连续性。。。算了先不管它
                 
                 // 终于可以生成地图点了
                 MapPoint* mp = Memory::CreateMapPoint();
-                mp->_first_observed_frame = _current_kf->_id;
-                mp->_pyramid_level = kp1.octave;
-                mp->_obs[_current_kf->_id] = Vector3d(kp1.pt.x, kp1.pt.y, depth1);
-                mp->_obs[ f2->_id ] = Vector3d( kp2.pt.x, kp2.pt.y, depth2 );
+                mp->_first_seen = _current_kf->_keyframe_id;
+                mp->_obs[_current_kf->_keyframe_id] = fea1;
+                mp->_obs[ f2->_keyframe_id ] = fea2;
                 mp->_cnt_visible = 2;
                 mp->_cnt_found = 2;
-                mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_T_c_w );
+                mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_TCW );
                 
-                _current_kf->_obs[mp->_id] = mp->_obs[_current_kf->_id];
-                f2->_obs[mp->_id] = mp->_obs[f2->_id];
+                fea1->_mappoint = mp;
+                fea2->_mappoint = mp;
                 
-                mp->_descriptors.push_back( _current_kf->_descriptors[matched_pairs[im].first] );
-                mp->_descriptors.push_back( f2->_descriptors[ matched_pairs[im].second] );
+                fea1->_depth = depth1;
+                fea2->_depth = depth2;
+                
+                LOG(INFO)<<"create map point"<<mp->_id<<endl;
                 
                 _recent_mappoints.push_back( mp );
-                
-                _current_kf->_candidate_status[i1] = CandidateStatus::TRIANGULATED;
-                f2->_candidate_status[i2] = CandidateStatus::TRIANGULATED;
-                
                 cnt_new_mappoints++;
                 
-                _current_kf->_triangulated_mappoints[i1] = mp;
-                f2->_triangulated_mappoints[i2] = mp;
-                
-            } else if ( s2 == CandidateStatus::TRIANGULATED ) {
-                // 计算重投影
-                assert( f2->_triangulated_mappoints[i2] != nullptr );
-                MapPoint* mp = f2->_triangulated_mappoints[i2];
-                
-                Vector2d px_reproj = _current_kf->_camera->World2Pixel( mp->_pos_world, _current_kf->_T_c_w );
-                double reproj_error = (px_reproj - Vector2d(kp1.pt.x, kp1.pt.y) ).norm();
+            } 
+            else if ( fea2->_mappoint && fea1->_mappoint==nullptr ) 
+            {
+                // 第2帧中的这个点已经三角化，得到的匹配是它的投影，那么计算重投影
+                Vector2d px_reproj = _current_kf->_camera->World2Pixel( fea2->_mappoint->_pos_world, _current_kf->_TCW );
+                double reproj_error = (px_reproj - fea1->_pixel ).norm();
                 if ( reproj_error > 5.991 ) { // 重投影太大
                     LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
                 
                 // 匹配到了一个已经三角化了的点，将自己的观测量设过去
-                mp->_obs[ _current_kf->_id ] = Vector3d( kp1.pt.x, kp1.pt.y, -1 );
-                _current_kf->_obs[mp->_id] = Vector3d( kp1.pt.x, kp1.pt.y, -1 );
-                _current_kf->_triangulated_mappoints[i1] = mp;
-                // 等待LocalMapping更新此地图点的位置
-                s1 = CandidateStatus::TRIANGULATED;
+                fea1->_mappoint = fea2->_mappoint;
+                fea1->_depth = _current_kf->_camera->World2Camera( fea2->_mappoint->_pos_world, _current_kf->_TCW )[2];
+                fea1->_mappoint->_obs[_current_kf->_keyframe_id] = fea1;
+                // 等待LocalBA更新此地图点的位置
+                cnt_associate_mps++;
+            } 
+            else if ( fea1->_mappoint && fea2->_mappoint==nullptr )
+            {
+                // 反过来，第1帧的这个点已经三角化，但第2帧还没有
+                Vector2d px_reproj = f2->_camera->World2Pixel( fea1->_mappoint->_pos_world, f2->_TCW );
+                double reproj_error = (px_reproj - fea2->_pixel ).norm();
+                if ( reproj_error > 5.991 ) { // 重投影太大
+                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    continue; 
+                }
+                
+                fea2->_mappoint = fea1->_mappoint;
+                fea2->_depth = f2->_camera->World2Camera( fea2->_mappoint->_pos_world, f2->_TCW )[2];
+                fea2->_mappoint->_obs[f2->_keyframe_id] = fea2;
+                cnt_associate_mps++;
             }
-            
+            else 
+            {
+                // 两个点都已经被三角化
+                if ( fea1->_mappoint != fea2->_mappoint )
+                {
+                    LOG(INFO)<<"this is strange"<<endl;
+                }
+                continue;
+            }
         }
     }
     
-    LOG(INFO) << "New map points: " << cnt_new_mappoints << endl;
-    */
+    LOG(INFO) << "New map points: " << cnt_new_mappoints << ", associated points: "<<cnt_associate_mps<<endl;
 }
 
 void LocalMapping::SearchInNeighbors()

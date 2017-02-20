@@ -104,7 +104,8 @@ int main( int argc, char** argv )
         ygz::MapPoint* mp = map_point.second;
         Vector2d px2 = frame2._camera->World2Pixel( mp->_pos_world, frame2._TCW );
         px_frame2_reproj.push_back(px2);
-        if ( matcher.FindDirectProjection( frame, &frame2, mp, px2 ) )
+        int level=0;
+        if ( matcher.FindDirectProjection( frame, &frame2, mp, px2,level ) )
             cnt_good_projection++;
         px_frame2.push_back(px2);
     }

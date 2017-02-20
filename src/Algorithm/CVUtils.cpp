@@ -41,10 +41,16 @@ bool Align2DCeres(
     // LOG(INFO) << summary.final_cost << endl;
     // 判断结果是否合理
     bool bad = false;
-    if ( (px-cur_px_estimate).norm() > 5 )
+    if ( (px-cur_px_estimate).norm() > 10 )
+    {
+        // LOG(INFO)<<"rejected, movement = "<<(px-cur_px_estimate).norm()<<endl;
         bad = true;
-    if ( summary.final_cost > 2000 ) 
+    }
+    if ( summary.final_cost > 0.4 ) // 误差过大意味着误匹配
+    {
+        // LOG(INFO) << "rejected, cost = "<<summary.final_cost<<endl;
         bad = true;
+    }
     if ( bad == false ) 
         return true; 
     return false;

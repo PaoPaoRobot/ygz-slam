@@ -353,7 +353,7 @@ bool Matcher::CheckDistEpipolarLine(
 }
 
 bool Matcher::FindDirectProjection(
-    Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr)
+    Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr, int& search_level)
 {
     Eigen::Matrix2d ACR;
     Feature* fea = mp->_obs[ref->_keyframe_id];
@@ -361,7 +361,7 @@ bool Matcher::FindDirectProjection(
     Vector3d pt_ref = ref->_camera->Pixel2Camera( px_ref, fea->_depth );
     SE3 TCR = curr->_TCW*ref->_TCW.inverse();
     GetWarpAffineMatrix( ref, curr, px_ref, pt_ref, fea->_level, TCR, ACR );
-    int search_level = GetBestSearchLevel( ACR, curr->_option._pyramid_level-1 );
+    search_level = GetBestSearchLevel( ACR, curr->_option._pyramid_level-1 );
     WarpAffine( ACR, ref->_pyramid[fea->_level], fea->_pixel, fea->_level, search_level, WarpHalfPatchSize+1, _patch_with_border );
     // 去掉边界
     uint8_t* ref_patch_ptr = _patch;
@@ -430,7 +430,7 @@ void Matcher::WarpAffine(
 bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
 {
     // from top to bottom 
-    _TCR_esti = SE3(); // reset estimation
+    // _TCR_esti = SE3(); // reset estimation
     
     for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
     {
@@ -443,6 +443,7 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
         _TCR_esti = SE3();
         return false;
     }
+    
     return true;
 }
 
@@ -467,11 +468,11 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
                     current->_pyramid[pyramid],
                     _patches_align[index++],
                     fea->_pixel,
-                    ref->_camera->Pixel2Camera( fea->_pixel, fea->_depth ),
+                    ref->_camera->World2Camera( fea->_mappoint->_pos_world, ref->_TCW),
                     ref->_camera,
                     1<<pyramid,
                     _TCR_esti,
-                    true        
+                    true
                 ), 
                 nullptr, 
                 pose_curr.data()
@@ -531,8 +532,6 @@ void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
             _patches_align.push_back( pixels );
         }
     }
-    // LOG(INFO)<<"compute reference patches cost time: "<<timer.elapsed()<<endl;
-    
     // LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
 }
 

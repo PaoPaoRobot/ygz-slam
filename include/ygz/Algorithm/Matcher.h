@@ -37,6 +37,11 @@ public:
     Matcher();
     ~Matcher();
     
+    void SetTCR( const SE3& TCR ) 
+    {
+        _TCR_esti = TCR;
+    }
+    
     // 特征点法的匹配
     // Computes the Hamming distance between two ORB descriptors
     // 两个描述子之间的Hamming距离，它们必须是1x32的ORB描述
@@ -67,7 +72,7 @@ public:
     // 直接法的匹配 
     
     // 用直接法判断能否从在当前图像上找到某地图点的投影
-    bool FindDirectProjection( Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr );
+    bool FindDirectProjection( Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr, int& search_level );
     
     // model based sparse image alignment
     // 通过参照帧中观测到的3D点，预测当前帧的pose，稀疏直接法

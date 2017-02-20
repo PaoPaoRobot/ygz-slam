@@ -101,11 +101,10 @@ int main( int argc, char** argv )
         if ( fea->_mappoint )
         {
             circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
-                2, Scalar(0,250,0), 2
-            );
+                1, Scalar(0,250,0), 2 );
             
             Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
-            circle( color2_show, Point2f(px2[0], px2[1]), 2, Scalar(0,250,0), 2);
+            circle( color2_show, Point2f(px2[0], px2[1]), 1, Scalar(0,250,0), 2);
         }
     }
     imshow("point in frame 1", color1_show );
