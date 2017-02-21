@@ -7,5 +7,6 @@
 #include "ygz/Algorithm/Tracker.h"
 #include "ygz/Algorithm/Initializer.h"
 #include "ygz/Algorithm/BA.h"
+#include "ygz/Algorithm/SparseImageAlign.h"
 
 #endif

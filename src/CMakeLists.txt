@@ -14,6 +14,7 @@ add_library( ygz-algorithm SHARED
     Algorithm/Tracker.cpp
     Algorithm/Initializer.cpp
     Algorithm/BA.cpp
+    Algorithm/SparseImageAlign.cpp
 )
 
 target_link_libraries( ygz-algorithm 

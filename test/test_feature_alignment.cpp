@@ -60,7 +60,7 @@ int main( int argc, char** argv )
     frame->InitFrame();
     ygz::Memory::RegisterKeyFrame( frame );
     detector.Detect( frame );
-    frame->_TCW = SE3( SO3(0.1,0.1,0.0), Vector3d(0,0.1,0.1) );   // 随便给一个pose
+    frame->_TCW = SE3( SO3(0.0,0.0,0.0), Vector3d(0,0.0,0.0) );  // random pose 
     
     ygz::PinholeCamera* cam = new ygz::PinholeCamera();
     ygz::Frame::SetCamera( cam );
@@ -96,11 +96,25 @@ int main( int argc, char** argv )
     
     LOG(INFO)<<"doing sparse alignment"<<endl;
     boost::timer timer;
-    matcher.SparseImageAlignment( frame, &frame2 );
-    LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
-    SE3 TCR = matcher.GetTCR();
-    LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
-    frame2._TCW = TCR * frame->_TCW;
+    // matcher.SparseImageAlignment( frame, &frame2 );
+    // LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
+    // SE3 TCR = matcher.GetTCR();
+    // LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
+    // frame2._TCW = TCR * frame->_TCW;
+    // LOG(INFO)<<"Now current pose= \n"<<frame2._TCW.matrix()<<endl;
+    
+    frame2._TCW = frame->_TCW;
+    // Let's use SVO's sparse image alignment 
+    // ygz::SparseImgAlign align( 2, 0, 
+        // 30, ygz::SparseImgAlign::LevenbergMarquardt, true, true );
+    
+    ygz::SparseImgAlign align( 2, 0, 
+        30, ygz::SparseImgAlign::GaussNewton, false, false );
+    timer.restart();
+    align.run( frame, &frame2 );
+    LOG(INFO)<<"SVO's sparse image alignment costs time: "<<timer.elapsed()<<endl;
+    
+    LOG(INFO)<<"Current pose esitmated by SVO image align:\n"<<frame2._TCW.matrix()<<endl;
     
     // plot the matched features 
     Mat color1_show = frame->_color.clone();
