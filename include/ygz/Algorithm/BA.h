@@ -48,6 +48,18 @@ void OptimizeCurrentPoseOnly( Frame* current );
  * @param[in] current the current frame 
  */
 void OptimizeCurrentPointOnly( Frame* current );
+
+/** 
+ * @brief Local BA, used in local mapping 
+ * @param[in] local_keyframes the keyframes in local mapping
+ * @param[in] local_map_points the map points in local mapping
+ * The function will change the pose of those keyframes and the positions of map points
+ */
+void LocalBA( 
+    std::set<Frame*>& local_keyframes,
+    std::set<MapPoint*>& local_map_points 
+);
+
 }
 
 };

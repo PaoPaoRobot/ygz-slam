@@ -26,7 +26,7 @@ public:
         int init_low = 30;              // 这两个在初始化时用于检测光流结果是否正确
         int init_high = 80;             
         
-        double _max_alignment_motion = 0.8; // 稀疏匹配中能够接受的最大的运动
+        double _max_alignment_motion = 0.2; // 稀疏匹配中能够接受的最大的运动
         double _epipolar_dsqr = 1e-4;   // 寻找三角化点时，极线检查时的最大误差阈值
         
     } _options;

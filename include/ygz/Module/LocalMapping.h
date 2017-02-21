@@ -16,7 +16,8 @@ public:
     {
         int _num_local_keyframes =3; // 相邻关键帧数量
         int _num_local_map_points =500;
-    };
+        int _min_track_local_map_inliers = 50;
+    } _options;
     
     LocalMapping(); 
     

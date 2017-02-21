@@ -430,7 +430,7 @@ void Matcher::WarpAffine(
 bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
 {
     // from top to bottom 
-    // _TCR_esti = SE3(); // reset estimation
+    _TCR_esti = SE3(); // reset estimation
     
     for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
     {
@@ -443,6 +443,8 @@ bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
         _TCR_esti = SE3();
         return false;
     }
+    
+    LOG(INFO)<<"TCR estimated: \n"<<_TCR_esti.matrix()<<endl;
     
     return true;
 }
@@ -460,7 +462,7 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
     int index = 0;
     for ( Feature* fea: ref->_features )
     {
-        if ( fea->_mappoint && !fea->_mappoint->_bad && !fea->_bad )
+        if ( !fea->_bad && fea->_depth>0 )
         {
             problem.AddResidualBlock(
                 new CeresReprojSparseDirectError(
@@ -468,7 +470,8 @@ bool Matcher::SparseImageAlignmentInPyramid(Frame* ref, Frame* current, int pyra
                     current->_pyramid[pyramid],
                     _patches_align[index++],
                     fea->_pixel,
-                    ref->_camera->World2Camera( fea->_mappoint->_pos_world, ref->_TCW),
+                    // ref->_camera->World2Camera( fea->_mappoint->_pos_world, ref->_TCW),
+                    ref->_camera->Pixel2Camera(fea->_pixel, fea->_depth),
                     ref->_camera,
                     1<<pyramid,
                     _TCR_esti,
@@ -532,7 +535,7 @@ void Matcher::PrecomputeReferencePatches( Frame* ref, int level )
             _patches_align.push_back( pixels );
         }
     }
-    // LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
+    LOG(INFO)<<"set "<<_patches_align.size()<<" patches."<<endl;
 }
 
 

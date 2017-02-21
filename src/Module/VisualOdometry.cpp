@@ -70,10 +70,16 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 // alignment from local map points
                 OK = TrackLocalMap(); 
             }
+            else 
+            {
+                // 
+                OK = TrackLocalMap(); 
+            }
             
             if ( OK )
             {
                 _status = VO_GOOD;
+                /*
                 // track good, check new key-frame 
                 if ( NeedNewKeyFrame() )
                 {
@@ -84,6 +90,9 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 {
                     // 普通帧
                 }
+                */
+                if ( _ref_frame->_is_keyframe == false )
+                    delete _ref_frame;
                 _ref_frame = _curr_frame;
                 
                 _processed_frames++;
@@ -181,6 +190,7 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     // 向memory注册这个关键帧，提取新的特征点，更新Local Keyframes and local map points 
     frame->_is_keyframe = true;
     frame = Memory::RegisterKeyFrame( frame );
+    LOG(INFO)<<"setting new keyframe "<<frame->_keyframe_id<<endl;
     // set the map point observation 
     for ( Feature* fea: frame->_features )
     {
@@ -197,14 +207,13 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     assert( frame->_bow_vec.empty() );
     frame->ComputeBoW();
     
-    _local_mapping->AddKeyFrame( frame );
-    _local_mapping->Run();
-    
     _local_mapping->UpdateLocalKeyframes( frame );
     _local_mapping->UpdateLocalMapPoints( frame );
     
-    _last_key_frame = frame;
+    _local_mapping->AddKeyFrame( frame );
+    _local_mapping->Run();
     
+    _last_key_frame = frame;
     _processed_frames = 0;
 }
 
@@ -274,13 +283,20 @@ bool VisualOdometry::TrackRefFrame()
     // 使用 matcher 的 sparse alignment 追踪参考帧中的观测点
     bool ret = _matcher->SparseImageAlignment( _ref_frame, _curr_frame );
     if ( ret == false )
+    {
+        LOG(WARNING) << "Track Ref frame failed, using motion model."<<endl;
+        // try using the TCR esitmated in last loop 
+        _curr_frame->_TCW = _TCR_estimated * _ref_frame->_TCW;
         return false;
+    }
     
     _TCR_estimated = _matcher->GetTCR();
     
     _curr_frame->_TCW = _TCR_estimated * _ref_frame->_TCW;
     LOG(INFO) << "current pose estimated by sparse alignment: \n"<<_curr_frame->_TCW.matrix()<<endl;
-    // _curr_frame->_TCW = TCR;
+    
+    // let's see the projections
+    PlotTrackRefFrameResults();
     
     return true;
 }
@@ -316,6 +332,28 @@ bool VisualOdometry::CheckInitializationByDescriptors(
     return true;
 }
 
+void VisualOdometry::PlotTrackRefFrameResults()
+{
+    Mat img_show = _curr_frame->_color.clone();
+    Mat img_ref = _ref_frame->_color.clone();
+    SE3 TCR = _matcher->GetTCR();
+    for ( Feature* fea : _ref_frame->_features )
+    {
+        if ( fea->_mappoint && fea->_bad==false )
+        {
+            // Vector2d px = _curr_frame->_camera->World2Pixel( fea->_mappoint->_pos_world, _curr_frame->_TCW );
+            Vector2d px = _curr_frame->_camera->World2Pixel( 
+                _ref_frame->_camera->Pixel2Camera( fea->_pixel, fea->_depth ), TCR );
+            cv::circle( img_show, cv::Point2f(fea->_pixel[0],fea->_pixel[1]), 1, cv::Scalar(0,0,250), 2);
+            cv::circle( img_show, cv::Point2f(px[0],px[1]), 1, cv::Scalar(0,250,0), 2);
+            cv::circle( img_ref, cv::Point2f(fea->_pixel[0],fea->_pixel[1]), 1, cv::Scalar(0,0,250), 2);
+        }
+    }
+    
+    cv::imshow("Track ref frame: curr", img_show );
+    cv::imshow("Track ref frame: ref", img_ref );
+    cv::waitKey(1);
+}
 
     
 }

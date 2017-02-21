@@ -12,13 +12,22 @@ using namespace cv;
 int main( int argc, char** argv )
 {
     if ( argc< 2 ) {
-        cout <<"usage: test_feature_alignment path_to_TUM_dataset [index1=0] " <<endl;
+        cout <<"usage: test_feature_alignment path_to_TUM_dataset [index1=0] [index2=index+1]" <<endl;
         return 1;
     }
     int index = 0;
+    int index2 = index+1;
     
     if ( argc == 3 )
+    {
         index = std::atoi(argv[2]);
+        index2 = index+1;
+    }
+    if ( argc == 4 )
+    {
+        index = std::atoi(  argv[2] );
+        index2 = std::atoi( argv[3] );
+    }
     
     ifstream fin( string(argv[1])+"/associate.txt" ); 
     vector<string> rgbFiles, depthFiles;
@@ -51,6 +60,7 @@ int main( int argc, char** argv )
     frame->InitFrame();
     ygz::Memory::RegisterKeyFrame( frame );
     detector.Detect( frame );
+    frame->_TCW = SE3( SO3(0.1,0.1,0.0), Vector3d(0,0.1,0.1) );   // 随便给一个pose
     
     ygz::PinholeCamera* cam = new ygz::PinholeCamera();
     ygz::Frame::SetCamera( cam );
@@ -76,9 +86,8 @@ int main( int argc, char** argv )
     LOG(INFO) << "Set "<<cnt_mp<<" map points. "<<endl;
     
     // read the second frame 
-    index +=2 ;
-    LOG(INFO) << "Reading " << string(argv[1])+string("/")+rgbFiles[index];
-    Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index] );
+    LOG(INFO) << "Reading " << string(argv[1])+string("/")+rgbFiles[index2];
+    Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index2] );
     ygz::Frame frame2;
     frame2._color = color2;
     frame2.InitFrame();
@@ -91,6 +100,7 @@ int main( int argc, char** argv )
     LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
     SE3 TCR = matcher.GetTCR();
     LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
+    frame2._TCW = TCR * frame->_TCW;
     
     // plot the matched features 
     Mat color1_show = frame->_color.clone();
@@ -103,7 +113,8 @@ int main( int argc, char** argv )
             circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
                 1, Scalar(0,250,0), 2 );
             
-            Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
+            Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, frame2._TCW );
+            circle( color2_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 1, Scalar(0,0,250), 2);
             circle( color2_show, Point2f(px2[0], px2[1]), 1, Scalar(0,250,0), 2);
         }
     }

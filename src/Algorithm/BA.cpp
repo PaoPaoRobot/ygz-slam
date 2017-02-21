@@ -257,12 +257,19 @@ void OptimizeCurrentPoseOnly ( Frame* current )
 void OptimizeCurrentPointOnly(Frame* current)
 {
     ceres::Problem problem;
+    map<MapPoint*, Vector3d> mps;
+    map<MapPoint*, Feature*> mpf;
     for ( Feature* fea: current->_features ) {
-        if ( fea->_bad )
+        if ( fea->_bad || fea->_mappoint==nullptr )
             continue;
         
         auto cost = new CeresReprojectionErrorPointOnly (
             current->_camera->Pixel2Camera2D ( fea->_pixel ), current->_TCW );
+        
+        mps[fea->_mappoint] = fea->_mappoint->_pos_world;
+        mpf[fea->_mappoint] = fea;
+        
+        // LOG(INFO)<<"map point "<<fea->_mappoint->_id<<" observed from current: "<<fea->_pixel.transpose();
 
         problem.AddResidualBlock (
             new ceres::AutoDiffCostFunction< CeresReprojectionErrorPointOnly, 2,3 > ( cost ),
@@ -273,6 +280,7 @@ void OptimizeCurrentPointOnly(Frame* current)
         // and the covisible key frames
         for ( auto obs_pair: fea->_mappoint->_obs ) {
             Frame* frame = Memory::GetKeyFrame ( obs_pair.first );
+            // LOG(INFO)<<"map point "<<fea->_mappoint->_id<<" observed from frame: "<<frame->_keyframe_id<<" pixel = "<<obs_pair.second->_pixel.transpose();
             problem.AddResidualBlock (
                 new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly, 2, 3> (
                     new CeresReprojectionErrorPointOnly (
@@ -285,12 +293,85 @@ void OptimizeCurrentPointOnly(Frame* current)
             );
         }
     }
+    
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
+    
+    /*
+    for( auto mp_pair: mps )
+    {
+        LOG(INFO) << "map point "<<mp_pair.first->_id<<" changed from "<<mp_pair.second.transpose() <<
+            " to "<<mp_pair.first->_pos_world.transpose()<<endl;
+        LOG(INFO) << "obs: "<<mpf[mp_pair.first]->_pixel.transpose()<<", reproj="<<
+            current->_camera->World2Pixel( mp_pair.first->_pos_world, current->_TCW ) << ", before opti="<<
+            current->_camera->World2Pixel( mp_pair.second, current->_TCW ) << endl;
+    }
+    */
+}
 
+void LocalBA( 
+    std::set<Frame*>& local_keyframes,
+    std::set<MapPoint*>& local_map_points 
+)
+{
+    ceres::Problem problem;
+    map<Frame*, Vector6d> poses;
+    for ( MapPoint* mp: local_map_points )
+    {
+        LOG(INFO)<<"Optimizing map point"<<mp->_id<<endl;
+        for ( auto obs_pair: mp->_obs )
+        {
+            Frame* frame = Memory::GetKeyFrame( obs_pair.first );
+            assert( frame != nullptr );
+            if ( local_keyframes.find(frame) != local_keyframes.end() )
+            {
+                if ( frame->_keyframe_id == 0 ) // don't move the first key-frame
+                {
+                    problem.AddResidualBlock(
+                        new ceres::AutoDiffCostFunction<CeresReprojectionErrorPointOnly,2,3> (
+                            new CeresReprojectionErrorPointOnly( frame->_camera->Pixel2Camera2D(obs_pair.second->_pixel), frame->_TCW)
+                        ),
+                        nullptr,
+                        mp->_pos_world.data()
+                    );
+                }
+                else 
+                {
+                    Vector6d pose;
+                    Vector3d r = frame->_TCW.so3().log(), t = frame->_TCW.translation();
+                    pose.head<3>() = t;
+                    pose.tail<3>() = r;
+                    poses[frame] = pose;
+                    
+                    problem.AddResidualBlock(
+                        new ceres::AutoDiffCostFunction<CeresReprojectionError,2,6,3>(
+                            new CeresReprojectionError( frame->_camera->Pixel2Camera2D(obs_pair.second->_pixel ))
+                        ),
+                        nullptr,
+                        poses[frame].data(),
+                        mp->_pos_world.data()
+                    );
+                }
+            }
+        }
+    }
+
+    // TODO consider ordering and sparsity? 
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    ceres::Solver::Summary summary;
+    ceres::Solve ( options, &problem, &summary );
+    LOG(INFO) << summary.FullReport() <<endl;
+    
+    // set the pose 
+    for ( auto pose_pair: poses )
+    {
+        pose_pair.first->_TCW = SE3( SO3::exp( pose_pair.second.tail<3>()), pose_pair.second.head<3>() );
+    }
+    LOG(INFO)<<"Local BA returns"<<endl;
 }
 
 

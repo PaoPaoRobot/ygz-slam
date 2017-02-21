@@ -98,6 +98,9 @@ private:
         vector<bool>& inliers
     ); 
     
+    // debug only 
+    void PlotTrackRefFrameResults(); 
+    
 private:
     Status _status =VO_NOT_READY;               // current status 
     Status _last_status=VO_NOT_READY;           // last status 

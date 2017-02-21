@@ -7,6 +7,7 @@ namespace ygz {
 void Memory::Clean()
 {
     for ( auto iter = _frames.begin(); iter!=_frames.end(); iter++ ) {
+        LOG(INFO)<<"delete keyframe "<<iter->first<<", "<<iter->second<<endl;
         delete iter->second;
     }
     _mem->_frames.clear();

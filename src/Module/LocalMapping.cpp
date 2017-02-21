@@ -23,6 +23,7 @@ void LocalMapping::AddMapPoint ( MapPoint* mp )
 
 bool LocalMapping::TrackLocalMap( Frame* current )
 {
+    LOG(INFO)<<"Local keyframes: "<<_local_keyframes.size()<<", map points: "<<_local_map_points.size()<<endl;
     // 寻找候选点
     map<Feature*, Vector2d> candidates = FindCandidates( current );
     LOG(INFO)<<"find total "<<candidates.size()<<" candidates."<<endl;
@@ -35,8 +36,12 @@ bool LocalMapping::TrackLocalMap( Frame* current )
     OptimizeCurrent( current );
     LOG(INFO)<<"optimized pose = \n"<<current->_TCW.matrix()<<endl;
     
+    int cnt=0;
+    for ( Feature* fea:current->_features )
+        if ( fea->_bad==false ) 
+            cnt++;
     
-    return true;
+    return cnt>_options._min_track_local_map_inliers;
 }
 
 std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
@@ -113,11 +118,31 @@ void LocalMapping::OptimizeCurrent(Frame* current)
     // ba::OptimizeCurrent( current );
     ba::OptimizeCurrentPoseOnly( current );
     // ba::OptimizeCurrentPointOnly( current );
+    
+    // reset the depth of current features
+    for ( Feature* fea: current->_features )
+    {
+        if ( fea->_bad==false && fea->_mappoint && fea->_mappoint->_bad==false)
+        {
+            fea->_depth = current->_camera->World2Camera( fea->_mappoint->_pos_world, current->_TCW )[2];
+            if ( !current->_depth.empty() )
+            {
+                unsigned short d = current->_depth.ptr<ushort> ( int ( fea->_pixel[1] ) ) [int ( fea->_pixel[0] )];
+                if ( d==0 || d>10000 ) {
+                    continue;
+                }
+                if ( fea->_pixel[1] > 380 )
+                    LOG(INFO)<<"real depth = "<<double(d)/1000.0<<", estimated = "<<fea->_depth<<",px="<<fea->_pixel.transpose()<<endl;
+                // fea->_depth = double ( d ) /1000.0;
+            }
+        }
+    }
 }
 
 
 void LocalMapping::LocalBA( Frame* current )
 {
+    ba::LocalBA( _local_keyframes, _local_map_points );
 }
 
 // 更新局部关键帧: _local_keyframes 
@@ -178,6 +203,11 @@ void LocalMapping::UpdateLocalMapPoints ( Frame* current )
         for ( Feature* fea: frame->_features ) {
             if ( fea->_mappoint && fea->_mappoint->_bad==false )
             {
+                if ( fea->_mappoint->_id > 1000 ) 
+                {
+                    LOG(ERROR)<<"wrong map point "<<fea->_mappoint->_id<<endl;
+                    LOG(ERROR)<<"feature from frame "<<fea->_frame->_keyframe_id<<", pixel = "<<fea->_pixel<<endl;
+                }
                 _local_map_points.insert( fea->_mappoint );
                 fea->_mappoint->_track_in_view = false;
             }
@@ -207,11 +237,11 @@ void LocalMapping::Run()
         
         if ( _new_keyframes.empty() ) {
             // Local Bundle Adjustment 
-            LocalBA( _current_kf );
+            // LocalBA( _current_kf );
             
             // Keyframe Culling 
             // 删掉一些没必要存在的关键帧，减少计算量
-            KeyFrameCulling();
+            // KeyFrameCulling();
         }
         
         // 把这个帧加到闭环检测队列中
@@ -424,6 +454,7 @@ void LocalMapping::KeyFrameCulling()
 {
     // 原则：如果某个关键帧的地图点有90%以上，都能被其他关键帧看到，则认为此关键帧是冗余的
     // 总帧数太少时，不要做culling
+    LOG(INFO)<<"doing keyframe culling"<<endl;
     if ( Memory::GetNumberFrames() <= 5 )
         return;
     vector<Frame*> local_keyframes = _current_kf->GetBestCovisibilityKeyframes();
