@@ -120,6 +120,7 @@ void LocalMapping::OptimizeCurrent(Frame* current)
     // ba::OptimizeCurrentPointOnly( current );
     
     // reset the depth of current features
+    /*
     for ( Feature* fea: current->_features )
     {
         if ( fea->_bad==false && fea->_mappoint && fea->_mappoint->_bad==false)
@@ -131,12 +132,12 @@ void LocalMapping::OptimizeCurrent(Frame* current)
                 if ( d==0 || d>10000 ) {
                     continue;
                 }
-                if ( fea->_pixel[1] > 380 )
-                    LOG(INFO)<<"real depth = "<<double(d)/1000.0<<", estimated = "<<fea->_depth<<",px="<<fea->_pixel.transpose()<<endl;
+                // LOG(INFO)<<"real depth = "<<double(d)/1000.0<<", estimated = "<<fea->_depth<<",px="<<fea->_pixel.transpose()<<endl;
                 // fea->_depth = double ( d ) /1000.0;
             }
         }
     }
+    */
 }
 
 
@@ -150,6 +151,7 @@ void LocalMapping::LocalBA( Frame* current )
 void LocalMapping::UpdateLocalKeyframes ( Frame* current )
 {
     _local_keyframes.clear();
+    _local_keyframes.insert(current);
     map<Frame*,int> keyframeCounter;
     for ( Feature* fea: current->_features ) {
         if ( fea->_mappoint && fea->_mappoint->_bad ==false)
@@ -169,6 +171,8 @@ void LocalMapping::UpdateLocalKeyframes ( Frame* current )
     // 计算共视观测最多的帧
     for( auto& keyframe_pair: keyframeCounter ) {
         if ( keyframe_pair.first->_bad ) 
+            continue;
+        if ( keyframe_pair.first == current )
             continue;
         if ( keyframe_pair.second > max ) {
             max = keyframe_pair.second;
@@ -190,7 +194,10 @@ void LocalMapping::UpdateLocalKeyframes ( Frame* current )
     
     if ( kfmax ) {
         current->_ref_keyframe = kfmax; 
+        LOG(INFO)<<"current "<<current->_keyframe_id<<"'s ref = "<<kfmax->_keyframe_id<<endl;
     }
+    
+    LOG(INFO)<<"local key frames: "<<_local_keyframes.size()<<endl;
 }
 
 // 更新与当前帧有关的地图点
@@ -391,9 +398,10 @@ void LocalMapping::CreateNewMapPoints()
                 fea1->_depth = depth1;
                 fea2->_depth = depth2;
                 
-                LOG(INFO)<<"create map point"<<mp->_id<<endl;
+                LOG(INFO)<<"create map point "<<mp->_id<<", pos = "<<mp->_pos_world.transpose()<<endl;
                 
                 _recent_mappoints.push_back( mp );
+                _local_map_points.insert( mp );         // 直接加到local map point中
                 cnt_new_mappoints++;
                 
             } 
@@ -435,6 +443,8 @@ void LocalMapping::CreateNewMapPoints()
                 if ( fea1->_mappoint != fea2->_mappoint )
                 {
                     LOG(INFO)<<"this is strange"<<endl;
+                    LOG(INFO)<<"map point "<<fea1->_mappoint->_id<<" pos = "<<fea1->_mappoint->_pos_world.transpose()<<endl;
+                    LOG(INFO)<<"map point "<<fea2->_mappoint->_id<<" pos = "<<fea2->_mappoint->_pos_world.transpose()<<endl;
                 }
                 continue;
             }

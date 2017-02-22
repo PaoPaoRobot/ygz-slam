@@ -84,16 +84,20 @@ int main( int argc, char** argv )
     frame2._color = color2;
     frame2.InitFrame();
     
-    ygz::Matcher matcher;
-    LOG(INFO)<<"doing sparse alignment"<<endl;
     boost::timer timer;
-    matcher.SparseImageAlignment( frame, &frame2 );
-    LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
-    SE3 TCR = matcher.GetTCR();
-    LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
+    frame2._TCW = frame->_TCW;
+    // Let's use SVO's sparse image alignment 
+    // ygz::SparseImgAlign align( 2, 0, 
+        // 30, ygz::SparseImgAlign::LevenbergMarquardt, true, true );
     
-    frame2._TCW = TCR; 
+    ygz::SparseImgAlign align( 2, 0, 
+        30, ygz::SparseImgAlign::GaussNewton, false, false );
+    timer.restart();
+
+    align.run( frame, &frame2 );
+    LOG(INFO)<<"SVO's sparse image alignment costs time: "<<timer.elapsed()<<endl;
     
+    ygz::Matcher matcher;
     // 求ref中地图点在frame2中的投影
     auto& all_points = ygz::Memory::GetAllPoints();
     vector<Vector2d> px_frame2, px_frame2_reproj;       // align之后和之前的（重投影的）像素位置

@@ -1,10 +1,14 @@
 # 日志
+## 17.2.22
+- 添加了原生SVO的Align函数，见include/ygz/Algrithm/CVUtils.h。测试通过。
+- VO的TrackRefFrame和TrackLocalMap终于可以跑起来了。
+
 ## 17.2.21
 - 调试VO的track流程。
 - 发现有时候Sparse Image Alignment会给出一个错误的结果，原因不明。可以对结果范数设阈值检查出来，但即使检查出来之后也似乎没有好办法来处理。
 - 尝试将原生SVO中的两个alignment加进来。自己趟坑效率太低。
 - 增加了原生SVO的sparse image alignment代码，见include/ygz/SparseImgAlign类。所需的依赖亦已添加。测试通过。 Release约2ms/200点，真是快。（日）
-- 原有的matcher。SparseImageAlign在Release模式下运行会有错误，原因未查明。
+- 原有的matcher.SparseImageAlign在Release模式下运行会有错误，原因未查明。
 
 ## 17.2.20
 - 调试VO中，测试了vo.trackRefFrame和TrackLocalMap的结果。现在工作正常但效果不好。

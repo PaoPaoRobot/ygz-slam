@@ -24,7 +24,7 @@ size_t SparseImgAlign::run ( Frame* ref_frame, Frame* cur_frame )
 
     if ( ref_frame->_features.empty() )
     {
-        LOG(WARNING)<<"SparseImgAlign: no features to track!"<<endl;
+        // LOG(WARNING)<<"SparseImgAlign: no features to track!"<<endl;
         return 0;
     }
 
@@ -157,7 +157,7 @@ double SparseImgAlign::computeResiduals (
         // const double depth = ( ( *it )->_mappoint->_pos_world - ref_pos ).norm();
         const Vector3d xyz_ref ( ref_frame_->_camera->Pixel2Camera((*it)->_pixel, (*it)->_depth ));
         const Vector3d xyz_cur ( T_cur_from_ref * xyz_ref );
-        const Vector2f uv_cur_pyr ( cur_frame_->_camera->World2Pixel ( xyz_cur, cur_frame_->_TCW ).cast<float>() * scale );
+        const Vector2f uv_cur_pyr ( cur_frame_->_camera->Camera2Pixel ( xyz_cur ).cast<float>() * scale );
         const float u_cur = uv_cur_pyr[0];
         const float v_cur = uv_cur_pyr[1];
         const int u_cur_i = floorf ( u_cur );

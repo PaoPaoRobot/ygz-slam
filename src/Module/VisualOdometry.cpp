@@ -70,16 +70,11 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 // alignment from local map points
                 OK = TrackLocalMap(); 
             }
-            else 
-            {
-                // 
-                OK = TrackLocalMap(); 
-            }
             
             if ( OK )
             {
                 _status = VO_GOOD;
-                /*
+                
                 // track good, check new key-frame 
                 if ( NeedNewKeyFrame() )
                 {
@@ -90,7 +85,6 @@ bool VisualOdometry::AddFrame( Frame* frame )
                 {
                     // 普通帧
                 }
-                */
                 if ( _ref_frame->_is_keyframe == false )
                     delete _ref_frame;
                 _ref_frame = _curr_frame;
@@ -188,6 +182,7 @@ bool VisualOdometry::MonocularInitialization()
 void VisualOdometry::SetKeyframe(Frame* frame)
 {
     // 向memory注册这个关键帧，提取新的特征点，更新Local Keyframes and local map points 
+    assert(frame->_camera!=nullptr);
     frame->_is_keyframe = true;
     frame = Memory::RegisterKeyFrame( frame );
     LOG(INFO)<<"setting new keyframe "<<frame->_keyframe_id<<endl;
@@ -204,15 +199,18 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     _detector->ComputeAngleAndDescriptor( frame );
     // 新增特征点(2D)
     _detector->Detect( frame, false );
+    /*
     assert( frame->_bow_vec.empty() );
     frame->ComputeBoW();
+    
+    LOG(INFO)<<"this key-frame has "<<frame->_features.size()<<" features."<<endl;
     
     _local_mapping->UpdateLocalKeyframes( frame );
     _local_mapping->UpdateLocalMapPoints( frame );
     
     _local_mapping->AddKeyFrame( frame );
     _local_mapping->Run();
-    
+    */
     _last_key_frame = frame;
     _processed_frames = 0;
 }
@@ -296,7 +294,7 @@ bool VisualOdometry::TrackRefFrame()
     LOG(INFO) << "current pose estimated by sparse alignment: \n"<<_curr_frame->_TCW.matrix()<<endl;
     
     // let's see the projections
-    PlotTrackRefFrameResults();
+    // PlotTrackRefFrameResults();
     
     return true;
 }

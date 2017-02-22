@@ -8,6 +8,7 @@ namespace ygz {
 struct Frame;    
 struct MapPoint;    
 struct Feature;    
+class SparseImgAlign; 
 
 // 匹配相关的算法，包括特征点的匹配法和直接法的匹配法
 class Matcher 
@@ -143,6 +144,7 @@ private:
     
     vector<uchar*> _patches_align;      // 等待推倒的patches
     vector<Vector2d*> _duv_ref;         // Reference 像素梯度
+    SparseImgAlign* _align;
     SE3 _TCR_esti;      // 待估计的TCR
 
 };

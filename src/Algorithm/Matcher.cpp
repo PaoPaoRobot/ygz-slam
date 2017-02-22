@@ -2,6 +2,7 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm/Matcher.h"
 #include "ygz/Algorithm/CVUtils.h"
+#include "ygz/Algorithm/SparseImageAlign.h"
 #include "ygz/CeresTypes.h"
 
 namespace ygz {
@@ -14,6 +15,7 @@ Matcher::Matcher ()
     _options.init_low = Config::Get<int>("matcher.init_low");
     _options.init_high = Config::Get<int>("matcher.init_high");
     _options.knnRatio = Config::Get<int>("matcher.knnRatio");
+    _align = new SparseImgAlign(2,0,30, SparseImgAlign::GaussNewton, false, false );
 }
 
 Matcher::~Matcher()
@@ -372,7 +374,8 @@ bool Matcher::FindDirectProjection(
             ref_patch_ptr[x] = ref_patch_border_ptr[x];
     }
     Vector2d px_scaled = px_curr / (1<<search_level);
-    bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, _patch_with_border, px_scaled); 
+    // bool success = cvutils::Align2DCeres( curr->_pyramid[search_level], _patch, _patch_with_border, px_scaled); 
+    bool success = cvutils::Align2D( curr->_pyramid[search_level], _patch_with_border, _patch, 10, px_scaled); 
     px_curr = px_scaled*(1<<search_level);
     if ( !curr->InFrame(px_curr) ) 
         return false;
@@ -430,20 +433,24 @@ void Matcher::WarpAffine(
 bool Matcher::SparseImageAlignment(Frame* ref, Frame* current)
 {
     // from top to bottom 
-    _TCR_esti = SE3(); // reset estimation
+    current->_TCW = ref->_TCW;
+    _align->run( ref, current );
+    _TCR_esti = current->_TCW * ref->_TCW.inverse();
     
+    /*
     for ( int level = ref->_option._pyramid_level-1; level>=0; level-- ) 
     {
         SparseImageAlignmentInPyramid( ref, current, level );
     }
+    */
     
     if ( _TCR_esti.log().norm() > _options._max_alignment_motion ) {
         LOG(WARNING)<<"Too large motion: "<<_TCR_esti.log().norm()<< ". Reject this estimation. "<<endl;
         LOG(INFO)<<"TCR = \n"<<_TCR_esti.matrix()<<endl;
         _TCR_esti = SE3();
+        current->_TCW = ref->_TCW;
         return false;
     }
-    
     LOG(INFO)<<"TCR estimated: \n"<<_TCR_esti.matrix()<<endl;
     
     return true;

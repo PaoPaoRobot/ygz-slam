@@ -144,6 +144,47 @@ bool Align2DCeres(
     Vector2d& cur_px_estimate 
 );
 
+// From SVO 
+bool Align1D(
+    const cv::Mat& cur_img,
+    const Eigen::Vector2f& dir,                  // direction in which the patch is allowed to move
+    uint8_t* ref_patch_with_border,
+    uint8_t* ref_patch,
+    const int n_iter,
+    Vector2d& cur_px_estimate,
+    double& h_inv);
+
+/**
+ * @brief align a pixel with reference image patch
+ * @param[in] cur_img The current image 
+ * @param[in] ref_patch_with_boarder the patch with boarder, used to compute the gradient (or FEJ)
+ * @param[in] ref_patch the patch in reference frame, by default is 64x64
+ * @param[in] n_iter maximum iterations 
+ * @param[out] cur_px_estimate the estimated position in current image, must have an initial value
+ * @return True if successful
+ */
+bool Align2D(
+    const cv::Mat& cur_img,
+    uint8_t* ref_patch_with_border,
+    uint8_t* ref_patch,
+    const int n_iter,
+    Vector2d& cur_px_estimate,
+    bool no_simd = false);
+
+bool Align2D_SSE2(
+    const cv::Mat& cur_img,
+    uint8_t* ref_patch_with_border,
+    uint8_t* ref_patch,
+    const int n_iter,
+    Vector2d& cur_px_estimate);
+
+bool Align2D_NEON(
+    const cv::Mat& cur_img,
+    uint8_t* ref_patch_with_border,
+    uint8_t* ref_patch,
+    const int n_iter,
+    Vector2d& cur_px_estimate);
+
 
 }
 }

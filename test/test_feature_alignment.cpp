@@ -60,7 +60,8 @@ int main( int argc, char** argv )
     frame->InitFrame();
     ygz::Memory::RegisterKeyFrame( frame );
     detector.Detect( frame );
-    frame->_TCW = SE3( SO3(0.0,0.0,0.0), Vector3d(0,0.0,0.0) );  // random pose 
+    frame->_TCW = SE3( SO3(0.0,0.0,0.0), Vector3d(1.0,1.0,1.0) );  // random pose 
+    // frame->_TCW = SE3( SO3(0.0,0.0,0.0), Vector3d(0.0,0.0,0.0) );  // random pose 
     
     ygz::PinholeCamera* cam = new ygz::PinholeCamera();
     ygz::Frame::SetCamera( cam );
@@ -95,6 +96,7 @@ int main( int argc, char** argv )
     ygz::Matcher matcher;
     
     LOG(INFO)<<"doing sparse alignment"<<endl;
+    frame2._TCW = frame->_TCW;
     boost::timer timer;
     // matcher.SparseImageAlignment( frame, &frame2 );
     // LOG(INFO)<<"Sparse image alignment costs time: "<<timer.elapsed()<<endl;
@@ -103,7 +105,6 @@ int main( int argc, char** argv )
     // frame2._TCW = TCR * frame->_TCW;
     // LOG(INFO)<<"Now current pose= \n"<<frame2._TCW.matrix()<<endl;
     
-    frame2._TCW = frame->_TCW;
     // Let's use SVO's sparse image alignment 
     // ygz::SparseImgAlign align( 2, 0, 
         // 30, ygz::SparseImgAlign::LevenbergMarquardt, true, true );

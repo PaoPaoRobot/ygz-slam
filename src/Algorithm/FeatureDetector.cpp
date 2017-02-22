@@ -325,6 +325,7 @@ FeatureDetector::FeatureDetector()
     const int npoints = 512;
     std::copy(pattern0, pattern0 + npoints, std::back_inserter(_pattern));
     
+    _old_features = vector<Feature*>( _option._grid_cols*_option._grid_rows, nullptr );
 }
 
 void FeatureDetector::LoadParams()
@@ -335,6 +336,7 @@ void FeatureDetector::LoadParams()
     _option._grid_rows = ceil ( double ( _option._image_height ) / _option._cell_size );
     _option._grid_cols = ceil ( double ( _option._image_width ) / _option._cell_size );
     _option._detection_threshold = Config::Get<double> ( "feature.detection_threshold" );
+    _old_features = vector<Feature*>( _option._grid_cols*_option._grid_rows, nullptr );
 }
 
 
@@ -442,15 +444,21 @@ void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features)
 
 void FeatureDetector::SetExistingFeatures ( Frame* frame )
 {
-    _old_features = vector<Feature*> ( _option._grid_cols*_option._grid_rows, nullptr );
+    LOG(INFO)<<"setting existing features, old features: "<<_old_features.size()<<endl;
+    for( Feature*& fea: _old_features )
+        fea = nullptr;
     
     for ( Feature* fea : frame->_features )
     {
         int gy = static_cast<int> ( fea->_pixel[0]/ _option._cell_size );
         int gx = static_cast<int> ( fea->_pixel[1]/ _option._cell_size );
         size_t k = gy*_option._grid_cols+gx;
-        _old_features[k] = fea;
+        if ( k>_old_features.size() )
+            LOG(INFO)<<"k="<<k<<endl;
+        else 
+            _old_features[k] = fea;
     }
+    LOG(INFO)<<"set existing features return"<<endl;
 }
 
 
