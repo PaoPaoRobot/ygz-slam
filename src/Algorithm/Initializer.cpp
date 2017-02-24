@@ -483,8 +483,8 @@ bool Initializer::ReconstructH(
         }
     }
     
-    LOG(INFO) << "best R = \n"<<decomps[bestSolutionIdx].R<<endl;
-    LOG(INFO) << "best t = "<<decomps[bestSolutionIdx].t.transpose()<<endl;
+    // LOG(INFO) << "best R = \n"<<decomps[bestSolutionIdx].R<<endl;
+    // LOG(INFO) << "best t = "<<decomps[bestSolutionIdx].t.transpose()<<endl;
     
     if ( secondBestGood<0.75*bestGood && bestParallax>=minParallax 
         && bestGood>minTriangulated && bestGood > _options.good_point_ratio_H*_num_points )

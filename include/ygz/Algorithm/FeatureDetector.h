@@ -66,6 +66,8 @@ public:
     // 这种情况出现在初始化追踪完成时。由于光流只能追踪特征点的图像坐标，所以从初始化的第一个帧到第二个帧时，需要把
     // 第二个帧的像素点转化为带有特征描述的特征点
     void ComputeAngleAndDescriptor( Frame* frame );
+    
+    void ComputeDescriptor( Feature* fea );
 
 private:
     // 设置已有特征的网格

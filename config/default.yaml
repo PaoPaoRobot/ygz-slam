@@ -47,8 +47,8 @@ init.min_disparity: 30
 init.min_inliers: 40
 
 # 特征提取参数
-feature.cell: 20
-feature.detection_threshold: 20.0
+feature.cell: 10
+feature.detection_threshold: 15.0
 
 # 特征匹配参数
 matcher.th_low: 65

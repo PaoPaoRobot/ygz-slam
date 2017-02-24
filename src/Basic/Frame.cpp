@@ -184,7 +184,7 @@ Mat Frame::GetAllDescriptors()
         fea->_desc.copyTo( alldesp.row(index) );
         index++;
     }
-    return alldesp;
+    return alldesp.clone();
 }
 
 void Frame::ComputeBoW()

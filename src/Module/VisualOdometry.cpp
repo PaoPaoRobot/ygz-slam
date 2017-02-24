@@ -199,7 +199,6 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     _detector->ComputeAngleAndDescriptor( frame );
     // 新增特征点(2D)
     _detector->Detect( frame, false );
-    /*
     assert( frame->_bow_vec.empty() );
     frame->ComputeBoW();
     
@@ -210,7 +209,7 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     
     _local_mapping->AddKeyFrame( frame );
     _local_mapping->Run();
-    */
+    
     _last_key_frame = frame;
     _processed_frames = 0;
 }

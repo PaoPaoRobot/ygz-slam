@@ -252,6 +252,12 @@ public:
    */
   bool loadFromBinaryFile( const std::string& filename );
   
+  /**
+   * Loads the vocabulary from a text file
+   * @param filename 
+   */
+  bool loadFromTextFile( const std::string& filename );
+  
   /** 
    * Saves the vocabulary to a file storage structure
    * @param fn node in file storage

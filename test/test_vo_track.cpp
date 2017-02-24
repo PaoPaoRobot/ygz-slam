@@ -108,7 +108,7 @@ int TestVOTrack::Main ( int argc, char** argv )
         pf->_depth = depth.clone();
         pf->InitFrame();
         pf->_id = i;
-
+        
         bool ret = vo.AddFrame ( pf );
         if ( vo.GetStatus() == VisualOdometry::VO_GOOD ) {
             LOG ( INFO ) << "successfully tracked" <<endl;
@@ -152,6 +152,11 @@ int TestVOTrack::Main ( int argc, char** argv )
             waitKey ( 10 );
         } else if ( vo._status == VisualOdometry::VO_LOST ) {
             break;
+        }
+        
+        if ( pf->_is_keyframe == true ) // 此帧被当成了关键帧
+        {
+            // 尝试用 matcher 进行匹配以寻找三角化点
         }
         
     }

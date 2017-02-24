@@ -93,7 +93,6 @@ int Matcher::SearchForTriangulation (
     DBoW3::FeatureVector& fv1 = kf1->_feature_vec;
     DBoW3::FeatureVector& fv2 = kf2->_feature_vec;
     
-    LOG(INFO)<<fv1.size()<<","<<fv2.size()<<endl;
     assert( !fv1.empty() && !fv2.empty() );
     
     // 计算匹配
@@ -134,7 +133,7 @@ int Matcher::SearchForTriangulation (
                     const int dist = DescriptorDistance( desp1, desp2 );
                     const Vector2d& kp2 = kf2->_features[idx2]->_pixel;
                     
-                    if ( dist>_options.th_low || dist>bestDist ) 
+                    if ( dist>(_options.th_low) || dist>bestDist ) 
                         continue;
                     
                     // 计算两个 keypoint 是否满足极线约束
@@ -147,7 +146,7 @@ int Matcher::SearchForTriangulation (
                     } 
                     else 
                     {
-                        LOG(INFO)<<"rejected by check epipolar line"<<endl;
+                        // LOG(INFO)<<"rejected by check epipolar line"<<endl;
                     }
                 }
                 

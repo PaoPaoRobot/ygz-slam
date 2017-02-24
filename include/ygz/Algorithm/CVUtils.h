@@ -32,8 +32,8 @@ inline bool DepthFromTriangulation (
         return false;
     }
     Vector2d depth2d = - AtA.inverse() *A.transpose() *T_search_ref.translation();
-    depth1 = depth2d[0];
-    depth2 = depth2d[1];
+    depth1 = fabs(depth2d[0]);
+    depth2 = fabs(depth2d[1]);
     return true;
 }
 // *************************************************************************************

@@ -55,6 +55,11 @@ std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
         if ( map_point->_bad == true )
             continue;
         
+        if ( map_point->_first_seen > 0 )
+        {
+            LOG(INFO) << "this is a newly created map point"<<map_point->_id<<endl;
+        }
+        
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_TCW );
         Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
         if ( pt_curr[2] < 0 || !current->InFrame(px_curr,20) ) { // 在相机后面或不在视野内 
@@ -88,6 +93,12 @@ void LocalMapping::ProjectMapPoints(
         if ( matched_mps.find(candidate.first->_mappoint) != matched_mps.end() )
             continue;   // already matched 
         int level=0;
+        
+        if ( candidate.first->_mappoint->_first_seen > 0 )
+        {
+            LOG(INFO)<<"this is a newly created map point: "<<candidate.first->_mappoint->_id<<endl;
+        }
+        
         bool ret = _matcher->FindDirectProjection(
             candidate.first->_frame, 
             current, 
@@ -166,6 +177,7 @@ void LocalMapping::UpdateLocalKeyframes ( Frame* current )
         return; 
     int max = 0;
     Frame* kfmax = nullptr;
+    LOG(INFO)<<"keyframe counter size = "<<keyframeCounter.size()<<endl;
     
     // 策略1：能观测到当前帧 mappoint 的关键帧作为局部关键帧
     // 计算共视观测最多的帧
@@ -183,6 +195,7 @@ void LocalMapping::UpdateLocalKeyframes ( Frame* current )
     }
     
     // 策略2：和上次结果中共视程度很高的关键帧也作为局部关键帧
+    int cnt_local_keyframes;
     for ( Frame* frame: _local_keyframes ) {
         vector<Frame*> neighbour = frame->GetBestCovisibilityKeyframes(10);
         for ( Frame* neighbour_kf: neighbour ) {
@@ -206,20 +219,19 @@ void LocalMapping::UpdateLocalMapPoints ( Frame* current )
     _local_map_points.clear();
     // 将局部关键帧中的地图点添加到局部地图中
     
-    for ( Frame* frame: _local_keyframes ) {
-        for ( Feature* fea: frame->_features ) {
-            if ( fea->_mappoint && fea->_mappoint->_bad==false )
+    for ( Frame* frame: _local_keyframes ) 
+    {
+        for ( Feature* fea: frame->_features ) 
+        {
+            if ( fea->_mappoint && fea->_mappoint->_bad==false
+                && current->InFrame( current->_camera->World2Pixel(fea->_mappoint->_pos_world, current->_TCW))
+            )
             {
-                if ( fea->_mappoint->_id > 1000 ) 
-                {
-                    LOG(ERROR)<<"wrong map point "<<fea->_mappoint->_id<<endl;
-                    LOG(ERROR)<<"feature from frame "<<fea->_frame->_keyframe_id<<", pixel = "<<fea->_pixel<<endl;
-                }
                 _local_map_points.insert( fea->_mappoint );
-                fea->_mappoint->_track_in_view = false;
             }
         }
     }
+    LOG(INFO)<<"Local map points: "<<_local_map_points.size()<<endl;
 }
 
 void LocalMapping::Run() 
@@ -248,7 +260,7 @@ void LocalMapping::Run()
             
             // Keyframe Culling 
             // 删掉一些没必要存在的关键帧，减少计算量
-            // KeyFrameCulling();
+            KeyFrameCulling();
         }
         
         // 把这个帧加到闭环检测队列中
@@ -300,6 +312,7 @@ void LocalMapping::CreateNewMapPoints()
 {
     int nn = 20;
     vector<Frame*> neighbour_kf = _current_kf->GetBestCovisibilityKeyframes(nn);
+    LOG(INFO)<<"Neighbour key-frames: "<<neighbour_kf.size()<<endl;
     
     Vector3d cam_current = _current_kf->GetCamCenter();
     // Eigen::Matrix3d K_inv = _current_kf->_camera->GetCameraMatrix().inverse();
@@ -307,8 +320,11 @@ void LocalMapping::CreateNewMapPoints()
     int cnt_new_mappoints = 0;
     int cnt_associate_mps = 0;
     
+    vector<pair<Feature*, Feature*>> new_feature_pairs;
+    
     // 计算当前关键帧和别的关键帧之间的特征匹配关系
     for ( size_t i=0; i<neighbour_kf.size(); i++ ) {
+        new_feature_pairs.clear();
         
         Frame* f2 = neighbour_kf[i];
         Vector3d baseline = cam_current - f2->GetCamCenter();
@@ -330,6 +346,7 @@ void LocalMapping::CreateNewMapPoints()
         
         LOG(INFO)<<"searching "<<_current_kf->_keyframe_id<<" with "<<f2->_keyframe_id<<endl;
         int matches = matcher.SearchForTriangulation( _current_kf, f2, E12, matched_pairs);
+        LOG(INFO)<<"matches in creating map points: "<<matches<<endl;
         
         // 对每个匹配点进行三角化
         for ( int im=0; im<matches; im++ ) {
@@ -340,23 +357,6 @@ void LocalMapping::CreateNewMapPoints()
             Feature* fea1 = _current_kf->_features[i1];
             Feature* fea2 = f2->_features[i2];
             
-            /*
-            Mat color1_show = _current_kf->_color.clone();
-            Mat color2_show = f2->_color.clone();
-            
-            cv::circle( color1_show, 
-                cv::Point2f(fea1->_pixel[0], fea1->_pixel[1]), 
-                2, cv::Scalar(0,250,0), 2
-            );
-            
-            cv::circle( color2_show, 
-                cv::Point2f(fea2->_pixel[0], fea2->_pixel[1]), 
-                2, cv::Scalar(0,250,0), 2
-            );
-            imshow("point in frame 1", color1_show );
-            imshow("point in frame 2", color2_show );
-            cv::waitKey();
-            */
             
             if ( fea2->_mappoint == nullptr && fea1->_mappoint==nullptr ) {
                 // 两个帧中的点均未被三角化，那么新建地图点
@@ -369,7 +369,9 @@ void LocalMapping::CreateNewMapPoints()
                 if ( cos_para_rays >= 0.9998 ) // 两条线平行性太强，不好三角化
                     continue; 
                 double depth1 = 0, depth2=0;
+                
                 bool ret = cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
+                
                 if ( ret==false || depth1 <0 || depth2<0 )
                     continue; 
                 // 计算三角化点的重投影误差
@@ -378,7 +380,7 @@ void LocalMapping::CreateNewMapPoints()
                 double reproj_error = (px2_reproj - fea2->_pixel ).norm();
                 
                 if ( reproj_error > 5.991 ) { // 重投影太大
-                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    // LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
                 // 什么是尺度连续性。。。算了先不管它
@@ -386,7 +388,7 @@ void LocalMapping::CreateNewMapPoints()
                 // 终于可以生成地图点了
                 MapPoint* mp = Memory::CreateMapPoint();
                 mp->_first_seen = _current_kf->_keyframe_id;
-                mp->_obs[_current_kf->_keyframe_id] = fea1;
+                mp->_obs[ _current_kf->_keyframe_id ] = fea1;
                 mp->_obs[ f2->_keyframe_id ] = fea2;
                 mp->_cnt_visible = 2;
                 mp->_cnt_found = 2;
@@ -398,12 +400,18 @@ void LocalMapping::CreateNewMapPoints()
                 fea1->_depth = depth1;
                 fea2->_depth = depth2;
                 
+                fea1->_bad = fea2->_bad = false;
+                
                 LOG(INFO)<<"create map point "<<mp->_id<<", pos = "<<mp->_pos_world.transpose()<<endl;
+                
+                ushort d = _current_kf->_depth.ptr<ushort>( cvRound(fea1->_pixel[1]) )[cvRound(fea1->_pixel[0])];
+                LOG(INFO)<<"Estimated depth = "<<depth1<<", real depth = "<<double(d)/1000.0f << endl;;
                 
                 _recent_mappoints.push_back( mp );
                 _local_map_points.insert( mp );         // 直接加到local map point中
-                cnt_new_mappoints++;
                 
+                new_feature_pairs.push_back( make_pair(fea1, fea2) );
+                cnt_new_mappoints++;
             } 
             else if ( fea2->_mappoint && fea1->_mappoint==nullptr ) 
             {
@@ -411,7 +419,7 @@ void LocalMapping::CreateNewMapPoints()
                 Vector2d px_reproj = _current_kf->_camera->World2Pixel( fea2->_mappoint->_pos_world, _current_kf->_TCW );
                 double reproj_error = (px_reproj - fea1->_pixel ).norm();
                 if ( reproj_error > 5.991 ) { // 重投影太大
-                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    // LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
                 
@@ -428,7 +436,7 @@ void LocalMapping::CreateNewMapPoints()
                 Vector2d px_reproj = f2->_camera->World2Pixel( fea1->_mappoint->_pos_world, f2->_TCW );
                 double reproj_error = (px_reproj - fea2->_pixel ).norm();
                 if ( reproj_error > 5.991 ) { // 重投影太大
-                    LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
+                    // LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
                 
@@ -449,6 +457,30 @@ void LocalMapping::CreateNewMapPoints()
                 continue;
             }
         }
+        
+        if ( new_feature_pairs.empty() == false )
+        {
+            Mat color1_show = _current_kf->_color.clone();
+            Mat color2_show = f2->_color.clone();
+            
+            for ( auto& fea_pair: new_feature_pairs )
+            {
+                Feature* fea1 = fea_pair.first;
+                Feature* fea2 = fea_pair.second;
+                cv::circle( color1_show, 
+                    cv::Point2f(fea1->_pixel[0], fea1->_pixel[1]), 
+                    1, cv::Scalar(0,250,0), 2
+                );
+                
+                cv::circle( color2_show, 
+                    cv::Point2f(fea2->_pixel[0], fea2->_pixel[1]), 
+                    1, cv::Scalar(0,250,0), 2
+                );
+            }
+            imshow("point in current frame", color1_show );
+            imshow("point in past frame", color2_show );
+            cv::waitKey();
+        }
     }
     
     LOG(INFO) << "New map points: " << cnt_new_mappoints << ", associated points: "<<cnt_associate_mps<<endl;
@@ -465,7 +497,7 @@ void LocalMapping::KeyFrameCulling()
     // 原则：如果某个关键帧的地图点有90%以上，都能被其他关键帧看到，则认为此关键帧是冗余的
     // 总帧数太少时，不要做culling
     LOG(INFO)<<"doing keyframe culling"<<endl;
-    if ( Memory::GetNumberFrames() <= 5 )
+    if ( _local_keyframes.size() <= 5 )
         return;
     vector<Frame*> local_keyframes = _current_kf->GetBestCovisibilityKeyframes();
     for ( Frame* frame : local_keyframes ) {

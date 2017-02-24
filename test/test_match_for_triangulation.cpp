@@ -85,8 +85,10 @@ int main( int argc, char** argv )
     // read the second frame 
     LOG(INFO) << "Reading " << string(argv[1])+string("/")+rgbFiles[index2];
     Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index2] );
+    Mat depth2 = imread( string(argv[1])+string("/")+depthFiles[index2], -1 );
     ygz::Frame frame2;
     frame2._color = color2;
+    frame2._depth = depth2;
     frame2.InitFrame();
     
     ygz::Matcher matcher;
@@ -98,11 +100,34 @@ int main( int argc, char** argv )
     SE3 TCR = matcher.GetTCR();
     LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
     
+    // 将Frame1的特征设置到Frame2中
+    vector<pair<ygz::Feature*, ygz::Feature*>> copyed_features;
+    for ( ygz::Feature* fea: frame->_features)
+    {
+        if ( fea->_mappoint )
+        {
+            Vector2d px2 = frame2._camera->World2Pixel( fea->_mappoint->_pos_world, TCR );
+            ygz::Feature* feature2 = new ygz::Feature(
+                px2,
+                fea->_level,
+                fea->_score
+            );
+            feature2->_frame = &frame2;
+            feature2->_mappoint = fea->_mappoint;
+            frame2._features.push_back( feature2 );
+            
+            copyed_features.push_back( make_pair(fea, feature2));
+        }
+    }
+    detector.ComputeAngleAndDescriptor( &frame2 );
+    
     frame2._TCW = TCR;
     SE3 T12 = TCR.inverse();
     Eigen::Matrix3d E12 = SO3::hat( T12.translation() )*T12.rotation_matrix();
     
-    detector.Detect( &frame2 );
+    // 再提一些新的
+    detector.Detect( &frame2, false );
+    
     vector<pair<int, int>> matched_points;
     
     ORBVocabulary vocab;
@@ -117,25 +142,48 @@ int main( int argc, char** argv )
     matcher.SearchByBoW(frame, &frame2, matches_bow );
     LOG(INFO)<<"search by bow matches: "<<matches_bow.size()<<endl;
     
-    // plot the matched features 
-    Mat color1_show = frame->_color.clone();
-    Mat color2_show = frame2._color.clone();
     
+    // 红色是未匹配上的特征
+    
+    // 其他颜色是匹配上的特征
+    cv::RNG rng;
     for ( auto m: matched_points )
     {
+        // plot the matched features 
+        Mat color1_show = frame->_color.clone();
+        Mat color2_show = frame2._color.clone();
+        
+        Scalar color( rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255));
         circle( color1_show, 
             Point2f(frame->_features[m.first]->_pixel[0], frame->_features[m.first]->_pixel[1]), 
-            2, Scalar(0,250,0), 2
+            1, Scalar(0,250,0), 2
         );
         
         circle( color2_show, 
             Point2f(frame2._features[m.second]->_pixel[0], frame2._features[m.second]->_pixel[1]), 
-            2, Scalar(0,250,0), 2
+            1, Scalar(0,250,0), 2
         );
+        
+        Vector3d pt1 = frame->_camera->Pixel2Camera( frame->_features[m.first]->_pixel );
+        Vector3d pt2 = frame2._camera->Pixel2Camera( frame2._features[m.second]->_pixel );
+        double depth1, depth2;
+        bool ret = ygz::cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2, 1e-5 );
+        
+        ushort d1 = frame->_depth.ptr<ushort>( 
+            cvRound(frame->_features[m.first]->_pixel[1]) )[cvRound(frame->_features[m.first]->_pixel[0])];
+        ushort d2 = frame2._depth.ptr<ushort>( 
+            cvRound(frame2._features[m.second]->_pixel[1]) )[cvRound(frame2._features[m.second]->_pixel[0])];
+        
+        if ( ret )
+        {
+            LOG(INFO)<<"Estimated depth = "<<depth1<<", real depth = "<<double(d1)/1000.0f << endl;;
+            LOG(INFO)<<"Estimated depth = "<<depth2<<", real depth = "<<double(d2)/1000.0f << endl;;
+        }
+        
+        imshow("point in frame 1", color1_show );
+        imshow("point in frame 2", color2_show );
+        waitKey();
     }
-    imshow("point in frame 1", color1_show );
-    imshow("point in frame 2", color2_show );
-    waitKey();
     destroyAllWindows();
     
     delete cam;

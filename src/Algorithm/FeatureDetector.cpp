@@ -427,6 +427,7 @@ void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features)
     }
 
     int cnt_new_features =0;
+    LOG(INFO)<<"old features: "<<frame->_features.size()<<endl;
     for ( Feature* fea: _new_features )
     {
         if ( fea ) {
@@ -444,21 +445,22 @@ void FeatureDetector::Detect(Frame* frame, bool overwrite_existing_features)
 
 void FeatureDetector::SetExistingFeatures ( Frame* frame )
 {
-    LOG(INFO)<<"setting existing features, old features: "<<_old_features.size()<<endl;
     for( Feature*& fea: _old_features )
         fea = nullptr;
     
     for ( Feature* fea : frame->_features )
     {
-        int gy = static_cast<int> ( fea->_pixel[0]/ _option._cell_size );
-        int gx = static_cast<int> ( fea->_pixel[1]/ _option._cell_size );
+        int gx = static_cast<int> ( fea->_pixel[0]/ _option._cell_size );
+        int gy = static_cast<int> ( fea->_pixel[1]/ _option._cell_size );
         size_t k = gy*_option._grid_cols+gx;
         if ( k>_old_features.size() )
-            LOG(INFO)<<"k="<<k<<endl;
+        {
+            // 这也不应该发生
+            continue;
+        }
         else 
             _old_features[k] = fea;
     }
-    LOG(INFO)<<"set existing features return"<<endl;
 }
 
 
@@ -552,36 +554,27 @@ void FeatureDetector::ComputeOrbDescriptor(
     for (int i = 0; i < 32; ++i, pattern += 16)
     {
         int t0, t1, val;
-        t0 = GET_VALUE(0); 
-        t1 = GET_VALUE(1);
+        t0 = GET_VALUE(0); t1 = GET_VALUE(1);
         val = t0 < t1;
-        t0 = GET_VALUE(2); 
-        t1 = GET_VALUE(3);
+        t0 = GET_VALUE(2); t1 = GET_VALUE(3);
         val |= (t0 < t1) << 1;
-        t0 = GET_VALUE(4); 
-        t1 = GET_VALUE(5);
+        t0 = GET_VALUE(4); t1 = GET_VALUE(5);
         val |= (t0 < t1) << 2;
-        t0 = GET_VALUE(6); 
-        t1 = GET_VALUE(7);
+        t0 = GET_VALUE(6); t1 = GET_VALUE(7);
         val |= (t0 < t1) << 3;
-        t0 = GET_VALUE(8); 
-        t1 = GET_VALUE(9);
+        t0 = GET_VALUE(8); t1 = GET_VALUE(9);
         val |= (t0 < t1) << 4;
-        t0 = GET_VALUE(10); 
-        t1 = GET_VALUE(11);
+        t0 = GET_VALUE(10); t1 = GET_VALUE(11);
         val |= (t0 < t1) << 5;
-        t0 = GET_VALUE(12); 
-        t1 = GET_VALUE(13);
+        t0 = GET_VALUE(12); t1 = GET_VALUE(13);
         val |= (t0 < t1) << 6;
-        t0 = GET_VALUE(14); 
-        t1 = GET_VALUE(15);
+        t0 = GET_VALUE(14); t1 = GET_VALUE(15);
         val |= (t0 < t1) << 7;
 
         desc[i] = (uchar)val;
     }
-
+    
     #undef GET_VALUE
-
 }
 
 void FeatureDetector::ComputeAngleAndDescriptor(Frame* frame)
@@ -595,5 +588,9 @@ void FeatureDetector::ComputeAngleAndDescriptor(Frame* frame)
 }
 
 
+void FeatureDetector::ComputeDescriptor( Feature* fea )
+{
+    ComputeOrbDescriptor( fea, fea->_frame->_pyramid[fea->_level], &_pattern[0], fea->_desc.data );
+}
 
 }
