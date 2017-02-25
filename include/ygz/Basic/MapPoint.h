@@ -39,7 +39,7 @@ public:
     Mat             _distinctive_desc;  // 描述子，代表这个地图点
     
     unsigned long   _first_seen =0;     // 第一次看到的帧(关键帧id)
-    unsigned long   _last_seen =0;      // 最后一次看到的帧(普通帧id)
+    unsigned long   _last_seen =0;      // 最后一次看到的帧(关键帧id)
     int             _cnt_visible =0;    // 被看到的次数
     int             _cnt_found =0;      // 被匹配到的次数
     bool            _track_in_view =false; // 是否在视野中 

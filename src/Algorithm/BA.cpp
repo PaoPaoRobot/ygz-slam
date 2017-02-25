@@ -1,5 +1,7 @@
+#include "ygz/Basic.h"
 #include "ygz/Algorithm/BA.h"
 #include "ygz/CeresTypes.h"
+#include "ygz/G2oTypes.h"
 
 namespace ygz
 {
@@ -373,6 +375,158 @@ void LocalBA(
     }
     LOG(INFO)<<"Local BA returns"<<endl;
 }
+
+void LocalBAG2O(
+    std::set< Frame* >& local_keyframes, 
+    std::set< MapPoint* >& local_map_points )
+{
+    g2o::SparseOptimizer optimizer;
+    g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+    linearSolver = new g2o::LinearSolverCSparse<g2o::BlockSolver_6_3::PoseMatrixType>();
+    g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+    optimizer.setAlgorithm(solver);
+    optimizer.setVerbose( false );
+    
+    // pose vertex 
+    map<int, VertexSE3Sophus*> vertices_pose;
+    for ( Frame* frame: local_keyframes )
+    {
+        VertexSE3Sophus* vSE3 = new VertexSE3Sophus();
+        vSE3->setId( frame->_keyframe_id );
+        if ( frame->_keyframe_id == 0)
+            vSE3->setFixed(true);
+        Vector6d esti;
+        esti.head<3>() = frame->_TCW.log().tail<3>();
+        esti.tail<3>() = frame->_TCW.log().head<3>();
+        vSE3->setEstimate( esti );
+        optimizer.addVertex( vSE3 );
+        vertices_pose[vSE3->id()]= vSE3 ;
+    }
+    
+    // point vertex and edges 
+    map<int, g2o::VertexSBAPointXYZ*> vertices_points;
+    int cntBad = 0;
+    
+    // 用于统计每次观测是否为inlier的量
+    vector<EdgeSophusSE3ProjectXYZ*> edges; 
+    vector<Feature*> features;
+    
+    for ( MapPoint* mp : local_map_points )
+    {
+        if ( mp->_bad )
+        {
+            cntBad++;
+            continue;
+        }
+        g2o::VertexSBAPointXYZ* v = new g2o::VertexSBAPointXYZ();
+        v->setEstimate( mp->_pos_world );
+        v->setId( mp->_id+10000 ); // 当心这里的id
+        v->setMarginalized( true );
+        optimizer.addVertex( v );
+        vertices_points[mp->_id] = v;
+        
+        for ( auto& obs_pair: mp->_obs )
+        {
+            if ( obs_pair.second->_bad )
+                continue;
+            Frame* frame = Memory::GetKeyFrame( obs_pair.first );
+            assert( frame != nullptr );
+            if ( local_keyframes.find(frame) != local_keyframes.end() )
+            {
+                EdgeSophusSE3ProjectXYZ* edge = new EdgeSophusSE3ProjectXYZ();
+                edge->setCamera( Frame::_camera );
+                edge->setVertex(0, v );
+                edge->setVertex(1, dynamic_cast<ygz::VertexSE3Sophus*>( optimizer.vertex( frame->_keyframe_id)));
+                edge->setInformation( Eigen::Matrix2d::Identity() );
+                edge->setMeasurement( obs_pair.second->_pixel );
+                edge->setRobustKernel( new g2o::RobustKernelHuber() );
+                optimizer.addEdge( edge );
+                
+                edges.push_back(edge);
+                features.push_back( obs_pair.second );
+            }
+            else 
+            {
+                // keyframes that see local map points but not in local key-frames
+                if ( vertices_pose.find(frame->_keyframe_id) == vertices_pose.end() )
+                {
+                    // add a vertex 
+                    VertexSE3Sophus* vSE3 = new VertexSE3Sophus();
+                    vSE3->setId( frame->_keyframe_id );
+                    vSE3->setFixed(true);
+                    Vector6d esti;
+                    esti.head<3>() = frame->_TCW.log().tail<3>();
+                    esti.tail<3>() = frame->_TCW.log().head<3>();
+                    vSE3->setEstimate( esti );
+                    optimizer.addVertex( vSE3 );
+                    vertices_pose[vSE3->id()]= vSE3 ;
+                }
+                else 
+                {
+                    vertices_pose[frame->_keyframe_id]->setFixed(true);
+                }
+                
+                // add an edge 
+                EdgeSophusSE3ProjectXYZ* edge = new EdgeSophusSE3ProjectXYZ();
+                edge->setCamera( Frame::_camera );
+                edge->setVertex(0, v );
+                edge->setVertex(1, dynamic_cast<ygz::VertexSE3Sophus*>( optimizer.vertex( frame->_keyframe_id)));
+                edge->setInformation( Eigen::Matrix2d::Identity() );
+                edge->setMeasurement( obs_pair.second->_pixel );
+                edge->setRobustKernel( new g2o::RobustKernelHuber() );
+                optimizer.addEdge( edge );
+                
+                edges.push_back(edge);
+                features.push_back( obs_pair.second );
+            }
+        }
+    }
+    
+    LOG(INFO) << "bad points: "<<cntBad<<endl;
+    LOG(INFO)<<"Vertices num: "<<optimizer.vertices().size()<<endl;
+    LOG(INFO)<<"   Edges num: "<<optimizer.edges().size()<<endl;
+    
+    optimizer.initializeOptimization();
+    optimizer.optimize(10);
+    
+    // 统计inlier数量
+    int cntOutlier =0;
+    for ( size_t i=0; i<edges.size(); i++ ) 
+    {
+        if ( edges[i]->chi2()>5.991 )
+        {
+            // this is an outlier 
+            cntOutlier++;
+            features[i]->_bad = true;
+        }
+    }
+    
+    LOG(INFO)<<"outliers: "<<cntOutlier<<endl;
+    
+    // update the poses and points 
+    for( Frame* frame: local_keyframes)
+    {
+        VertexSE3Sophus* p = vertices_pose[frame->_keyframe_id];
+        Vector6d esti = p->estimate();
+        Vector6d pose;
+        pose.head<3>() = esti.tail<3>();
+        pose.tail<3>() = esti.head<3>();
+        frame->_TCW = SE3::exp(pose);
+    }
+    
+    for ( MapPoint* mp: local_map_points )
+    {
+        if ( mp->_bad )
+            continue;
+        g2o::VertexSBAPointXYZ* p  =vertices_points[mp->_id];
+        // LOG(INFO)<<"map point "<<mp->_id<<" pos changed from "<<mp->_pos_world.transpose()<<" to "<<p->estimate().transpose()<<endl;
+        mp->_pos_world = p->estimate();
+    }
+    
+    return ;
+}
+
 
 
 

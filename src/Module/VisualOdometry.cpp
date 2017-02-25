@@ -300,7 +300,7 @@ bool VisualOdometry::TrackRefFrame()
     
 bool VisualOdometry::NeedNewKeyFrame()
 {
-    if ( _processed_frames < 5 )
+    if ( _processed_frames < 10 )
         return false;
     
     SE3 deltaT = _last_key_frame->_TCW.inverse()*_curr_frame->_TCW;

@@ -60,6 +60,11 @@ void LocalBA(
     std::set<MapPoint*>& local_map_points 
 );
 
+void LocalBAG2O( 
+    std::set<Frame*>& local_keyframes,
+    std::set<MapPoint*>& local_map_points 
+);
+
 }
 
 };

@@ -55,17 +55,13 @@ std::map<Feature*, Vector2d> LocalMapping::FindCandidates(Frame* current)
         if ( map_point->_bad == true )
             continue;
         
-        if ( map_point->_first_seen > 0 )
-        {
-            LOG(INFO) << "this is a newly created map point"<<map_point->_id<<endl;
-        }
-        
         Vector3d pt_curr = current->_camera->World2Camera( map_point->_pos_world, current->_TCW );
         Vector2d px_curr = current->_camera->Camera2Pixel( pt_curr );
         if ( pt_curr[2] < 0 || !current->InFrame(px_curr,20) ) { // 在相机后面或不在视野内 
             map_point->_track_in_view = false;
             continue;
         }
+        
         map_point->_cnt_visible++;
         
         // 检查local frame中有没有共视的
@@ -96,7 +92,7 @@ void LocalMapping::ProjectMapPoints(
         
         if ( candidate.first->_mappoint->_first_seen > 0 )
         {
-            LOG(INFO)<<"this is a newly created map point: "<<candidate.first->_mappoint->_id<<endl;
+            // LOG(INFO)<<"this is a newly created map point: "<<candidate.first->_mappoint->_id<<endl;
         }
         
         bool ret = _matcher->FindDirectProjection(
@@ -119,6 +115,7 @@ void LocalMapping::ProjectMapPoints(
             feature->_frame = current;
             feature->_mappoint = candidate.first->_mappoint;
             current->_features.push_back( feature );
+            feature->_mappoint->_cnt_found++;
         }
     }
 }
@@ -154,7 +151,26 @@ void LocalMapping::OptimizeCurrent(Frame* current)
 
 void LocalMapping::LocalBA( Frame* current )
 {
-    ba::LocalBA( _local_keyframes, _local_map_points );
+    // ba::LocalBA( _local_keyframes, _local_map_points );
+    ba::LocalBAG2O( _local_keyframes, _local_map_points );
+    
+    // update the observations 
+    for ( Feature* fea: current->_features )
+    {
+        if ( fea->_bad )
+            continue;
+        if ( fea->_mappoint)
+        {
+            if ( fea->_mappoint->_bad )
+            {
+                fea->_bad = true;
+                continue;
+            }
+            fea->_mappoint->_last_seen = current->_keyframe_id;
+            fea->_depth = current->_camera->World2Camera( fea->_mappoint->_pos_world, current->_TCW )[2];
+        }
+    }
+    
 }
 
 // 更新局部关键帧: _local_keyframes 
@@ -256,7 +272,7 @@ void LocalMapping::Run()
         
         if ( _new_keyframes.empty() ) {
             // Local Bundle Adjustment 
-            // LocalBA( _current_kf );
+            LocalBA( _current_kf );
             
             // Keyframe Culling 
             // 删掉一些没必要存在的关键帧，减少计算量
@@ -294,10 +310,12 @@ void LocalMapping::MapPointCulling()
         } else if ( (*it)->GetFoundRatio() < 0.25 ) {
             // 观测程度不够
             (*it)->_bad = true; 
+            LOG(INFO)<<(*it)->_id<<" is set to bad"<<endl;
             it = _recent_mappoints.erase( it );
         } else if ( _current_kf->_id - (*it)->_last_seen >= 2 && (*it)->_cnt_found <= th_obs ) {
             // 从2个帧前拿到，但观测数量太少
             (*it)->_bad = true; 
+            LOG(INFO)<<(*it)->_id<<" is set to bad"<<endl;
             it = _recent_mappoints.erase( it );
         } else if ( _current_kf->_keyframe_id - (*it)->_last_seen >= 2 ) {
             // 从三个帧前拿到但被没有剔除，认为是较好的点，但不再追踪
@@ -403,7 +421,7 @@ void LocalMapping::CreateNewMapPoints()
                 
                 // 终于可以生成地图点了
                 MapPoint* mp = Memory::CreateMapPoint();
-                mp->_first_seen = _current_kf->_keyframe_id;
+                mp->_first_seen = mp->_last_seen = _current_kf->_keyframe_id;
                 mp->_obs[ _current_kf->_keyframe_id ] = fea1;
                 mp->_obs[ f2->_keyframe_id ] = fea2;
                 mp->_cnt_visible = 2;

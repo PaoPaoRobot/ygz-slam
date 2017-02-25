@@ -1,5 +1,6 @@
 #include "ygz/Basic.h"
 #include "ygz/Algorithm.h"
+#include <boost/timer.hpp>
 // 这个程序测试BA.LobalBA的正确性
 using namespace ygz;
 using namespace std;
@@ -45,7 +46,7 @@ int main( int argc, char** argv )
     ygz::PinholeCamera* cam = new ygz::PinholeCamera();
     ygz::Frame::SetCamera( cam );
     
-    double noise_sigma = 1;
+    double noise_sigma = 2;
     
     vector<Frame*> frames_by_id;
     // create the key frames 
@@ -58,7 +59,7 @@ int main( int argc, char** argv )
         Vector6d noisy_pose = true_pose;
         for ( size_t j=0; j<6; j++)
         {
-            noisy_pose[j] = true_pose[j] + rng.gaussian(0.01);
+            // noisy_pose[j] = true_pose[j] + rng.gaussian(0.01);
         }
         
         new_frame->_TCW = SE3::exp( noisy_pose );
@@ -74,7 +75,7 @@ int main( int argc, char** argv )
         mp->_pos_world = points[i];
         for ( size_t j=0; j<3; j++ )
         {
-            mp->_pos_world[j] += rng.gaussian(0.01);
+            // mp->_pos_world[j] += rng.gaussian(0.01);
         }
         map_points.insert( mp );
         
@@ -97,7 +98,12 @@ int main( int argc, char** argv )
     }
     
     // now lets optimize these frames and points 
-    ba::LocalBA( frames, map_points );
+    boost::timer timer;
+    if ( argc == 2 && string(argv[1])==string("-g2o"))
+        ba::LocalBAG2O( frames, map_points );
+    else
+        ba::LocalBA( frames, map_points );
+    LOG(INFO)<<"local ba cost time: "<<timer.elapsed()<<endl;
     
     // compare the results 
     for ( Frame* f: frames ) 

@@ -1,4 +1,9 @@
 # 日志
+## 17.2.25 
+- 加入了Local BA机制。
+- 加入了在Local mapping中对新增地图点进行检查的机制。然而现在local mapping的点还是太多了一些，在project之后可能会更多，比较影响效率。
+- Depth估计是件比较麻烦的事情。在视线角非常接近时，地图点的深度值受像素误差影响严重，此时优化该地图点会导致观测不稳定。考虑引入DSO的Immature Points机制？
+
 ## 17.2.24
 - 研究Local keyframes和local map points的合适数量。结论：在orb-slam中，local keyframes会不断增长至40至50左右，最高不超过80；在svo中，局部关键帧限制为10个。对于地图点，svo会移去离开视野的局部地图点，而orb则把共视的地图点全部加进来，可能有几千个点。同时，在orb的local mapping中，每个关键帧会新增100至150个地图点（默认每图1000特征点的情况下）。如果提高至2000个特征点，则新增地图点也会变多。
 - LocalMapping.CreateNewMappoint的匹配应该没错，但是发现新增的地图点很难在前面的两次Track中用上。这可能是一个问题。

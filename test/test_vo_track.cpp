@@ -120,6 +120,8 @@ int TestVOTrack::Main ( int argc, char** argv )
             auto allpts = Memory::GetAllPoints();
             for ( auto pt: allpts )
             {
+                if ( pt.second->_bad )
+                    continue;
                 Vector2d px = pf->_camera->World2Pixel( pt.second->_pos_world, pf->_TCW );
                 circle ( img_show,
                     Point2f ( px[0], px[1] ),
