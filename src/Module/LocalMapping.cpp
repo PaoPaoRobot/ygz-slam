@@ -370,17 +370,33 @@ void LocalMapping::CreateNewMapPoints()
                     continue; 
                 double depth1 = 0, depth2=0;
                 
+                // 粗略估计其深度
                 bool ret = cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
                 
                 if ( ret==false || depth1 <0 || depth2<0 )
                     continue; 
+                
+                // 根据粗略的深度，进行位置校正
+                fea1->_depth = depth1;
+                Vector2d px_curr = fea2->_pixel;
+                int level = 0;
+                ret = matcher.FindDirectProjection( _current_kf, f2, fea1, px_curr, level );
+                if ( ret == false )
+                    continue;
+                
+                // 此时px_curr是更准确的像素位置，用它来进一步校准深度
+                fea2->_pixel = px_curr;
+                pt2 = f2->_camera->Pixel2Camera( fea2->_pixel );
+                ret = cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2 ); 
+                if ( ret==false || depth1 <0 || depth2<0 )
+                    continue; 
+                
                 // 计算三角化点的重投影误差
                 Vector3d pt1_triangulated = pt1*depth1;
                 Vector2d px2_reproj = f2->_camera->Camera2Pixel( T12.inverse()*pt1_triangulated );
-                double reproj_error = (px2_reproj - fea2->_pixel ).norm();
+                double reproj_error = ( px2_reproj - fea2->_pixel ).norm();
                 
                 if ( reproj_error > 5.991 ) { // 重投影太大
-                    // LOG(INFO) << "reproj error too large: "<<reproj_error<<endl;
                     continue; 
                 }
                 // 什么是尺度连续性。。。算了先不管它
@@ -392,6 +408,8 @@ void LocalMapping::CreateNewMapPoints()
                 mp->_obs[ f2->_keyframe_id ] = fea2;
                 mp->_cnt_visible = 2;
                 mp->_cnt_found = 2;
+                
+                // 世界坐标的位置，可能取两个观测的平均更好一些？
                 mp->_pos_world = _current_kf->_camera->Camera2World( pt1*depth1, _current_kf->_TCW );
                 
                 fea1->_mappoint = mp;
@@ -403,7 +421,6 @@ void LocalMapping::CreateNewMapPoints()
                 fea1->_bad = fea2->_bad = false;
                 
                 LOG(INFO)<<"create map point "<<mp->_id<<", pos = "<<mp->_pos_world.transpose()<<endl;
-                
                 ushort d = _current_kf->_depth.ptr<ushort>( cvRound(fea1->_pixel[1]) )[cvRound(fea1->_pixel[0])];
                 LOG(INFO)<<"Estimated depth = "<<depth1<<", real depth = "<<double(d)/1000.0f << endl;;
                 
@@ -450,14 +467,16 @@ void LocalMapping::CreateNewMapPoints()
                 // 两个点都已经被三角化
                 if ( fea1->_mappoint != fea2->_mappoint )
                 {
-                    LOG(INFO)<<"this is strange"<<endl;
-                    LOG(INFO)<<"map point "<<fea1->_mappoint->_id<<" pos = "<<fea1->_mappoint->_pos_world.transpose()<<endl;
-                    LOG(INFO)<<"map point "<<fea2->_mappoint->_id<<" pos = "<<fea2->_mappoint->_pos_world.transpose()<<endl;
+                    // 但不是同一个点
+                    // LOG(INFO)<<"this is strange"<<endl;
+                    // LOG(INFO)<<"map point "<<fea1->_mappoint->_id<<" pos = "<<fea1->_mappoint->_pos_world.transpose()<<endl;
+                    // LOG(INFO)<<"map point "<<fea2->_mappoint->_id<<" pos = "<<fea2->_mappoint->_pos_world.transpose()<<endl;
                 }
                 continue;
             }
         }
         
+        /*
         if ( new_feature_pairs.empty() == false )
         {
             Mat color1_show = _current_kf->_color.clone();
@@ -481,6 +500,7 @@ void LocalMapping::CreateNewMapPoints()
             imshow("point in past frame", color2_show );
             cv::waitKey();
         }
+        */
     }
     
     LOG(INFO) << "New map points: " << cnt_new_mappoints << ", associated points: "<<cnt_associate_mps<<endl;

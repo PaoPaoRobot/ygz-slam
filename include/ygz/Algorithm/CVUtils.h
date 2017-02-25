@@ -21,7 +21,7 @@ inline bool DepthFromTriangulation (
     const Vector3d& f_cur,
     double& depth1, 
     double& depth2, 
-    const double& determinant_th=1e-6
+    const double& determinant_th=1e-5
 )
 {
     Eigen::Matrix<double,3,2> A;

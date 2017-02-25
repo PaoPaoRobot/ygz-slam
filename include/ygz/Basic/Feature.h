@@ -17,8 +17,8 @@ struct Feature
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     Feature( 
         const Vector2d& pixel,
-        const int& level, 
-        const double& score
+        const int& level=0, 
+        const double& score=0
     ) : _pixel(pixel), _level(level), _score(score) {}
     
     Vector2d _pixel =Vector2d(0,0);    // 图像位置

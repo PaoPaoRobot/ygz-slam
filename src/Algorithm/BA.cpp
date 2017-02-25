@@ -321,7 +321,7 @@ void LocalBA(
     map<Frame*, Vector6d> poses;
     for ( MapPoint* mp: local_map_points )
     {
-        LOG(INFO)<<"Optimizing map point"<<mp->_id<<endl;
+        // LOG(INFO)<<"Optimizing map point "<<mp->_id<<endl;
         for ( auto obs_pair: mp->_obs )
         {
             Frame* frame = Memory::GetKeyFrame( obs_pair.first );
@@ -361,7 +361,7 @@ void LocalBA(
 
     // TODO consider ordering and sparsity? 
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.num_threads = 4;
     ceres::Solver::Summary summary;
     ceres::Solve ( options, &problem, &summary );
     LOG(INFO) << summary.FullReport() <<endl;

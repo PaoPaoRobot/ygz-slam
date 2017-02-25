@@ -52,3 +52,8 @@ add_executable( test_vo_track test_vo_track.cpp )
 target_link_libraries( test_vo_track 
     ygz-core ygz-algorithm ygz-module ${THIRD_PARTY_LIBS}
 )
+
+add_executable( test_local_ba test_local_ba.cpp ) 
+target_link_libraries( test_local_ba 
+    ygz-core ygz-algorithm ygz-module ${THIRD_PARTY_LIBS}
+)

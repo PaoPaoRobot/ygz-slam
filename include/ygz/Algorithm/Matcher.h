@@ -74,6 +74,8 @@ public:
     
     // 用直接法判断能否从在当前图像上找到某地图点的投影
     bool FindDirectProjection( Frame* ref, Frame* curr, MapPoint* mp, Vector2d& px_curr, int& search_level );
+    // 重载: 已知feature的情况（尚未建立地图点时）       
+    bool FindDirectProjection( Frame* ref, Frame* curr, Feature* fea_ref, Vector2d& px_curr, int& search_level );
     
     // model based sparse image alignment
     // 通过参照帧中观测到的3D点，预测当前帧的pose，稀疏直接法

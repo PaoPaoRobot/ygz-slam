@@ -381,6 +381,41 @@ bool Matcher::FindDirectProjection(
     return success;
 }
 
+bool Matcher::FindDirectProjection(
+    Frame* ref, Frame* curr, Feature* fea_ref, Vector2d& px_curr, int& search_level )
+{
+    if ( fea_ref->_depth<0 )
+    {
+        LOG(WARNING)<<"invalid depth: "<<fea_ref->_depth<<endl;
+        return false;
+    }
+    
+    assert( fea_ref->_frame == ref );
+    
+    Eigen::Matrix2d ACR;
+    Vector2d& px_ref = fea_ref->_pixel;
+    Vector3d pt_ref = ref->_camera->Pixel2Camera( px_ref, fea_ref->_depth );
+    SE3 TCR = curr->_TCW*ref->_TCW.inverse();
+    GetWarpAffineMatrix( ref, curr, px_ref, pt_ref, fea_ref->_level, TCR, ACR );
+    search_level = GetBestSearchLevel( ACR, curr->_option._pyramid_level-1 );
+    WarpAffine( ACR, ref->_pyramid[fea_ref->_level], fea_ref->_pixel, fea_ref->_level, search_level, WarpHalfPatchSize+1, _patch_with_border );
+    // 去掉边界
+    uint8_t* ref_patch_ptr = _patch;
+    for ( int y=1; y<WarpPatchSize+1; ++y, ref_patch_ptr += WarpPatchSize )
+    {
+        uint8_t* ref_patch_border_ptr = _patch_with_border + y* ( WarpPatchSize+2 ) + 1;
+        for ( int x=0; x<WarpPatchSize; ++x )
+            ref_patch_ptr[x] = ref_patch_border_ptr[x];
+    }
+    Vector2d px_scaled = px_curr / (1<<search_level);
+    bool success = cvutils::Align2D( curr->_pyramid[search_level], _patch_with_border, _patch, 10, px_scaled); 
+    px_curr = px_scaled*(1<<search_level);
+    if ( !curr->InFrame(px_curr) ) 
+        return false;
+    return success;
+}
+
+
 void Matcher::GetWarpAffineMatrix(
     const Frame* ref, const Frame* curr, 
     const Vector2d& px_ref, const Vector3d& pt_ref, 

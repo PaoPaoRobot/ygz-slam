@@ -100,6 +100,7 @@ int main( int argc, char** argv )
     SE3 TCR = matcher.GetTCR();
     LOG(INFO)<<"Estimated TCR: \n"<<TCR.matrix()<<endl;
     
+    /*
     // 将Frame1的特征设置到Frame2中
     vector<pair<ygz::Feature*, ygz::Feature*>> copyed_features;
     for ( ygz::Feature* fea: frame->_features)
@@ -120,6 +121,7 @@ int main( int argc, char** argv )
         }
     }
     detector.ComputeAngleAndDescriptor( &frame2 );
+    */
     
     frame2._TCW = TCR;
     SE3 T12 = TCR.inverse();
@@ -143,8 +145,6 @@ int main( int argc, char** argv )
     LOG(INFO)<<"search by bow matches: "<<matches_bow.size()<<endl;
     
     
-    // 红色是未匹配上的特征
-    
     // 其他颜色是匹配上的特征
     cv::RNG rng;
     for ( auto m: matched_points )
@@ -152,6 +152,9 @@ int main( int argc, char** argv )
         // plot the matched features 
         Mat color1_show = frame->_color.clone();
         Mat color2_show = frame2._color.clone();
+        
+        ygz::Feature* fea1 = frame->_features[m.first];
+        ygz::Feature* fea2 = frame2._features[m.second];
         
         Scalar color( rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255));
         circle( color1_show, 
@@ -167,7 +170,9 @@ int main( int argc, char** argv )
         Vector3d pt1 = frame->_camera->Pixel2Camera( frame->_features[m.first]->_pixel );
         Vector3d pt2 = frame2._camera->Pixel2Camera( frame2._features[m.second]->_pixel );
         double depth1, depth2;
+        // 从depth from triangulation 获得粗略的深度估计
         bool ret = ygz::cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2, 1e-5 );
+        
         
         ushort d1 = frame->_depth.ptr<ushort>( 
             cvRound(frame->_features[m.first]->_pixel[1]) )[cvRound(frame->_features[m.first]->_pixel[0])];
@@ -178,6 +183,26 @@ int main( int argc, char** argv )
         {
             LOG(INFO)<<"Estimated depth = "<<depth1<<", real depth = "<<double(d1)/1000.0f << endl;;
             LOG(INFO)<<"Estimated depth = "<<depth2<<", real depth = "<<double(d2)/1000.0f << endl;;
+            
+            Vector2d px_curr = fea2->_pixel;
+            fea1->_depth = depth1;
+            fea2->_depth = depth2;
+            int level = 0;
+            matcher.FindDirectProjection( frame, &frame2, fea1, px_curr, level );
+            
+            // 蓝色点是修正后的点
+            circle( color2_show, 
+                Point2f(px_curr[0], px_curr[1]), 
+                1, Scalar(250,0,0), 2
+            );
+            
+            pt2 = frame2._camera->Pixel2Camera( px_curr );
+            ret = ygz::cvutils::DepthFromTriangulation( T12.inverse(), pt1, pt2, depth1, depth2, 1e-5 );
+            
+            d2 = frame2._depth.ptr<ushort>
+                ( cvRound( px_curr[1]) )[cvRound(px_curr[0])];
+            LOG(INFO)<<"adjusted depth = "<<depth1<<", real depth = "<<double(d1)/1000.0f << endl;;
+            LOG(INFO)<<"adjusted depth = "<<depth2<<", real depth = "<<double(d2)/1000.0f << endl;;
         }
         
         imshow("point in frame 1", color1_show );
