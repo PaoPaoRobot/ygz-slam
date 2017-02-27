@@ -46,7 +46,7 @@ int main( int argc, char** argv )
     ygz::PinholeCamera* cam = new ygz::PinholeCamera();
     ygz::Frame::SetCamera( cam );
     
-    double noise_sigma = 2;
+    double noise_sigma = 1;
     
     vector<Frame*> frames_by_id;
     // create the key frames 
@@ -57,9 +57,12 @@ int main( int argc, char** argv )
         Memory::RegisterKeyFrame( new_frame );
         Vector6d true_pose = keyframe_poses[i].log();
         Vector6d noisy_pose = true_pose;
-        for ( size_t j=0; j<6; j++)
+        if ( i!=0 )
         {
-            // noisy_pose[j] = true_pose[j] + rng.gaussian(0.01);
+            for ( size_t j=0; j<6; j++)
+            {
+                noisy_pose[j] = true_pose[j] + rng.gaussian(0.1);
+            }
         }
         
         new_frame->_TCW = SE3::exp( noisy_pose );
@@ -75,7 +78,7 @@ int main( int argc, char** argv )
         mp->_pos_world = points[i];
         for ( size_t j=0; j<3; j++ )
         {
-            // mp->_pos_world[j] += rng.gaussian(0.01);
+            mp->_pos_world[j] += rng.gaussian(0.1);
         }
         map_points.insert( mp );
         
@@ -83,7 +86,7 @@ int main( int argc, char** argv )
         for ( int j=0; j<8; j++ )
         {
             Feature* fea = new Feature(
-                cam->World2Pixel( mp->_pos_world, frames_by_id[j]->_TCW )
+                cam->World2Pixel( points[i], keyframe_poses[j] )
             );
             fea->_frame = frames_by_id[j];
             fea->_mappoint = mp;

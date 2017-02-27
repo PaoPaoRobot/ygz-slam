@@ -81,6 +81,7 @@ int main( int argc, char** argv )
     LOG(INFO) << "Reading " << string(argv[1])+string("/")+rgbFiles[index];
     Mat color2 = imread( string(argv[1])+string("/")+rgbFiles[index] );
     ygz::Frame frame2;
+    frame2._keyframe_id =1;
     frame2._color = color2;
     frame2.InitFrame();
     
@@ -110,39 +111,48 @@ int main( int argc, char** argv )
         px_frame2_reproj.push_back(px2);
         int level=0;
         if ( matcher.FindDirectProjection( frame, &frame2, mp, px2,level ) )
+        {
             cnt_good_projection++;
+            
+            ygz::Feature* new_feature = new ygz::Feature( px2 );
+            new_feature->_level = level;
+            frame2._features.push_back( new_feature );
+            map_point.second->_obs[frame2._keyframe_id] = new_feature;
+        }
         px_frame2.push_back(px2);
     }
     LOG(INFO) << "total points: "<<all_points.size()<<", succeed: "<<cnt_good_projection<<endl;
     LOG(INFO) << "project "<<all_points.size()<<" point cost time: "<<timer.elapsed()<<endl;
     
-    // plot the matched features 
-    Mat color1_show = frame->_color.clone();
-    Mat color2_show = frame2._color.clone();
-    
-    for ( ygz::Feature* fea: frame->_features ) 
+    // 比较描述子的距离
+    detector.ComputeAngleAndDescriptor( &frame2 );
+    for ( auto& mp: all_points )
     {
-        if ( fea->_mappoint )
+        if ( mp.second->_obs.size() == 2 )
         {
-            circle( color1_show, Point2f(fea->_pixel[0], fea->_pixel[1]), 
+            // plot the matched features 
+            Mat color1_show = frame->_color.clone();
+            Mat color2_show = frame2._color.clone();
+            
+            ygz::Feature* f1 = mp.second->_obs[0];
+            ygz::Feature* f2 = mp.second->_obs[1];
+            
+            double distance = matcher.DescriptorDistance( f1->_desc, f2->_desc );
+            LOG(INFO)<<"distance = "<<distance<<endl;
+            
+            circle( color1_show, Point2f(f1->_pixel[0], f1->_pixel[1]), 
                 2, Scalar(0,250,0), 2
             );
+            
+            circle( color2_show, Point2f(f2->_pixel[0], f2->_pixel[1]), 
+                2, Scalar(0,250,0), 2
+            );
+            imshow("point in frame 1", color1_show );
+            imshow("point in frame 2", color2_show );
+            waitKey();
         }
     }
     
-    // 红色是重投影的，绿点是对齐过后的
-    for ( size_t i=0; i<px_frame2.size(); i++ )
-    {
-        Vector2d px2 = px_frame2[i];
-        Vector2d px2r = px_frame2_reproj[i];
-        circle( color2_show, Point2f(px2r[0], px2r[1]), 1, Scalar(0,0,250), 2);
-        circle( color2_show, Point2f(px2[0], px2[1]), 1, Scalar(0,250,0), 2);
-        line( color2_show, Point2f(px2[0], px2[1]), Point2f(px2r[0],px2r[1]), Scalar(0,0,250), 1 );
-    }
-    
-    imshow("point in frame 1", color1_show );
-    imshow("point in frame 2", color2_show );
-    waitKey();
     destroyAllWindows();
     
     delete cam;

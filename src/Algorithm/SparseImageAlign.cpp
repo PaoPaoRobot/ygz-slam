@@ -142,7 +142,7 @@ double SparseImgAlign::computeResiduals (
     const int stride = cur_img.cols;
     const int border = patch_halfsize_+1;
     const float scale = 1.0f/ ( 1<<level_ );
-    const Vector3d ref_pos ( ref_frame_->GetCamCenter() );
+    // const Vector3d ref_pos ( ref_frame_->GetCamCenter() );
     float chi2 = 0.0;
     size_t feature_counter = 0; // is used to compute the index of the cached jacobian
     std::vector<bool>::iterator visiblity_it = visible_fts_.begin();
@@ -155,6 +155,8 @@ double SparseImgAlign::computeResiduals (
 
         // compute pixel location in cur img
         // const double depth = ( ( *it )->_mappoint->_pos_world - ref_pos ).norm();
+        // LOG(INFO)<<"depth in world = "<<depth<<", in feature = "<<(*it)->_depth<<endl;
+        
         const Vector3d xyz_ref ( ref_frame_->_camera->Pixel2Camera((*it)->_pixel, (*it)->_depth ));
         const Vector3d xyz_cur ( T_cur_from_ref * xyz_ref );
         const Vector2f uv_cur_pyr ( cur_frame_->_camera->Camera2Pixel ( xyz_cur ).cast<float>() * scale );

@@ -1,4 +1,5 @@
 #include "ygz/Module/LocalMapping.h"
+#include <boost/format.hpp>
 
 namespace ygz
 {
@@ -6,7 +7,6 @@ namespace ygz
 LocalMapping::LocalMapping() 
 {
     _matcher = new Matcher;
-    
 }
     
 void LocalMapping::AddKeyFrame( Frame* keyframe )
@@ -115,7 +115,6 @@ void LocalMapping::ProjectMapPoints(
             feature->_frame = current;
             feature->_mappoint = candidate.first->_mappoint;
             current->_features.push_back( feature );
-            feature->_mappoint->_cnt_found++;
         }
     }
 }
@@ -128,7 +127,6 @@ void LocalMapping::OptimizeCurrent(Frame* current)
     // ba::OptimizeCurrentPointOnly( current );
     
     // reset the depth of current features
-    /*
     for ( Feature* fea: current->_features )
     {
         if ( fea->_bad==false && fea->_mappoint && fea->_mappoint->_bad==false)
@@ -145,14 +143,50 @@ void LocalMapping::OptimizeCurrent(Frame* current)
             }
         }
     }
-    */
 }
 
 
 void LocalMapping::LocalBA( Frame* current )
 {
     // ba::LocalBA( _local_keyframes, _local_map_points );
+    
+    // 优化前的local map point 投影
+    
+    /*
+    Mat img_show = current->_color.clone();
+    for ( auto pt: _local_map_points )
+    {
+        if ( pt->_bad )
+            continue;
+        Vector2d px = current->_camera->World2Pixel( pt->_pos_world, current->_TCW );
+        cv::circle ( img_show,
+            cv::Point2f ( px[0], px[1] ),
+            1, cv::Scalar ( 0,0,250 ),
+            2
+        );
+    }
+    imshow ( "local mappoint projection before local ba", img_show );
+    cv::waitKey ( 1 );
+    */
+    
     ba::LocalBAG2O( _local_keyframes, _local_map_points );
+    
+    /*
+    Mat img_show2 = current->_color.clone();
+    for ( auto pt: _local_map_points )
+    {
+        if ( pt->_bad )
+            continue;
+        Vector2d px = current->_camera->World2Pixel( pt->_pos_world, current->_TCW );
+        cv::circle ( img_show2,
+            cv::Point2f ( px[0], px[1] ),
+            1, cv::Scalar ( 0,0,250 ),
+            2
+        );
+    }
+    imshow ( "local mappoint projection after local ba", img_show2 );
+    cv::waitKey ( 1 );
+    */
     
     // update the observations 
     for ( Feature* fea: current->_features )
@@ -210,14 +244,22 @@ void LocalMapping::UpdateLocalKeyframes ( Frame* current )
         _local_keyframes.insert( keyframe_pair.first );
     }
     
+    if ( _local_keyframes.size() > _options._num_local_keyframes )
+        return;
+        
+        
     // 策略2：和上次结果中共视程度很高的关键帧也作为局部关键帧
     int cnt_local_keyframes;
     for ( Frame* frame: _local_keyframes ) {
+        if ( _local_keyframes.size() > _options._num_local_keyframes )
+            return;
         vector<Frame*> neighbour = frame->GetBestCovisibilityKeyframes(10);
         for ( Frame* neighbour_kf: neighbour ) {
             if ( neighbour_kf->_bad ) 
                 continue;
             _local_keyframes.insert( neighbour_kf );
+            if ( _local_keyframes.size() > _options._num_local_keyframes )
+                return;
         }
     }
     
@@ -243,7 +285,13 @@ void LocalMapping::UpdateLocalMapPoints ( Frame* current )
                 && current->InFrame( current->_camera->World2Pixel(fea->_mappoint->_pos_world, current->_TCW))
             )
             {
-                _local_map_points.insert( fea->_mappoint );
+                if ( _local_keyframes.size()<5 )   
+                    _local_map_points.insert( fea->_mappoint );
+                else if (fea->_mappoint->GetFoundRatio() >0.25 )
+                {
+                    _local_map_points.insert( fea->_mappoint );
+                    // LOG(INFO)<<"map point "<<fea->_mappoint->_id<<" visible = "<<fea->_mappoint->_cnt_visible<<", found = "<<fea->_mappoint->_cnt_found;
+                }
             }
         }
     }
@@ -262,7 +310,7 @@ void LocalMapping::Run()
         MapPointCulling();
         
         // 通过相邻帧间的特征匹配新建一些地图点
-        CreateNewMapPoints();
+        // CreateNewMapPoints();
         
         // 没有新的关键帧要处理
         if ( _new_keyframes.empty() ) {
@@ -276,7 +324,7 @@ void LocalMapping::Run()
             
             // Keyframe Culling 
             // 删掉一些没必要存在的关键帧，减少计算量
-            KeyFrameCulling();
+            // KeyFrameCulling();
         }
         
         // 把这个帧加到闭环检测队列中
@@ -296,8 +344,6 @@ void LocalMapping::ProcessNewKeyFrame()
     // Essential 现在还没实现，因为主要在loop closure里用
     _current_kf->UpdateConnections();
 }
-
-
 
 void LocalMapping::MapPointCulling()
 {
@@ -570,5 +616,36 @@ void LocalMapping::KeyFrameCulling()
             frame->_bad = true; 
     }
 }
+
+void LocalMapping::PlotLocalKeyFrames()
+{
+    for ( Frame* frame : _local_keyframes )
+    {
+        Mat img = frame->_color.clone();
+        for ( Feature* fea: frame->_features )
+        {
+            if ( fea->_bad || fea->_mappoint==nullptr || fea->_mappoint->_bad )
+            {
+                // cv::circle( img, cv::Point2f(fea->_pixel[0], fea->_pixel[1]), 1, cv::Scalar(0,0,250),2 );
+            }
+            else 
+            {
+                // 绿色是观测点
+                cv::circle( img, cv::Point2f(fea->_pixel[0], fea->_pixel[1]), 1, cv::Scalar(0,250,0),2 );
+                
+                // 蓝色是重投影点
+                boost::format fmt("%d");
+                cv::putText( img, (fmt%fea->_mappoint->_id).str(), cv::Point2f(fea->_pixel[0]-10, fea->_pixel[1]-5), CV_FONT_HERSHEY_COMPLEX, 0.3, cv::Scalar(0,250,0) );
+                Vector2d px = frame->_camera->World2Pixel( fea->_mappoint->_pos_world, frame->_TCW );
+                cv::circle( img, cv::Point2f(px[0], px[1]), 1, cv::Scalar(250,0,0),2 );
+            }
+        }
+        boost::format fmt("keyframe %d");
+        cv::imshow( (fmt%frame->_keyframe_id).str(), img );
+    }
+    
+    cv::waitKey();
+}
+
     
 }

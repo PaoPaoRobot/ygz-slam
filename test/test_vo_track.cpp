@@ -79,6 +79,7 @@ int TestVOTrack::Main ( int argc, char** argv )
 
         fea->_depth = double ( d ) /1000.0;
         ygz::MapPoint* mp = ygz::Memory::CreateMapPoint();
+        mp->_cnt_found = mp->_cnt_visible = 1;
         mp->_pos_world = frame->_camera->Pixel2World ( pixel, frame->_TCW, fea->_depth );
         fea->_mappoint = mp;
         mp->_obs[frame->_keyframe_id] = fea;
@@ -117,12 +118,13 @@ int TestVOTrack::Main ( int argc, char** argv )
             // Plot the track features
             Mat img_show = pf->_color.clone();
             // the map point projection 
-            auto allpts = Memory::GetAllPoints();
-            for ( auto pt: allpts )
+            // auto allpts = Memory::GetAllPoints();
+            auto local_pts = vo._local_mapping->GetLocalMapPoints();
+            for ( auto pt: local_pts )
             {
-                if ( pt.second->_bad )
+                if ( pt->_bad )
                     continue;
-                Vector2d px = pf->_camera->World2Pixel( pt.second->_pos_world, pf->_TCW );
+                Vector2d px = pf->_camera->World2Pixel( pt->_pos_world, pf->_TCW );
                 circle ( img_show,
                     Point2f ( px[0], px[1] ),
                     1, Scalar ( 0,0,250 ),
@@ -151,7 +153,7 @@ int TestVOTrack::Main ( int argc, char** argv )
             }
 
             imshow ( "tracked features", img_show );
-            waitKey ( 10 );
+            waitKey ( 1 );
         } else if ( vo._status == VisualOdometry::VO_LOST ) {
             break;
         }

@@ -212,6 +212,9 @@ void VisualOdometry::SetKeyframe(Frame* frame)
     
     _last_key_frame = frame;
     _processed_frames = 0;
+    
+    // plot the key frames and their features
+    _local_mapping->PlotLocalKeyFrames();
 }
 
 void VisualOdometry::CreateMapPointsAfterMonocularInitialization(
@@ -290,10 +293,10 @@ bool VisualOdometry::TrackRefFrame()
     _TCR_estimated = _matcher->GetTCR();
     
     _curr_frame->_TCW = _TCR_estimated * _ref_frame->_TCW;
-    LOG(INFO) << "current pose estimated by sparse alignment: \n"<<_curr_frame->_TCW.matrix()<<endl;
+    // LOG(INFO) << "current pose estimated by sparse alignment: \n"<<_curr_frame->_TCW.matrix()<<endl;
     
     // let's see the projections
-    // PlotTrackRefFrameResults();
+    PlotTrackRefFrameResults();
     
     return true;
 }
@@ -349,7 +352,7 @@ void VisualOdometry::PlotTrackRefFrameResults()
     
     cv::imshow("Track ref frame: curr", img_show );
     cv::imshow("Track ref frame: ref", img_ref );
-    cv::waitKey(1);
+    cv::waitKey(0);
 }
 
     

@@ -95,7 +95,7 @@ void OptimizeCurrent ( Frame* current )
     pose.head<3>() = t;
     pose.tail<3>() = r;
 
-    const float chi2Mono = 5.991;
+    const float chi2Mono = 5.991*4;
     // map<unsigned long, CeresReprojectionError*> blocks; // optimize both pose and point
 
     ceres::Problem problem;
@@ -192,7 +192,7 @@ void OptimizeCurrentPoseOnly ( Frame* current )
     pose.head<3>() = t;
     pose.tail<3>() = r;
 
-    const float chi2Mono = 5.991*2;
+    const float chi2Mono = 5.991;
     
     Vector6d pose_backup = pose;
 
@@ -252,7 +252,14 @@ void OptimizeCurrentPoseOnly ( Frame* current )
     }
 
     // set the pose and inliers
-    // current->_TCW = SE3 ( SO3::exp ( pose.tail<3>() ), pose.head<3>() );
+    for ( Feature* fea: current->_features )
+    {
+        if ( fea->_bad == false && fea->_mappoint && fea->_mappoint->_bad==false )
+        {
+            fea->_mappoint->_cnt_found++;
+        }
+    }
+    
     LOG ( INFO ) <<"inliers in current BA: "<<cntInlier<<" in total "<<current->_features.size()<<endl;
 }
 
@@ -440,7 +447,9 @@ void LocalBAG2O(
                 edge->setVertex(1, dynamic_cast<ygz::VertexSE3Sophus*>( optimizer.vertex( frame->_keyframe_id)));
                 edge->setInformation( Eigen::Matrix2d::Identity() );
                 edge->setMeasurement( obs_pair.second->_pixel );
-                edge->setRobustKernel( new g2o::RobustKernelHuber() );
+                auto rk = new g2o::RobustKernelHuber();
+                rk->setDelta( 5.991 );
+                edge->setRobustKernel( rk );
                 optimizer.addEdge( edge );
                 
                 edges.push_back(edge);
@@ -474,9 +483,10 @@ void LocalBAG2O(
                 edge->setVertex(1, dynamic_cast<ygz::VertexSE3Sophus*>( optimizer.vertex( frame->_keyframe_id)));
                 edge->setInformation( Eigen::Matrix2d::Identity() );
                 edge->setMeasurement( obs_pair.second->_pixel );
-                edge->setRobustKernel( new g2o::RobustKernelHuber() );
+                auto rk = new g2o::RobustKernelHuber();
+                rk->setDelta( 5.991 );
+                edge->setRobustKernel( rk );
                 optimizer.addEdge( edge );
-                
                 edges.push_back(edge);
                 features.push_back( obs_pair.second );
             }
@@ -487,13 +497,15 @@ void LocalBAG2O(
     LOG(INFO)<<"Vertices num: "<<optimizer.vertices().size()<<endl;
     LOG(INFO)<<"   Edges num: "<<optimizer.edges().size()<<endl;
     
+    // optimizer.setVerbose(true);
     optimizer.initializeOptimization();
-    optimizer.optimize(10);
+    optimizer.optimize(20);
     
     // 统计inlier数量
     int cntOutlier =0;
     for ( size_t i=0; i<edges.size(); i++ ) 
     {
+        edges[i]->computeError();
         if ( edges[i]->chi2()>5.991 )
         {
             // this is an outlier 
@@ -512,6 +524,9 @@ void LocalBAG2O(
         Vector6d pose;
         pose.head<3>() = esti.tail<3>();
         pose.tail<3>() = esti.head<3>();
+        
+        // LOG(INFO)<<"key frame "<<frame->_keyframe_id<<" changed from \n"<<frame->_TCW<<" \nto \n "<<SE3::exp(pose)<<endl;
+        
         frame->_TCW = SE3::exp(pose);
     }
     

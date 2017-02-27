@@ -14,7 +14,7 @@ public:
    
     struct Options 
     {
-        int _num_local_keyframes =3; // 相邻关键帧数量
+        int _num_local_keyframes =10; // 相邻关键帧数量
         int _num_local_map_points =500;
         int _min_track_local_map_inliers = 50;
     } _options;
@@ -53,6 +53,11 @@ public:
     
     // 修正 keyframe 
     void KeyFrameCulling(); 
+    
+    // debug only 
+    void PlotLocalKeyFrames();
+    
+    set<MapPoint*>& GetLocalMapPoints() {return _local_map_points;}
     
 private:
     // Local Bundle Adjustment 

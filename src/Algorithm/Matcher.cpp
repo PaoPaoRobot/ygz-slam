@@ -359,7 +359,8 @@ bool Matcher::FindDirectProjection(
     Eigen::Matrix2d ACR;
     Feature* fea = mp->_obs[ref->_keyframe_id];
     Vector2d& px_ref = fea->_pixel;
-    Vector3d pt_ref = ref->_camera->Pixel2Camera( px_ref, fea->_depth );
+    double depth = ref->_camera->World2Camera( mp->_pos_world, ref->_TCW )[2];
+    Vector3d pt_ref = ref->_camera->Pixel2Camera( px_ref, depth );
     SE3 TCR = curr->_TCW*ref->_TCW.inverse();
     GetWarpAffineMatrix( ref, curr, px_ref, pt_ref, fea->_level, TCR, ACR );
     search_level = GetBestSearchLevel( ACR, curr->_option._pyramid_level-1 );
